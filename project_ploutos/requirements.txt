@@ -1,0 +1,11 @@
+streamlit
+pandas
+numpy
+requests
+plotly
+yfinance
+alpaca-py
+torch
+stable-baselines3
+gymnasium
+shimmy

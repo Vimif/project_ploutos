@@ -1,0 +1,46 @@
+{
+    "INTC": {
+        "prix_achat": 32.33,
+        "quantite": 42,
+        "date_achat": "2025-12-01 20:58:32",
+        "stop_loss": 38.53200130462646,
+        "take_profit": 37.1795,
+        "secteur": "Technology",
+        "highest_price": 40.560001373291016
+    },
+    "AAPL": {
+        "prix_achat": 258.42,
+        "quantite": 1,
+        "date_achat": "2025-12-01 20:58:58",
+        "stop_loss": 269.16348724365236,
+        "take_profit": 297.183,
+        "secteur": "Technology",
+        "highest_price": 283.3299865722656
+    },
+    "O": {
+        "prix_achat": 56.71,
+        "quantite": 8,
+        "date_achat": "2025-12-01 20:59:16",
+        "stop_loss": 54.672499275207514,
+        "take_profit": 65.2165,
+        "secteur": "Real Estate",
+        "highest_price": 57.54999923706055
+    },
+    "DSY.PA": {
+        "prix_achat": 37.2,
+        "quantite": 209,
+        "date_achat": "2025-12-01 21:03:32",
+        "stop_loss": 35.34,
+        "take_profit": 42.78,
+        "secteur": "Technology"
+    },
+    "CS.PA": {
+        "prix_achat": 37.62,
+        "quantite": 35,
+        "date_achat": "2025-12-01 21:18:14",
+        "stop_loss": 36.688998985290525,
+        "take_profit": 43.26299999999999,
+        "secteur": "Financial Services",
+        "highest_price": 38.619998931884766
+    }
+}

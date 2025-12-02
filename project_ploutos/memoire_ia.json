@@ -1,0 +1,52 @@
+{
+    "IBM": {
+        "rsi_buy": 45,
+        "rsi_sell": 80,
+        "last_update": "2025-12-01"
+    },
+    "AAPL": {
+        "rsi_buy": 35,
+        "rsi_sell": 70,
+        "last_update": "2025-12-01"
+    },
+    "TSLA": {
+        "rsi_buy": 30,
+        "rsi_sell": 80,
+        "last_update": "2025-12-01"
+    },
+    "MSFT": {
+        "rsi_buy": 45,
+        "rsi_sell": 65,
+        "last_update": "2025-12-01"
+    },
+    "NVDA": {
+        "rsi_buy": 30,
+        "rsi_sell": 80,
+        "last_update": "2025-12-01"
+    },
+    "AMD": {
+        "rsi_buy": 35,
+        "rsi_sell": 75,
+        "last_update": "2025-12-01"
+    },
+    "INTC": {
+        "rsi_buy": 30,
+        "rsi_sell": 65,
+        "last_update": "2025-12-01"
+    },
+    "AMZN": {
+        "rsi_buy": 45,
+        "rsi_sell": 75,
+        "last_update": "2025-12-01"
+    },
+    "GOOGL": {
+        "rsi_buy": 35,
+        "rsi_sell": 80,
+        "last_update": "2025-12-01"
+    },
+    "META": {
+        "rsi_buy": 35,
+        "rsi_sell": 65,
+        "last_update": "2025-12-01"
+    }
+}
