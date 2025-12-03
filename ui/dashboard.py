@@ -1,10 +1,15 @@
 # ui/dashboard.py
 """Dashboard Streamlit pour Ploutos"""
 
+# FIX: Ajouter le projet au path AVANT les autres imports
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Remonter d'un niveau depuis ui/ pour arriver à la racine du projet
+PROJECT_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+# Maintenant les imports fonctionnent
 import streamlit as st
 import pandas as pd
 import time
