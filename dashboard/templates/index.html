@@ -4,9 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>🤖 Ploutos Trading Dashboard</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="/static/css/style.css">
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
-    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -23,13 +22,13 @@
         <div class="stats-grid">
             <div class="stat-card">
                 <div class="stat-label">Portfolio</div>
-                <div class="stat-value" id="portfolio-value">$0.00</div>
+                <div class="stat-value" id="portfolio">$0.00</div>
                 <div class="stat-change" id="daily-pl">$0.00 (0.00%)</div>
             </div>
             
             <div class="stat-card">
                 <div class="stat-label">Cash Disponible</div>
-                <div class="stat-value" id="cash-value">$0.00</div>
+                <div class="stat-value" id="cash">$0.00</div>
             </div>
             
             <div class="stat-card">
@@ -39,8 +38,8 @@
             
             <div class="stat-card">
                 <div class="stat-label">P&L Total</div>
-                <div class="stat-value" id="total-pl">$0.00</div>
-                <div class="stat-change" id="total-pl-pct">0.00%</div>
+                <div class="stat-value" id="pl">$0.00</div>
+                <div class="stat-change" id="pl-pct">0.00%</div>
             </div>
         </div>
 
@@ -50,15 +49,15 @@
             <div class="performance-grid">
                 <div class="perf-item">
                     <span class="perf-label">Positions Totales</span>
-                    <span class="perf-value" id="total-positions">0</span>
+                    <span class="perf-value" id="total-pos">0</span>
                 </div>
                 <div class="perf-item">
                     <span class="perf-label">🟢 Gagnantes</span>
-                    <span class="perf-value green" id="winning-positions">0</span>
+                    <span class="perf-value green" id="win-pos">0</span>
                 </div>
                 <div class="perf-item">
                     <span class="perf-label">🔴 Perdantes</span>
-                    <span class="perf-value red" id="losing-positions">0</span>
+                    <span class="perf-value red" id="lose-pos">0</span>
                 </div>
                 <div class="perf-item">
                     <span class="perf-label">Taux de Réussite</span>
@@ -71,7 +70,7 @@
         <div class="section">
             <h2>📈 Positions Ouvertes</h2>
             <div class="table-container">
-                <table id="positions-table">
+                <table>
                     <thead>
                         <tr>
                             <th>Symbole</th>
@@ -85,9 +84,7 @@
                         </tr>
                     </thead>
                     <tbody id="positions-body">
-                        <tr>
-                            <td colspan="8" class="loading">Chargement...</td>
-                        </tr>
+                        <tr><td colspan="8" class="loading">Chargement...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -97,7 +94,7 @@
         <div class="section">
             <h2>📝 Ordres Récents</h2>
             <div class="table-container">
-                <table id="orders-table">
+                <table>
                     <thead>
                         <tr>
                             <th>Date</th>
@@ -109,15 +106,13 @@
                         </tr>
                     </thead>
                     <tbody id="orders-body">
-                        <tr>
-                            <td colspan="6" class="loading">Chargement...</td>
-                        </tr>
+                        <tr><td colspan="6" class="loading">Chargement...</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+    <script src="/static/js/dashboard.js"></script>
 </body>
 </html>
