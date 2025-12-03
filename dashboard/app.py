@@ -1,10 +1,11 @@
-"""Dashboard Flask pour le bot de trading - VERSION PRODUCTION"""
+# dashboard/app.py
+"""Dashboard Flask pour le bot de trading - VERSION COMPLÈTE AVEC BDD"""
 
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 import traceback
@@ -30,6 +31,19 @@ socketio = SocketIO(
 
 # Client Alpaca global
 alpaca_client = None
+
+# ========== INTÉGRATION BASE DE DONNÉES ==========
+try:
+    from database.db import (
+        get_trade_history, get_trade_statistics,
+        get_portfolio_evolution, get_daily_summary,
+        get_top_symbols, get_win_loss_ratio
+    )
+    DB_AVAILABLE = True
+    logger.info("✅ Module database disponible")
+except ImportError:
+    DB_AVAILABLE = False
+    logger.warning("⚠️  Module database non disponible")
 
 def init_alpaca():
     """Initialiser le client Alpaca"""
@@ -163,7 +177,7 @@ def close_position(symbol):
             if not init_alpaca():
                 return jsonify({'success': False, 'error': 'Client non initialisé'}), 500
         
-        result = alpaca_client.close_position(symbol)
+        result = alpaca_client.close_position(symbol, reason='Fermeture manuelle dashboard')
         
         if result:
             logger.info(f"✅ Position {symbol} fermée manuellement")
@@ -173,6 +187,123 @@ def close_position(symbol):
     except Exception as e:
         logger.error(f"❌ Erreur close_position: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+# ========== ROUTES AVEC BASE DE DONNÉES ==========
+
+@app.route('/api/db/trades')
+def api_db_trades():
+    """Historique trades depuis BDD"""
+    if not DB_AVAILABLE:
+        return jsonify({'success': False, 'error': 'BDD non configurée'}), 503
+    
+    try:
+        days = int(request.args.get('days', 30))
+        symbol = request.args.get('symbol', None)
+        
+        trades = get_trade_history(days=days, symbol=symbol)
+        
+        # Convertir les dates en string pour JSON
+        for trade in trades:
+            if 'timestamp' in trade and trade['timestamp']:
+                trade['timestamp'] = str(trade['timestamp'])
+        
+        return jsonify({
+            'success': True,
+            'data': trades,
+            'count': len(trades)
+        })
+    except Exception as e:
+        logger.error(f"❌ Erreur /api/db/trades: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/db/statistics')
+def api_db_statistics():
+    """Statistiques depuis BDD"""
+    if not DB_AVAILABLE:
+        return jsonify({'success': False, 'error': 'BDD non configurée'}), 503
+    
+    try:
+        days = int(request.args.get('days', 30))
+        
+        stats = get_trade_statistics(days=days)
+        top_symbols = get_top_symbols(days=days, limit=10)
+        win_loss = get_win_loss_ratio(days=days)
+        
+        # Convertir Decimal en float
+        for key in stats:
+            if stats[key] is not None:
+                stats[key] = float(stats[key])
+        
+        for symbol_data in top_symbols:
+            for key in symbol_data:
+                if symbol_data[key] is not None and key != 'symbol':
+                    symbol_data[key] = float(symbol_data[key])
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'statistics': stats,
+                'top_symbols': top_symbols,
+                'win_loss': win_loss
+            }
+        })
+    except Exception as e:
+        logger.error(f"❌ Erreur /api/db/statistics: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/db/evolution')
+def api_db_evolution():
+    """Évolution portfolio depuis BDD"""
+    if not DB_AVAILABLE:
+        return jsonify({'success': False, 'error': 'BDD non configurée'}), 503
+    
+    try:
+        days = int(request.args.get('days', 30))
+        evolution = get_portfolio_evolution(days=days)
+        
+        # Convertir dates et Decimal
+        for point in evolution:
+            if 'date' in point and point['date']:
+                point['date'] = str(point['date'])
+            for key in ['portfolio_value', 'total_pl', 'cash']:
+                if key in point and point[key] is not None:
+                    point[key] = float(point[key])
+        
+        return jsonify({
+            'success': True,
+            'data': evolution
+        })
+    except Exception as e:
+        logger.error(f"❌ Erreur /api/db/evolution: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/db/summary')
+def api_db_summary():
+    """Résumés quotidiens depuis BDD"""
+    if not DB_AVAILABLE:
+        return jsonify({'success': False, 'error': 'BDD non configurée'}), 503
+    
+    try:
+        days = int(request.args.get('days', 30))
+        summaries = get_daily_summary(days=days)
+        
+        # Convertir dates et Decimal
+        for summary in summaries:
+            if 'date' in summary and summary['date']:
+                summary['date'] = str(summary['date'])
+            for key in ['portfolio_value', 'cash', 'buying_power', 'total_pl']:
+                if key in summary and summary[key] is not None:
+                    summary[key] = float(summary[key])
+        
+        return jsonify({
+            'success': True,
+            'data': summaries
+        })
+    except Exception as e:
+        logger.error(f"❌ Erreur /api/db/summary: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# ========== WEBSOCKET ==========
 
 @socketio.on('connect')
 def handle_connect():
@@ -190,6 +321,7 @@ if __name__ == '__main__':
     
     if init_alpaca():
         logger.info("✅ Dashboard prêt sur http://0.0.0.0:5000")
+        logger.info(f"📊 Base de données: {'✅ Disponible' if DB_AVAILABLE else '❌ Non configurée'}")
         logger.info("="*70)
         socketio.run(app, host='0.0.0.0', port=5000, debug=False, use_reloader=False)
     else:

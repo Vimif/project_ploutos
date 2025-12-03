@@ -1,4 +1,4 @@
-# trading/live_trader.py - VERSION OPTIMISÉE
+# trading/live_trader.py - VERSION COMPLÈTE AVEC BDD
 
 # === FIX PATH ===
 import sys
@@ -12,13 +12,22 @@ from trading.brain_trader import BrainTrader
 from config.settings import TRADING_CONFIG
 from config.tickers import SECTORS, ALL_TICKERS
 from core.utils import setup_logging
-from datetime import datetime
+from datetime import datetime, date
 import time
 
 logger = setup_logging(__name__, 'live_trader.log')
 
+# ========== INTÉGRATION BASE DE DONNÉES ==========
+try:
+    from database.db import log_prediction, save_daily_summary, get_trade_history
+    DB_AVAILABLE = True
+    logger.info("✅ Module database disponible")
+except ImportError:
+    DB_AVAILABLE = False
+    logger.warning("⚠️  Module database non disponible")
+
 class LiveTrader:
-    """Trader live avec Alpaca - STRATÉGIE OPTIMISÉE"""
+    """Trader live avec Alpaca - STRATÉGIE OPTIMISÉE + BDD"""
     
     def __init__(self, paper_trading=True, capital=None):
         self.paper_trading = paper_trading
@@ -44,7 +53,7 @@ class LiveTrader:
         self.take_profit_pct = 0.15
         self.min_trade_amount = 100.0
         
-        # ✅ NOUVEAU : Paramètres de renforcement
+        # ✅ Paramètres de renforcement
         self.max_position_accumulation = 0.10  # Max 10% du portfolio sur 1 ticker
         self.add_to_winner = True              # Renforcer les positions gagnantes
         self.add_to_loser = False              # Ne pas moyenner à la baisse
@@ -53,6 +62,7 @@ class LiveTrader:
         logger.info(f"📈 Max accumulation: {self.max_position_accumulation*100:.0f}%")
         logger.info(f"🛑 Stop Loss: {self.stop_loss_pct*100:.0f}%")
         logger.info(f"🎯 Take Profit: {self.take_profit_pct*100:.0f}%")
+        logger.info(f"📊 BDD: {'✅ Activée' if DB_AVAILABLE else '❌ Non configurée'}")
     
     def check_risk_management(self):
         """Vérifier stop loss et take profit"""
@@ -65,12 +75,12 @@ class LiveTrader:
             # Stop Loss
             if unrealized_plpc <= -self.stop_loss_pct:
                 logger.warning(f"🛑 STOP LOSS: {symbol} ({unrealized_plpc*100:.2f}%)")
-                self.alpaca.close_position(symbol)
+                self.alpaca.close_position(symbol, reason=f'Stop Loss {unrealized_plpc*100:.1f}%')
             
             # Take Profit
             elif unrealized_plpc >= self.take_profit_pct:
                 logger.info(f"🎯 TAKE PROFIT: {symbol} ({unrealized_plpc*100:.2f}%)")
-                self.alpaca.close_position(symbol)
+                self.alpaca.close_position(symbol, reason=f'Take Profit {unrealized_plpc*100:.1f}%')
     
     def should_add_to_position(self, symbol, position, current_price):
         """
@@ -144,6 +154,20 @@ class LiveTrader:
                 
                 emoji = {'BUY': '🟢', 'SELL': '🔴', 'HOLD': '⚪'}[action]
                 
+                # ✅ LOGGER LA PRÉDICTION DANS LA BDD
+                if DB_AVAILABLE:
+                    try:
+                        log_prediction(
+                            symbol=symbol,
+                            sector=sector,
+                            prediction=1 if action == 'BUY' else 0,
+                            confidence=pred.get('confidence', 0.0),
+                            action=action,
+                            features={}
+                        )
+                    except Exception as e:
+                        logger.error(f"❌ Erreur log prediction: {e}")
+                
                 # ✅ VÉRIFIER SI POSITION EXISTE
                 position = current_positions.get(symbol)
                 
@@ -193,7 +217,7 @@ class LiveTrader:
                             logger.info(f"     📈 RENFORCEMENT: +{qty} x ${current_price:.2f} = ${actual_cost:,.2f}")
                             logger.info(f"     💡 Raison: {reason}")
                             
-                            order = self.alpaca.place_market_order(symbol, qty, 'buy')
+                            order = self.alpaca.place_market_order(symbol, qty, 'buy', reason=f'Renforcement: {reason}')
                             
                             if order:
                                 actions['add'] += 1
@@ -225,7 +249,7 @@ class LiveTrader:
                         
                         logger.info(f"     💰 NOUVELLE POSITION: {qty} x ${current_price:.2f} = ${actual_cost:,.2f}")
                         
-                        order = self.alpaca.place_market_order(symbol, qty, 'buy')
+                        order = self.alpaca.place_market_order(symbol, qty, 'buy', reason='Nouvelle position AI')
                         
                         if order:
                             actions['buy'] += 1
@@ -244,7 +268,7 @@ class LiveTrader:
                     logger.info(f"     💰 FERMETURE: {position['qty']:.2f} @ ${current_price:.2f}")
                     logger.info(f"     📊 P&L: ${position['unrealized_pl']:+,.2f} ({position['unrealized_plpc']*100:+.2f}%)")
                     
-                    if self.alpaca.close_position(symbol):
+                    if self.alpaca.close_position(symbol, reason='Signal SELL AI'):
                         actions['sell'] += 1
                         proceeds = position['qty'] * current_price
                         available_buying_power += proceeds
@@ -274,13 +298,47 @@ class LiveTrader:
         pl_pct = (total_pl / self.initial_capital) * 100
         logger.info(f"💸 P&L session: ${total_pl:+,.2f} ({pl_pct:+.2f}%)")
     
+    def save_daily_stats(self):
+        """Sauvegarder les statistiques quotidiennes dans la BDD"""
+        if not DB_AVAILABLE:
+            logger.warning("⚠️  BDD non disponible pour save stats")
+            return
+        
+        try:
+            account = self.alpaca.get_account()
+            positions = self.alpaca.get_positions()
+            
+            # Compter les trades du jour
+            trades_today = get_trade_history(days=1)
+            
+            total_pl = sum(p['unrealized_pl'] for p in positions)
+            
+            save_daily_summary(
+                date=date.today(),
+                portfolio_value=account['portfolio_value'],
+                cash=account['cash'],
+                buying_power=account['buying_power'],
+                total_pl=total_pl,
+                positions_count=len(positions),
+                trades_count=len(trades_today)
+            )
+            
+            # Logger aussi les positions
+            self.alpaca.log_current_positions()
+            
+            logger.info("✅ Stats quotidiennes sauvegardées dans BDD")
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur save_daily_stats: {e}")
+    
     def run(self, check_interval_minutes=60):
         """Boucle principale"""
         logger.info("\n" + "="*70)
-        logger.info("🚀 LIVE TRADER - STRATÉGIE OPTIMISÉE")
+        logger.info("🚀 LIVE TRADER - STRATÉGIE OPTIMISÉE + BDD")
         logger.info("="*70)
         logger.info(f"⏱️  Intervalle: {check_interval_minutes} min")
         logger.info(f"📊 Mode: {'Paper' if self.paper_trading else '🔴 LIVE'}")
+        logger.info(f"📊 BDD: {'✅ Activée' if DB_AVAILABLE else '❌ Non configurée'}")
         
         if not self.paper_trading:
             logger.warning("⚠️  MODE LIVE - REAL MONEY!")
@@ -295,8 +353,15 @@ class LiveTrader:
                 cycle += 1
                 logger.info(f"\n📍 Cycle {cycle}")
                 
+                # Vérifier stop loss / take profit
                 self.check_risk_management()
+                
+                # Exécuter les signaux AI
                 self.execute_signals()
+                
+                # Sauvegarder stats toutes les 4 heures
+                if cycle % 4 == 0:
+                    self.save_daily_stats()
                 
                 logger.info(f"\n⏳ Prochain cycle dans {check_interval_minutes} min...")
                 time.sleep(check_interval_minutes * 60)
@@ -306,6 +371,7 @@ class LiveTrader:
         except Exception as e:
             logger.error(f"\n❌ Erreur: {e}", exc_info=True)
         finally:
+            # Stats finales
             account = self.alpaca.get_account()
             final_value = account['portfolio_value']
             total_pl = final_value - self.initial_capital
@@ -316,3 +382,7 @@ class LiveTrader:
             logger.info(f"💰 Portfolio initial: ${self.initial_capital:,.2f}")
             logger.info(f"💵 Portfolio final: ${final_value:,.2f}")
             logger.info(f"📈 P&L total: ${total_pl:+,.2f} ({(total_pl/self.initial_capital)*100:+.2f}%)")
+            
+            # Dernière sauvegarde BDD
+            if DB_AVAILABLE:
+                self.save_daily_stats()

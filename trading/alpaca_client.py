@@ -1,5 +1,5 @@
 # trading/alpaca_client.py
-"""Client pour l'API Alpaca"""
+"""Client pour l'API Alpaca avec intégration BDD"""
 
 # === FIX PATH ===
 import sys
@@ -24,6 +24,15 @@ logger = setup_logging(__name__, 'alpaca.log')
 
 # Charger variables d'environnement
 load_dotenv()
+
+# ========== INTÉGRATION BASE DE DONNÉES ==========
+try:
+    from database.db import log_trade, log_all_positions
+    DB_AVAILABLE = True
+    logger.info("✅ Module database disponible")
+except ImportError:
+    DB_AVAILABLE = False
+    logger.warning("⚠️  Module database non disponible")
 
 class AlpacaClient:
     """Client Alpaca pour le trading"""
@@ -72,6 +81,7 @@ class AlpacaClient:
                 'portfolio_value': float(account.portfolio_value),
                 'buying_power': float(account.buying_power),
                 'equity': float(account.equity),
+                'last_equity': float(account.last_equity),
                 'daytrade_count': int(account.daytrade_count),
                 'pattern_day_trader': account.pattern_day_trader
             }
@@ -106,6 +116,7 @@ class AlpacaClient:
                 'qty': float(pos.qty),
                 'market_value': float(pos.market_value),
                 'unrealized_pl': float(pos.unrealized_pl),
+                'unrealized_plpc': float(pos.unrealized_plpc),
                 'current_price': float(pos.current_price),
                 'avg_entry_price': float(pos.avg_entry_price)
             }
@@ -128,14 +139,15 @@ class AlpacaClient:
             logger.error(f"❌ Erreur prix pour {symbol}: {e}")
             return None
     
-    def place_market_order(self, symbol, qty, side='buy'):
+    def place_market_order(self, symbol, qty, side='buy', reason=''):
         """
-        Passer un ordre au marché
+        Passer un ordre au marché AVEC LOGGING BDD
         
         Args:
             symbol: Ticker (ex: 'AAPL')
-            qty: Quantité (nombre d'actions ou montant en $)
+            qty: Quantité (nombre d'actions)
             side: 'buy' ou 'sell'
+            reason: Raison du trade (optionnel)
         
         Returns:
             Order object ou None
@@ -154,7 +166,7 @@ class AlpacaClient:
             
             logger.info(f"✅ Ordre {side.upper()} placé: {symbol} x{qty}")
             
-            return {
+            order_dict = {
                 'id': order.id,
                 'symbol': order.symbol,
                 'qty': float(order.qty),
@@ -162,6 +174,28 @@ class AlpacaClient:
                 'status': order.status,
                 'filled_avg_price': float(order.filled_avg_price) if order.filled_avg_price else None
             }
+            
+            # ========== LOGGER DANS LA BDD ==========
+            if DB_AVAILABLE:
+                try:
+                    account = self.get_account()
+                    price = float(order.filled_avg_price) if order.filled_avg_price else self.get_current_price(symbol)
+                    
+                    if price and price > 0:
+                        log_trade(
+                            symbol=symbol,
+                            action=side.upper(),
+                            quantity=qty,
+                            price=price,
+                            amount=qty * price,
+                            reason=reason,
+                            portfolio_value=account['portfolio_value'] if account else None,
+                            order_id=order.id
+                        )
+                except Exception as e:
+                    logger.error(f"❌ Erreur log trade: {e}")
+            
+            return order_dict
         
         except Exception as e:
             logger.error(f"❌ Erreur ordre {side} pour {symbol}: {e}")
@@ -196,12 +230,40 @@ class AlpacaClient:
             logger.error(f"❌ Erreur ordre limite pour {symbol}: {e}")
             return None
     
-    def close_position(self, symbol):
-        """Fermer complètement une position"""
+    def close_position(self, symbol, reason=''):
+        """Fermer complètement une position AVEC LOGGING"""
         try:
-            self.trading_client.close_position(symbol)
-            logger.info(f"✅ Position fermée: {symbol}")
-            return True
+            # Récupérer position avant fermeture
+            position = self.get_position(symbol)
+            
+            if position:
+                qty = position['qty']
+                current_price = position['current_price']
+                
+                self.trading_client.close_position(symbol)
+                logger.info(f"✅ Position fermée: {symbol}")
+                
+                # Logger le SELL
+                if DB_AVAILABLE:
+                    try:
+                        account = self.get_account()
+                        log_trade(
+                            symbol=symbol,
+                            action='SELL',
+                            quantity=qty,
+                            price=current_price,
+                            amount=qty * current_price,
+                            reason=reason or 'Fermeture position',
+                            portfolio_value=account['portfolio_value'] if account else None
+                        )
+                    except Exception as e:
+                        logger.error(f"❌ Erreur log close: {e}")
+                
+                return True
+            else:
+                logger.warning(f"⚠️  Pas de position pour {symbol}")
+                return False
+                
         except Exception as e:
             logger.error(f"❌ Erreur fermeture position {symbol}: {e}")
             return False
@@ -216,17 +278,35 @@ class AlpacaClient:
             logger.error(f"❌ Erreur fermeture globale: {e}")
             return False
     
-    def get_orders(self, status='open'):
+    def get_orders(self, status='open', limit=50):
         """Obtenir les ordres"""
         try:
-            orders = self.trading_client.get_orders(filter={'status': status})
+            from alpaca.trading.requests import GetOrdersRequest
+            from alpaca.trading.enums import QueryOrderStatus
+            
+            status_map = {
+                'open': QueryOrderStatus.OPEN,
+                'closed': QueryOrderStatus.CLOSED,
+                'all': QueryOrderStatus.ALL
+            }
+            
+            request = GetOrdersRequest(
+                status=status_map.get(status, QueryOrderStatus.OPEN),
+                limit=limit
+            )
+            
+            orders = self.trading_client.get_orders(filter=request)
+            
             return [{
                 'id': order.id,
                 'symbol': order.symbol,
-                'qty': float(order.qty),
-                'side': order.side,
-                'status': order.status,
-                'order_type': order.order_type
+                'qty': float(order.qty) if order.qty else 0,
+                'side': order.side.value if hasattr(order.side, 'value') else str(order.side),
+                'status': order.status.value if hasattr(order.status, 'value') else str(order.status),
+                'order_type': order.order_type.value if hasattr(order.order_type, 'value') else str(order.order_type),
+                'filled_avg_price': float(order.filled_avg_price) if order.filled_avg_price else 0,
+                'filled_at': str(order.filled_at) if order.filled_at else '',
+                'created_at': str(order.created_at) if order.created_at else ''
             } for order in orders]
         except Exception as e:
             logger.error(f"❌ Erreur récupération ordres: {e}")
@@ -241,3 +321,17 @@ class AlpacaClient:
         except Exception as e:
             logger.error(f"❌ Erreur annulation ordre: {e}")
             return False
+    
+    def log_current_positions(self):
+        """Logger toutes les positions actuelles dans la BDD"""
+        if not DB_AVAILABLE:
+            logger.warning("⚠️  BDD non disponible pour log positions")
+            return
+        
+        try:
+            positions = self.get_positions()
+            if positions:
+                log_all_positions(positions)
+                logger.info(f"✅ {len(positions)} positions loggées dans BDD")
+        except Exception as e:
+            logger.error(f"❌ Erreur log_current_positions: {e}")
