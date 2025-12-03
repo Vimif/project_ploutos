@@ -22,3 +22,9 @@ plotly>=5.15.0
 # Utils
 python-dotenv>=1.0.0
 requests>=2.31.0
+
+# Ajoutez ces lignes à votre requirements.txt existant
+
+# Alpaca Trading API
+alpaca-py>=0.15.0
+python-dotenv>=1.0.0
