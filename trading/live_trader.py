@@ -1,5 +1,5 @@
 # trading/live_trader.py
-"""Trader en temps réel avec Alpaca"""
+"""Trader en temps réel avec Alpaca (Stocks + Crypto)"""
 
 # === FIX PATH ===
 import sys
@@ -8,7 +8,7 @@ if str(Path(__file__).parent.parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).parent.parent))
 # ================
 
-from trading.alpaca_client import AlpacaClient
+from trading.alpaca_unified_client import AlpacaUnifiedClient  # ← CHANGEMENT ICI
 from trading.brain_trader import BrainTrader
 from config.settings import TRADING_CONFIG
 from config.tickers import SECTORS, ALL_TICKERS
@@ -19,20 +19,13 @@ import time
 logger = setup_logging(__name__, 'live_trader.log')
 
 class LiveTrader:
-    """Trader live avec Alpaca + Brain AI"""
+    """Trader live avec Alpaca (Stocks + Crypto)"""
     
     def __init__(self, paper_trading=True, capital=None):
-        """
-        Initialiser le trader live
-        
-        Args:
-            paper_trading: True pour paper, False pour live
-            capital: Capital initial (optionnel)
-        """
         self.paper_trading = paper_trading
         
-        # Clients
-        self.alpaca = AlpacaClient(paper_trading=paper_trading)
+        # ✅ CLIENT UNIFIÉ (stocks + crypto)
+        self.alpaca = AlpacaUnifiedClient(paper_trading=paper_trading)
         self.brain = BrainTrader(capital=capital, paper_trading=paper_trading)
         
         # Vérifier le compte
@@ -46,9 +39,10 @@ class LiveTrader:
             raise Exception("❌ Impossible de se connecter à Alpaca")
         
         # Paramètres de risque
-        self.max_position_size = 0.1  # Max 10% du capital par position
-        self.stop_loss_pct = 0.05     # Stop loss à -5%
-        self.take_profit_pct = 0.15   # Take profit à +15%
+        self.max_position_size = 0.10
+        self.stop_loss_pct = 0.05
+        self.take_profit_pct = 0.15
+        self.min_crypto_trade = 10.0  # Min $10 pour crypto
         
         logger.info(f"🎯 Max position size: {self.max_position_size*100:.0f}%")
         logger.info(f"🛑 Stop Loss: {self.stop_loss_pct*100:.0f}%")
@@ -94,19 +88,26 @@ class LiveTrader:
                 symbol = pred['ticker']
                 action = pred['action']
                 
-                # Obtenir prix actuel
+                # ✅ UTILISER LE CLIENT UNIFIÉ
                 current_price = self.alpaca.get_current_price(symbol)
                 if current_price is None:
                     logger.warning(f"  ⚠️  {symbol}: Prix indisponible")
                     continue
                 
+                is_crypto = self.alpaca.is_crypto(symbol)
                 emoji = {'BUY': '🟢', 'SELL': '🔴', 'HOLD': '⚪'}[action]
-                logger.info(f"  {emoji} {symbol}: {action} @ ${current_price:.2f}")
+                crypto_tag = ' ₿' if is_crypto else ''
+                
+                logger.info(f"  {emoji} {symbol}{crypto_tag}: {action} @ ${current_price:,.2f}")
                 
                 # SIGNAL BUY
                 if action == 'BUY':
+                    # Normaliser le symbole pour la vérification
+                    check_symbol = symbol.replace('-', '/') if is_crypto else symbol
+                    
                     # Vérifier si on a déjà une position
-                    if symbol in current_positions:
+                    has_position = check_symbol in current_positions or symbol in current_positions
+                    if has_position:
                         logger.info(f"     ⏭️  Position déjà ouverte sur {symbol}")
                         actions_taken['hold'] += 1
                         continue
@@ -116,20 +117,29 @@ class LiveTrader:
                     allocated = pred['capital']
                     invest_amount = min(max_invest, allocated, float(account['cash']))
                     
-                    # Vérifier qu'on a assez de cash
-                    if invest_amount < 100:  # Minimum $100
-                        logger.warning(f"     ⚠️  Cash insuffisant: ${invest_amount:.2f}")
-                        continue
+                    # Minimum selon le type
+                    min_trade = self.min_crypto_trade if is_crypto else 100
                     
-                    # Calculer le nombre d'actions
-                    qty = int(invest_amount / current_price)
-                    if qty < 1:
-                        logger.warning(f"     ⚠️  Quantité trop faible: {qty}")
+                    if invest_amount < min_trade:
+                        logger.warning(f"     ⚠️  Montant insuffisant: ${invest_amount:.2f} (min: ${min_trade})")
                         continue
                     
                     # Placer l'ordre
-                    logger.info(f"     💰 Achat: {qty} actions x ${current_price:.2f} = ${qty*current_price:,.2f}")
-                    order = self.alpaca.place_market_order(symbol, qty, 'buy')
+                    if is_crypto:
+                        # Pour crypto: ordre par montant ($)
+                        logger.info(f"     💰 Achat crypto: ${invest_amount:.2f}")
+                        order = self.alpaca.place_market_order(
+                            symbol, qty=None, side='buy', notional=invest_amount
+                        )
+                    else:
+                        # Pour actions: calculer quantité
+                        qty = int(invest_amount / current_price)
+                        if qty < 1:
+                            logger.warning(f"     ⚠️  Quantité trop faible: {qty}")
+                            continue
+                        
+                        logger.info(f"     💰 Achat: {qty} actions x ${current_price:.2f} = ${qty*current_price:,.2f}")
+                        order = self.alpaca.place_market_order(symbol, qty, 'buy')
                     
                     if order:
                         actions_taken['buy'] += 1
@@ -139,15 +149,19 @@ class LiveTrader:
                 
                 # SIGNAL SELL
                 elif action == 'SELL':
+                    # Normaliser pour vérification
+                    check_symbol = symbol.replace('-', '/') if is_crypto else symbol
+                    
                     # Vérifier si on a une position
-                    if symbol not in current_positions:
+                    pos = current_positions.get(check_symbol) or current_positions.get(symbol)
+                    
+                    if not pos:
                         logger.info(f"     ⏭️  Pas de position sur {symbol}")
                         actions_taken['hold'] += 1
                         continue
                     
                     # Fermer la position
-                    pos = current_positions[symbol]
-                    logger.info(f"     💰 Vente: {pos['qty']} actions @ ${current_price:.2f}")
+                    logger.info(f"     💰 Vente: {pos['qty']:.4f} @ ${current_price:.2f}")
                     logger.info(f"     📊 P&L: ${pos['unrealized_pl']:+,.2f} ({pos['unrealized_plpc']*100:+.2f}%)")
                     
                     if self.alpaca.close_position(symbol):
@@ -170,7 +184,9 @@ class LiveTrader:
         account = self.alpaca.get_account()
         logger.info(f"💰 Cash: ${account['cash']:,.2f}")
         logger.info(f"📈 Portfolio: ${account['portfolio_value']:,.2f}")
-        logger.info(f"💵 P&L: ${account['equity'] - self.capital:+,.2f}")
+        
+        total_pl = account['portfolio_value'] - self.capital
+        logger.info(f"💵 P&L session: ${total_pl:+,.2f}")
     
     def run(self, check_interval_minutes=60):
         """
