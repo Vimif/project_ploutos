@@ -1,4 +1,4 @@
-# trading/live_trader.py - VERSION COMPLÈTE AVEC BDD
+# trading/live_trader.py - VERSION COMPLÈTE AVEC ALERTES
 
 # === FIX PATH ===
 import sys
@@ -19,15 +19,28 @@ logger = setup_logging(__name__, 'live_trader.log')
 
 # ========== INTÉGRATION BASE DE DONNÉES ==========
 try:
-    from database.db import log_prediction, save_daily_summary, get_trade_history
+    from database.db import log_prediction, save_daily_summary, get_trade_history, get_win_loss_ratio
     DB_AVAILABLE = True
     logger.info("✅ Module database disponible")
 except ImportError:
     DB_AVAILABLE = False
     logger.warning("⚠️  Module database non disponible")
 
+# ========== INTÉGRATION ALERTES ==========
+try:
+    from core.alerts import (
+        send_alert, alert_trade, alert_profit, alert_loss,
+        alert_daily_summary, alert_performance_warning,
+        alert_startup, alert_shutdown
+    )
+    ALERTS_AVAILABLE = True
+    logger.info("✅ Module alertes disponible")
+except ImportError:
+    ALERTS_AVAILABLE = False
+    logger.warning("⚠️  Module alertes non disponible")
+
 class LiveTrader:
-    """Trader live avec Alpaca - STRATÉGIE OPTIMISÉE + BDD"""
+    """Trader live avec Alpaca - STRATÉGIE OPTIMISÉE + BDD + ALERTES"""
     
     def __init__(self, paper_trading=True, capital=None):
         self.paper_trading = paper_trading
@@ -47,22 +60,23 @@ class LiveTrader:
             raise Exception("❌ Impossible de se connecter à Alpaca")
         
         # Paramètres de risque
-        self.max_position_size = 0.05      # 5% du portfolio
-        self.min_position_size = 0.02      # 2% minimum
+        self.max_position_size = 0.05
+        self.min_position_size = 0.02
         self.stop_loss_pct = 0.05
         self.take_profit_pct = 0.15
         self.min_trade_amount = 100.0
         
-        # ✅ Paramètres de renforcement
-        self.max_position_accumulation = 0.10  # Max 10% du portfolio sur 1 ticker
-        self.add_to_winner = True              # Renforcer les positions gagnantes
-        self.add_to_loser = False              # Ne pas moyenner à la baisse
+        # Paramètres de renforcement
+        self.max_position_accumulation = 0.10
+        self.add_to_winner = True
+        self.add_to_loser = False
         
         logger.info(f"🎯 Position size: {self.min_position_size*100:.0f}%-{self.max_position_size*100:.0f}%")
         logger.info(f"📈 Max accumulation: {self.max_position_accumulation*100:.0f}%")
         logger.info(f"🛑 Stop Loss: {self.stop_loss_pct*100:.0f}%")
         logger.info(f"🎯 Take Profit: {self.take_profit_pct*100:.0f}%")
         logger.info(f"📊 BDD: {'✅ Activée' if DB_AVAILABLE else '❌ Non configurée'}")
+        logger.info(f"🔔 Alertes: {'✅ Activées' if ALERTS_AVAILABLE else '❌ Non configurées'}")
     
     def check_risk_management(self):
         """Vérifier stop loss et take profit"""
@@ -71,57 +85,55 @@ class LiveTrader:
         for pos in positions:
             symbol = pos['symbol']
             unrealized_plpc = pos['unrealized_plpc']
+            unrealized_pl = pos['unrealized_pl']
             
             # Stop Loss
             if unrealized_plpc <= -self.stop_loss_pct:
                 logger.warning(f"🛑 STOP LOSS: {symbol} ({unrealized_plpc*100:.2f}%)")
-                self.alpaca.close_position(symbol, reason=f'Stop Loss {unrealized_plpc*100:.1f}%')
+                
+                if self.alpaca.close_position(symbol, reason=f'Stop Loss {unrealized_plpc*100:.1f}%'):
+                    # Alerte perte
+                    if ALERTS_AVAILABLE:
+                        alert_loss(symbol, unrealized_pl, unrealized_plpc * 100)
             
             # Take Profit
             elif unrealized_plpc >= self.take_profit_pct:
                 logger.info(f"🎯 TAKE PROFIT: {symbol} ({unrealized_plpc*100:.2f}%)")
-                self.alpaca.close_position(symbol, reason=f'Take Profit {unrealized_plpc*100:.1f}%')
+                
+                if self.alpaca.close_position(symbol, reason=f'Take Profit {unrealized_plpc*100:.1f}%'):
+                    # Alerte profit
+                    if ALERTS_AVAILABLE:
+                        alert_profit(symbol, unrealized_pl, unrealized_plpc * 100)
     
     def should_add_to_position(self, symbol, position, current_price):
-        """
-        Décider si on doit renforcer une position existante
-        
-        Returns:
-            bool, str: (should_add, reason)
-        """
+        """Décider si on doit renforcer une position existante"""
         account = self.alpaca.get_account()
         portfolio_value = account['portfolio_value']
         
-        # Taille actuelle de la position en % du portfolio
         position_pct = position['market_value'] / portfolio_value
         
-        # 1. Vérifier si on a atteint le max
         if position_pct >= self.max_position_accumulation:
             return False, f"Max accumulation atteint ({position_pct*100:.1f}%)"
         
-        # 2. Vérifier le P&L
         unrealized_plpc = position['unrealized_plpc']
         
-        # Position gagnante
         if unrealized_plpc > 0:
             if self.add_to_winner:
                 return True, f"Renforcer gagnant (+{unrealized_plpc*100:.1f}%)"
             else:
                 return False, "Mode renforcement gagnants désactivé"
         
-        # Position perdante
         elif unrealized_plpc < 0:
             if self.add_to_loser:
                 return True, f"Moyenner à la baisse ({unrealized_plpc*100:.1f}%)"
             else:
                 return False, "Pas de moyenne à la baisse"
         
-        # Position neutre
         else:
             return True, "Position neutre, renforcement OK"
     
     def execute_signals(self):
-        """Exécuter les signaux du Brain AI - VERSION OPTIMISÉE"""
+        """Exécuter les signaux du Brain AI"""
         logger.info("\n" + "="*70)
         logger.info(f"🧠 ANALYSE - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         logger.info("="*70)
@@ -139,7 +151,6 @@ class LiveTrader:
         
         actions = {'buy': 0, 'add': 0, 'sell': 0, 'hold': 0}
         
-        # EXÉCUTER LES TRADES
         for sector, sector_preds in predictions.items():
             logger.info(f"\n🧠 {sector.upper()}:")
             
@@ -154,7 +165,7 @@ class LiveTrader:
                 
                 emoji = {'BUY': '🟢', 'SELL': '🔴', 'HOLD': '⚪'}[action]
                 
-                # ✅ LOGGER LA PRÉDICTION DANS LA BDD
+                # Logger la prédiction dans la BDD
                 if DB_AVAILABLE:
                     try:
                         log_prediction(
@@ -168,7 +179,6 @@ class LiveTrader:
                     except Exception as e:
                         logger.error(f"❌ Erreur log prediction: {e}")
                 
-                # ✅ VÉRIFIER SI POSITION EXISTE
                 position = current_positions.get(symbol)
                 
                 if position:
@@ -184,12 +194,10 @@ class LiveTrader:
                 # ===== SIGNAL BUY =====
                 if action == 'BUY':
                     
-                    # CAS 1 : Position existe déjà
                     if position:
                         should_add, reason = self.should_add_to_position(symbol, position, current_price)
                         
                         if should_add:
-                            # ✅ RENFORCER LA POSITION
                             max_invest = portfolio_value * self.max_position_size
                             current_value = position['market_value']
                             remaining_capacity = max_invest - current_value
@@ -223,15 +231,17 @@ class LiveTrader:
                                 actions['add'] += 1
                                 available_buying_power -= actual_cost
                                 logger.info(f"     ✅ Ordre: {order['id']}")
+                                
+                                # Alerte trade
+                                if ALERTS_AVAILABLE:
+                                    alert_trade(symbol, 'BUY (Renforcement)', qty, current_price, actual_cost)
                             else:
                                 logger.error(f"     ❌ Échec ordre")
                         
                         else:
-                            # ❌ NE PAS RENFORCER
                             logger.info(f"     ⏭️  {reason}")
                             actions['hold'] += 1
                     
-                    # CAS 2 : Nouvelle position
                     else:
                         max_invest = portfolio_value * self.max_position_size
                         invest_amount = min(max_invest, available_buying_power * 0.5)
@@ -255,6 +265,10 @@ class LiveTrader:
                             actions['buy'] += 1
                             available_buying_power -= actual_cost
                             logger.info(f"     ✅ Ordre: {order['id']}")
+                            
+                            # Alerte trade
+                            if ALERTS_AVAILABLE:
+                                alert_trade(symbol, 'BUY', qty, current_price, actual_cost)
                         else:
                             logger.error(f"     ❌ Échec ordre")
                 
@@ -273,10 +287,16 @@ class LiveTrader:
                         proceeds = position['qty'] * current_price
                         available_buying_power += proceeds
                         logger.info(f"     ✅ Position fermée")
+                        
+                        # Alerte selon P&L
+                        if ALERTS_AVAILABLE:
+                            if position['unrealized_pl'] > 0:
+                                alert_profit(symbol, position['unrealized_pl'], position['unrealized_plpc'] * 100)
+                            else:
+                                alert_loss(symbol, position['unrealized_pl'], position['unrealized_plpc'] * 100)
                     else:
                         logger.error(f"     ❌ Échec fermeture")
                 
-                # ===== SIGNAL HOLD =====
                 else:
                     if position:
                         logger.info(f"     ⏸️  Conservation de la position")
@@ -299,7 +319,7 @@ class LiveTrader:
         logger.info(f"💸 P&L session: ${total_pl:+,.2f} ({pl_pct:+.2f}%)")
     
     def save_daily_stats(self):
-        """Sauvegarder les statistiques quotidiennes dans la BDD"""
+        """Sauvegarder les statistiques quotidiennes"""
         if not DB_AVAILABLE:
             logger.warning("⚠️  BDD non disponible pour save stats")
             return
@@ -308,7 +328,6 @@ class LiveTrader:
             account = self.alpaca.get_account()
             positions = self.alpaca.get_positions()
             
-            # Compter les trades du jour
             trades_today = get_trade_history(days=1)
             
             total_pl = sum(p['unrealized_pl'] for p in positions)
@@ -323,28 +342,56 @@ class LiveTrader:
                 trades_count=len(trades_today)
             )
             
-            # Logger aussi les positions
             self.alpaca.log_current_positions()
             
             logger.info("✅ Stats quotidiennes sauvegardées dans BDD")
             
+            # Alerte résumé quotidien
+            if ALERTS_AVAILABLE:
+                pl_pct = (total_pl / self.initial_capital * 100) if self.initial_capital > 0 else 0
+                alert_daily_summary(
+                    portfolio_value=account['portfolio_value'],
+                    pl=total_pl,
+                    pl_pct=pl_pct,
+                    trades_count=len(trades_today)
+                )
+            
         except Exception as e:
             logger.error(f"❌ Erreur save_daily_stats: {e}")
+    
+    def check_performance_alerts(self):
+        """Vérifier et envoyer alertes de performance"""
+        if not ALERTS_AVAILABLE or not DB_AVAILABLE:
+            return
+        
+        try:
+            # Vérifier win rate
+            win_loss = get_win_loss_ratio(days=7)
+            if win_loss['win_rate'] < 50 and win_loss['total'] > 10:
+                alert_performance_warning(win_loss['win_rate'], 7)
+        
+        except Exception as e:
+            logger.error(f"❌ Erreur check_performance_alerts: {e}")
     
     def run(self, check_interval_minutes=60):
         """Boucle principale"""
         logger.info("\n" + "="*70)
-        logger.info("🚀 LIVE TRADER - STRATÉGIE OPTIMISÉE + BDD")
+        logger.info("🚀 LIVE TRADER - STRATÉGIE OPTIMISÉE + BDD + ALERTES")
         logger.info("="*70)
         logger.info(f"⏱️  Intervalle: {check_interval_minutes} min")
         logger.info(f"📊 Mode: {'Paper' if self.paper_trading else '🔴 LIVE'}")
         logger.info(f"📊 BDD: {'✅ Activée' if DB_AVAILABLE else '❌ Non configurée'}")
+        logger.info(f"🔔 Alertes: {'✅ Activées' if ALERTS_AVAILABLE else '❌ Non configurées'}")
         
         if not self.paper_trading:
             logger.warning("⚠️  MODE LIVE - REAL MONEY!")
             response = input("Continuer? (yes/no): ")
             if response.lower() != 'yes':
                 return
+        
+        # Alerte démarrage
+        if ALERTS_AVAILABLE:
+            alert_startup()
         
         cycle = 0
         
@@ -353,15 +400,16 @@ class LiveTrader:
                 cycle += 1
                 logger.info(f"\n📍 Cycle {cycle}")
                 
-                # Vérifier stop loss / take profit
                 self.check_risk_management()
-                
-                # Exécuter les signaux AI
                 self.execute_signals()
                 
                 # Sauvegarder stats toutes les 4 heures
                 if cycle % 4 == 0:
                     self.save_daily_stats()
+                
+                # Vérifier alertes performance toutes les 12 heures
+                if cycle % 12 == 0:
+                    self.check_performance_alerts()
                 
                 logger.info(f"\n⏳ Prochain cycle dans {check_interval_minutes} min...")
                 time.sleep(check_interval_minutes * 60)
@@ -370,8 +418,16 @@ class LiveTrader:
             logger.info("\n\n🛑 Arrêt manuel")
         except Exception as e:
             logger.error(f"\n❌ Erreur: {e}", exc_info=True)
+            
+            # Alerte erreur critique
+            if ALERTS_AVAILABLE:
+                send_alert(
+                    f"🚨 **ERREUR CRITIQUE**\n\n"
+                    f"Le bot s'est arrêté\n"
+                    f"Erreur: {str(e)[:200]}",
+                    priority='ERROR'
+                )
         finally:
-            # Stats finales
             account = self.alpaca.get_account()
             final_value = account['portfolio_value']
             total_pl = final_value - self.initial_capital
@@ -382,6 +438,10 @@ class LiveTrader:
             logger.info(f"💰 Portfolio initial: ${self.initial_capital:,.2f}")
             logger.info(f"💵 Portfolio final: ${final_value:,.2f}")
             logger.info(f"📈 P&L total: ${total_pl:+,.2f} ({(total_pl/self.initial_capital)*100:+.2f}%)")
+            
+            # Alerte arrêt
+            if ALERTS_AVAILABLE:
+                alert_shutdown(final_value, total_pl)
             
             # Dernière sauvegarde BDD
             if DB_AVAILABLE:
