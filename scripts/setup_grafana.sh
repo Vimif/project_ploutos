@@ -1,19 +1,26 @@
 #!/bin/bash
-# scripts/setup_grafana.sh - Installation et configuration Grafana
+# scripts/setup_grafana_v2.sh - Version corrigée
 
 set -e
 
 echo "=================================="
-echo "📊 Installation Grafana + Prometheus"
+echo "📊 Installation Grafana + Prometheus (FIXED)"
 echo "=================================="
 
-# Installer Prometheus
+# 1. INSTALLATION PROMETHEUS (D'ABORD !)
 echo ""
 echo "1️⃣ Installation de Prometheus..."
 sudo apt-get update
-sudo apt-get install -y prometheus
+# On force la config par défaut pour éviter les questions interactives
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y prometheus prometheus-node-exporter
 
-# Créer config Prometheus pour Ploutos
+echo "✅ Prometheus installé"
+
+# 2. CONFIGURATION PROMETHEUS (MAINTENANT ON ÉCRASE)
+echo ""
+echo "2️⃣ Application de la configuration..."
+sudo systemctl stop prometheus
+
 sudo tee /etc/prometheus/prometheus.yml > /dev/null << 'EOF'
 global:
   scrape_interval: 15s
@@ -28,44 +35,39 @@ scrape_configs:
           environment: 'production'
 EOF
 
-echo "✅ Prometheus configuré"
-
-# Redémarrer Prometheus
+# Redémarrer avec la nouvelle config
 sudo systemctl restart prometheus
 sudo systemctl enable prometheus
-echo "✅ Prometheus démarré"
+echo "✅ Prometheus configuré et redémarré"
 
-# Installer Grafana
+# 3. INSTALLATION GRAFANA
 echo ""
-echo "2️⃣ Installation de Grafana..."
+echo "3️⃣ Installation de Grafana..."
 
-# Ajouter repo Grafana
+# Prérequis
 sudo apt-get install -y apt-transport-https software-properties-common wget
+
+# Clé et Repo
 sudo mkdir -p /etc/apt/keyrings/
 wget -q -O - https://apt.grafana.com/gpg.key | gpg --dearmor | sudo tee /etc/apt/keyrings/grafana.gpg > /dev/null
 echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" | sudo tee /etc/apt/sources.list.d/grafana.list
 
-# Installer Grafana
+# Install
 sudo apt-get update
 sudo apt-get install -y grafana
 
-echo "✅ Grafana installé"
-
-# Démarrer Grafana
+# Démarrage
 sudo systemctl daemon-reload
 sudo systemctl start grafana-server
 sudo systemctl enable grafana-server
 
 echo "✅ Grafana démarré"
 
-# Créer datasource Prometheus automatiquement
+# 4. CONFIGURATION DATASOURCE
 echo ""
-echo "3️⃣ Configuration de la datasource Prometheus..."
+echo "4️⃣ Connexion Grafana -> Prometheus..."
+sleep 10  # Attendre un peu plus que Grafana soit prêt
 
-# Attendre que Grafana démarre
-sleep 5
-
-# Créer datasource via API
 curl -X POST http://admin:admin@localhost:3000/api/datasources \
   -H "Content-Type: application/json" \
   -d '{
@@ -74,21 +76,9 @@ curl -X POST http://admin:admin@localhost:3000/api/datasources \
     "url": "http://localhost:9090",
     "access": "proxy",
     "isDefault": true
-  }' 2>/dev/null || echo "⚠️  Datasource déjà configurée ou erreur"
+  }' 2>/dev/null || echo "⚠️  Datasource déjà configurée"
 
 echo ""
 echo "=================================="
-echo "✅ INSTALLATION TERMINÉE"
+echo "✅ INSTALLATION RÉUSSIE !"
 echo "=================================="
-echo ""
-echo "📊 Grafana: http://localhost:3000"
-echo "   Username: admin"
-echo "   Password: admin (à changer au 1er login)"
-echo ""
-echo "📈 Prometheus: http://localhost:9090"
-echo ""
-echo "🔥 Métriques Ploutos: http://localhost:9090/metrics"
-echo ""
-echo "⏭️  PROCHAINE ÉTAPE:"
-echo "   python scripts/import_grafana_dashboard.py"
-echo ""
