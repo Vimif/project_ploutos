@@ -28,7 +28,7 @@ fi
 echo "✅ Projet trouvé: $PROJECT_DIR"
 echo "✅ Venv trouvé: $VENV_DIR"
 
-# Créer dossier logs si nécessaire
+# Créer dossier logs
 mkdir -p "$PROJECT_DIR/data/logs"
 
 # 1. Service Trading Bot
@@ -93,7 +93,7 @@ echo ""
 echo "🔄 Rechargement de systemd..."
 systemctl daemon-reload
 
-# 4. Activer les services (démarrage auto)
+# 4. Activer les services
 echo "✅ Activation du démarrage automatique..."
 systemctl enable ploutos-trader.service
 systemctl enable ploutos-dashboard.service
@@ -120,10 +120,6 @@ echo ""
 echo "# Voir les logs en temps réel"
 echo "  journalctl -u ploutos-trader -f"
 echo "  journalctl -u ploutos-dashboard -f"
-echo ""
-echo "# Redémarrer"
-echo "  systemctl restart ploutos-trader"
-echo "  systemctl restart ploutos-dashboard"
 echo ""
 echo "🌐 Dashboard accessible sur: http://$(hostname -I | awk '{print $1}'):8501"
 echo ""

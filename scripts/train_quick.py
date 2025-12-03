@@ -2,9 +2,12 @@
 # scripts/train_quick.py
 """Entraînement rapide des 4 cerveaux"""
 
+# === FIX PATH ===
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+if str(Path(__file__).parent.parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+# ================
 
 from stable_baselines3 import PPO
 from core.environment import TradingEnv
@@ -57,6 +60,8 @@ for model_name, ticker in models_to_train.items():
         
     except Exception as e:
         print(f"   ❌ Erreur: {e}")
+        import traceback
+        traceback.print_exc()
 
 print("\n" + "="*70)
 print("✅ ENTRAÎNEMENT TERMINÉ")

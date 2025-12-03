@@ -2,9 +2,12 @@
 # scripts/run_trader.py
 """Lancer le trader autonome"""
 
+# === FIX PATH ===
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+if str(Path(__file__).parent.parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+# ================
 
 import argparse
 import time
@@ -24,9 +27,11 @@ def get_current_prices(tickers: list):
         try:
             data = yf.download(ticker, period='1d', progress=False)
             if len(data) > 0:
+                if isinstance(data.columns, pd.MultiIndex):
+                    data.columns = data.columns.get_level_values(0)
                 prices[ticker] = float(data['Close'].iloc[-1])
-        except:
-            pass
+        except Exception as e:
+            logger.warning(f"⚠️  Impossible de récupérer le prix de {ticker}: {e}")
     return prices
 
 def run_trading_cycle(trader: BrainTrader, portfolio: Portfolio):
@@ -66,13 +71,11 @@ def run_trading_cycle(trader: BrainTrader, portfolio: Portfolio):
             logger.info(f"  {emoji} {ticker}: {action} @ ${price:.2f}")
             
             if action == 'BUY':
-                # Acheter
                 amount = pred['capital']
                 portfolio.buy(ticker, price, amount)
                 actions_taken['buy'] += 1
                 
             elif action == 'SELL':
-                # Vendre si position existante
                 if portfolio.get_position(ticker):
                     portfolio.sell(ticker, price)
                     actions_taken['sell'] += 1

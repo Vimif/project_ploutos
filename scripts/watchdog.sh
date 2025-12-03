@@ -1,5 +1,5 @@
 #!/bin/bash
-# watchdog.sh - Relancer si crash
+# watchdog.sh
 
 LOG_FILE="/root/ploutos/project_ploutos/data/logs/watchdog.log"
 
@@ -19,6 +19,5 @@ check_and_restart() {
     fi
 }
 
-# Vérifier les deux services
-check_and_restart ploutos-trader
-check_and_restart ploutos-dashboard
+check_and_restart ploutos-bot
+check_and_restart ploutos-dash
