@@ -18,8 +18,8 @@ check_service() {
 
 echo ""
 echo "Services:"
-check_service ploutos-trader
-check_service ploutos-dashboard
+check_service ploutos-bot
+check_service ploutos-dash
 
 echo ""
 echo "Logs récents (trader):"
