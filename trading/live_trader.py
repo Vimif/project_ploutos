@@ -1,4 +1,4 @@
-# trading/live_trader.py - VERSION COMPLÈTE AVEC RISK MANAGEMENT
+# trading/live_trader.py - VERSION FINALE AVEC MONITORING
 
 # === FIX PATH ===
 import sys
@@ -17,16 +17,13 @@ import time
 
 logger = setup_logging(__name__, 'live_trader.log')
 
-# ========== INTÉGRATION BASE DE DONNÉES ==========
+# ========== INTÉGRATIONS ==========
 try:
     from database.db import log_prediction, save_daily_summary, get_trade_history, get_win_loss_ratio
     DB_AVAILABLE = True
-    logger.info("✅ Module database disponible")
 except ImportError:
     DB_AVAILABLE = False
-    logger.warning("⚠️  Module database non disponible")
 
-# ========== INTÉGRATION ALERTES ==========
 try:
     from core.alerts import (
         send_alert, alert_trade, alert_profit, alert_loss,
@@ -34,25 +31,35 @@ try:
         alert_startup, alert_shutdown
     )
     ALERTS_AVAILABLE = True
-    logger.info("✅ Module alertes disponible")
 except ImportError:
     ALERTS_AVAILABLE = False
-    logger.warning("⚠️  Module alertes non disponible")
 
-# ========== INTÉGRATION RISK MANAGEMENT ==========
 try:
     from core.risk_manager import RiskManager
     RISK_AVAILABLE = True
-    logger.info("✅ Module risk management disponible")
 except ImportError:
     RISK_AVAILABLE = False
-    logger.warning("⚠️  Module risk management non disponible")
+
+try:
+    from core.monitoring import start_monitoring, get_metrics
+    MONITORING_AVAILABLE = True
+except ImportError:
+    MONITORING_AVAILABLE = False
 
 class LiveTrader:
-    """Trader live avec Alpaca - FULL FEATURED"""
+    """Trader live avec Alpaca - VERSION FINALE"""
     
-    def __init__(self, paper_trading=True, capital=None):
+    def __init__(self, paper_trading=True, capital=None, monitoring_port=9090):
         self.paper_trading = paper_trading
+        
+        # ✅ DÉMARRER MONITORING EN PREMIER
+        self.metrics = None
+        if MONITORING_AVAILABLE:
+            try:
+                self.metrics = start_monitoring(port=monitoring_port)
+                logger.info(f"✅ Monitoring démarré: http://localhost:{monitoring_port}/metrics")
+            except Exception as e:
+                logger.error(f"❌ Erreur monitoring: {e}")
         
         self.alpaca = AlpacaClient(paper_trading=paper_trading)
         self.brain = BrainTrader(capital=capital, paper_trading=paper_trading)
@@ -65,22 +72,28 @@ class LiveTrader:
             logger.info(f"💰 Portfolio total: ${self.initial_capital:,.2f}")
             logger.info(f"💵 Buying Power: ${self.available_buying_power:,.2f}")
             logger.info(f"💸 Cash: ${float(account['cash']):,.2f}")
+            
+            # ✅ INITIALISER MÉTRIQUES
+            if self.metrics:
+                positions = self.alpaca.get_positions()
+                self.metrics.update_portfolio_metrics(account, positions)
+                self.metrics.update_daily_metrics(self.initial_capital, account['portfolio_value'])
         else:
             raise Exception("❌ Impossible de se connecter à Alpaca")
         
-        # ✅ INITIALISER RISK MANAGER
+        # Risk Manager
         if RISK_AVAILABLE:
             self.risk_manager = RiskManager(
-                max_portfolio_risk=0.01,      # 1% risk par trade
-                max_daily_loss=0.03,          # 3% perte max/jour
-                max_position_size=0.05,       # 5% max par position
+                max_portfolio_risk=0.01,
+                max_daily_loss=0.03,
+                max_position_size=0.05,
                 max_correlation=0.7
             )
             self.risk_manager.reset_daily_stats(self.initial_capital)
         else:
             self.risk_manager = None
         
-        # Paramètres de trading (seront overridés par risk manager)
+        # Paramètres
         self.stop_loss_pct = 0.05
         self.take_profit_pct = 0.15
         self.min_trade_amount = 100.0
@@ -93,70 +106,83 @@ class LiveTrader:
         logger.info(f"📊 BDD: {'✅' if DB_AVAILABLE else '❌'}")
         logger.info(f"🔔 Alertes: {'✅' if ALERTS_AVAILABLE else '❌'}")
         logger.info(f"🛡️ Risk Management: {'✅' if RISK_AVAILABLE else '❌'}")
+        logger.info(f"📈 Monitoring: {'✅' if MONITORING_AVAILABLE else '❌'}")
     
     def check_risk_management(self):
-        """Vérifier stop loss, take profit et risque général"""
+        """Vérifier stop loss, take profit et risque"""
         positions = self.alpaca.get_positions()
         account = self.alpaca.get_account()
         
-        # ✅ VÉRIFIER CIRCUIT BREAKER
+        # Circuit breaker
         if RISK_AVAILABLE:
             if not self.risk_manager.check_daily_loss_limit(account['portfolio_value']):
-                logger.error("🚨 Circuit breaker actif - Fermeture de toutes les positions")
+                logger.error("🚨 Circuit breaker actif")
                 
-                # Alerte critique
+                # ✅ MÉTRIQUES
+                if self.metrics:
+                    self.metrics.update_risk_metrics(circuit_breaker_active=True, risky_positions=len(positions))
+                
                 if ALERTS_AVAILABLE:
                     send_alert(
-                        "🚨 **CIRCUIT BREAKER ACTIVÉ**\n\n"
-                        f"Perte quotidienne > {self.risk_manager.max_daily_loss*100:.0f}%\n"
-                        "Toutes les positions seront fermées",
+                        f"🚨 **CIRCUIT BREAKER ACTIVÉ**\n\n"
+                        f"Perte > {self.risk_manager.max_daily_loss*100:.0f}%\n"
+                        "Fermeture positions",
                         priority='ERROR'
                     )
                 
-                # Fermer toutes les positions
                 for pos in positions:
                     self.alpaca.close_position(pos['symbol'], reason='Circuit Breaker')
                 
                 return
             
-            # Rapport de risque
+            # Rapport risque
             if len(positions) > 0:
                 risk_report = self.risk_manager.get_risk_report(positions, account['portfolio_value'])
                 
-                # Afficher uniquement si positions à risque
+                # ✅ MÉTRIQUES RISQUE
+                if self.metrics:
+                    self.metrics.update_risk_metrics(
+                        circuit_breaker_active=False,
+                        risky_positions=risk_report['risky_positions_count']
+                    )
+                
                 if risk_report['risky_positions_count'] > 0:
                     self.risk_manager.print_risk_summary(risk_report)
                     
-                    # Alerte si plusieurs positions à risque
                     if risk_report['risky_positions_count'] >= 3 and ALERTS_AVAILABLE:
                         send_alert(
-                            f"⚠️ **{risk_report['risky_positions_count']} POSITIONS À RISQUE**\n\n"
-                            "Vérifiez le dashboard",
+                            f"⚠️ **{risk_report['risky_positions_count']} POSITIONS À RISQUE**",
                             priority='WARNING'
                         )
         
-        # Stop Loss / Take Profit standards
+        # Stop Loss / Take Profit
         for pos in positions:
             symbol = pos['symbol']
             unrealized_plpc = pos['unrealized_plpc']
             unrealized_pl = pos['unrealized_pl']
             
-            # Stop Loss
             if unrealized_plpc <= -self.stop_loss_pct:
                 logger.warning(f"🛑 STOP LOSS: {symbol} ({unrealized_plpc*100:.2f}%)")
                 
                 if self.alpaca.close_position(symbol, reason=f'Stop Loss {unrealized_plpc*100:.1f}%'):
+                    # ✅ MÉTRIQUES
+                    if self.metrics:
+                        self.metrics.record_trade(symbol, 'SELL', abs(unrealized_pl), result='loss')
+                    
                     if RISK_AVAILABLE:
                         self.risk_manager.log_trade(symbol, 'SELL', unrealized_pl)
                     
                     if ALERTS_AVAILABLE:
                         alert_loss(symbol, unrealized_pl, unrealized_plpc * 100)
             
-            # Take Profit
             elif unrealized_plpc >= self.take_profit_pct:
                 logger.info(f"🎯 TAKE PROFIT: {symbol} ({unrealized_plpc*100:.2f}%)")
                 
                 if self.alpaca.close_position(symbol, reason=f'Take Profit {unrealized_plpc*100:.1f}%'):
+                    # ✅ MÉTRIQUES
+                    if self.metrics:
+                        self.metrics.record_trade(symbol, 'SELL', unrealized_pl, result='win')
+                    
                     if RISK_AVAILABLE:
                         self.risk_manager.log_trade(symbol, 'SELL', unrealized_pl)
                     
@@ -164,25 +190,23 @@ class LiveTrader:
                         alert_profit(symbol, unrealized_pl, unrealized_plpc * 100)
     
     def calculate_position_size_with_risk(self, symbol: str, current_price: float, portfolio_value: float) -> int:
-        """Calculer taille de position avec risk management"""
+        """Calculer taille position avec risk management"""
         
         if not RISK_AVAILABLE or self.risk_manager is None:
-            # Fallback: méthode simple
             max_invest = portfolio_value * 0.05
             return int(max_invest / current_price)
         
-        # Utiliser risk manager pour sizing optimal
         quantity, position_value = self.risk_manager.calculate_position_size(
             portfolio_value=portfolio_value,
             entry_price=current_price,
             stop_loss_pct=self.stop_loss_pct,
-            risk_pct=None  # Utilise max_portfolio_risk par défaut
+            risk_pct=None
         )
         
         return quantity
     
     def should_add_to_position(self, symbol, position, current_price):
-        """Décider si on doit renforcer une position"""
+        """Décider si renforcement"""
         account = self.alpaca.get_account()
         portfolio_value = account['portfolio_value']
         
@@ -221,14 +245,17 @@ class LiveTrader:
         logger.info(f"💵 Buying Power: ${available_buying_power:,.2f}")
         logger.info(f"📊 Portfolio: ${portfolio_value:,.2f}")
         
-        # ✅ VÉRIFIER SI RÉDUCTION D'EXPOSITION NÉCESSAIRE
         current_positions = self.alpaca.get_positions()
+        
+        # ✅ METTRE À JOUR MÉTRIQUES PORTFOLIO
+        if self.metrics:
+            self.metrics.update_portfolio_metrics(account, current_positions)
+            self.metrics.update_daily_metrics(self.initial_capital, portfolio_value)
+        
         if RISK_AVAILABLE and len(current_positions) > 0:
             should_reduce, reason = self.risk_manager.should_reduce_exposure(current_positions, portfolio_value)
             if should_reduce:
                 logger.warning(f"⚠️  EXPOSITION ÉLEVÉE: {reason}")
-                # Réduire les positions les plus perdantes
-                # TODO: Implémenter logique de réduction
         
         current_positions_dict = {pos['symbol']: pos for pos in current_positions}
         
@@ -241,9 +268,15 @@ class LiveTrader:
                 symbol = pred['ticker']
                 action = pred['action']
                 
+                # ✅ MÉTRIQUES PRÉDICTION
+                if self.metrics:
+                    self.metrics.record_prediction(action, sector)
+                
                 current_price = self.alpaca.get_current_price(symbol)
                 if current_price is None:
                     logger.warning(f"  ⚠️  {symbol}: Prix indisponible")
+                    if self.metrics:
+                        self.metrics.record_error('price_fetch', 'unavailable')
                     continue
                 
                 emoji = {'BUY': '🟢', 'SELL': '🔴', 'HOLD': '⚪'}[action]
@@ -254,6 +287,8 @@ class LiveTrader:
                                      pred.get('confidence', 0.0), action, {})
                     except Exception as e:
                         logger.error(f"❌ Erreur log prediction: {e}")
+                        if self.metrics:
+                            self.metrics.record_error('database', 'log_prediction')
                 
                 position = current_positions_dict.get(symbol)
                 
@@ -271,15 +306,14 @@ class LiveTrader:
                 
                 # ===== SIGNAL BUY =====
                 if action == 'BUY':
+                    start_time = time.time()
                     
                     if position:
                         should_add, reason = self.should_add_to_position(symbol, position, current_price)
                         
                         if should_add:
-                            # ✅ CALCULER QUANTITÉ AVEC RISK MANAGER
                             qty = self.calculate_position_size_with_risk(symbol, current_price, portfolio_value)
                             
-                            # Vérifier capacité restante
                             max_position_value = portfolio_value * self.max_position_accumulation
                             remaining_capacity = max_position_value - position['market_value']
                             
@@ -287,67 +321,87 @@ class LiveTrader:
                                 qty = int(remaining_capacity / current_price)
                             
                             if qty < 1:
-                                logger.info(f"     ⏭️  Quantité insuffisante après calcul risque")
+                                logger.info(f"     ⏭️  Quantité insuffisante")
                                 actions['hold'] += 1
                                 continue
                             
                             actual_cost = qty * current_price
                             
                             if actual_cost < self.min_trade_amount:
-                                logger.info(f"     ⏭️  Montant < minimum: ${actual_cost:.2f}")
+                                logger.info(f"     ⏭️  Montant < minimum")
                                 actions['hold'] += 1
                                 continue
                             
                             logger.info(f"     📈 RENFORCEMENT: +{qty} x ${current_price:.2f} = ${actual_cost:,.2f}")
-                            logger.info(f"     💡 Raison: {reason}")
                             
-                            order = self.alpaca.place_market_order(symbol, qty, 'buy', reason=f'Renforcement: {reason}')
+                            order = self.alpaca.place_market_order(symbol, qty, 'buy', reason=f'Renforcement')
                             
                             if order:
                                 actions['add'] += 1
                                 available_buying_power -= actual_cost
-                                logger.info(f"     ✅ Ordre: {order['id']}")
+                                execution_time = time.time() - start_time
+                                
+                                # ✅ MÉTRIQUES
+                                if self.metrics:
+                                    self.metrics.record_trade(symbol, 'BUY', actual_cost, execution_time, 'success')
                                 
                                 if RISK_AVAILABLE:
                                     self.risk_manager.log_trade(symbol, 'BUY')
                                 
                                 if ALERTS_AVAILABLE:
                                     alert_trade(symbol, 'BUY (Renforcement)', qty, current_price, actual_cost)
+                                
+                                logger.info(f"     ✅ Ordre: {order['id']}")
                             else:
+                                # ✅ MÉTRIQUES ÉCHEC
+                                if self.metrics:
+                                    self.metrics.record_trade(symbol, 'BUY', actual_cost, 0, 'failed')
+                                    self.metrics.record_error('trading', 'order_failed')
+                                
                                 logger.error(f"     ❌ Échec ordre")
                         else:
                             logger.info(f"     ⏭️  {reason}")
                             actions['hold'] += 1
                     
                     else:
-                        # ✅ NOUVELLE POSITION AVEC RISK SIZING
+                        # Nouvelle position
                         qty = self.calculate_position_size_with_risk(symbol, current_price, portfolio_value)
                         
                         if qty < 1:
-                            logger.info(f"     ⚠️  Quantité insuffisante: {qty}")
+                            logger.info(f"     ⚠️  Quantité insuffisante")
                             continue
                         
                         actual_cost = qty * current_price
                         
                         if actual_cost < self.min_trade_amount or actual_cost > available_buying_power:
-                            logger.info(f"     ⚠️  Budget inadapté: ${actual_cost:.2f}")
+                            logger.info(f"     ⚠️  Budget inadapté")
                             continue
                         
                         logger.info(f"     💰 NOUVELLE POSITION: {qty} x ${current_price:.2f} = ${actual_cost:,.2f}")
                         
-                        order = self.alpaca.place_market_order(symbol, qty, 'buy', reason='Nouvelle position AI + Risk Sizing')
+                        order = self.alpaca.place_market_order(symbol, qty, 'buy', reason='Nouvelle position')
                         
                         if order:
                             actions['buy'] += 1
                             available_buying_power -= actual_cost
-                            logger.info(f"     ✅ Ordre: {order['id']}")
+                            execution_time = time.time() - start_time
+                            
+                            # ✅ MÉTRIQUES
+                            if self.metrics:
+                                self.metrics.record_trade(symbol, 'BUY', actual_cost, execution_time, 'success')
                             
                             if RISK_AVAILABLE:
                                 self.risk_manager.log_trade(symbol, 'BUY')
                             
                             if ALERTS_AVAILABLE:
                                 alert_trade(symbol, 'BUY', qty, current_price, actual_cost)
+                            
+                            logger.info(f"     ✅ Ordre: {order['id']}")
                         else:
+                            if self.metrics:
+                                self.metrics.record_trade(symbol, 'BUY', actual_cost, 0, 'failed')
+                                self.metrics.record_error('trading', 'order_failed')
+                            
                             logger.error(f"     ❌ Échec ordre")
                 
                 # ===== SIGNAL SELL =====
@@ -360,11 +414,19 @@ class LiveTrader:
                     logger.info(f"     💰 FERMETURE: {position['qty']:.2f} @ ${current_price:.2f}")
                     logger.info(f"     📊 P&L: ${position['unrealized_pl']:+,.2f} ({position['unrealized_plpc']*100:+.2f}%)")
                     
+                    start_time = time.time()
+                    
                     if self.alpaca.close_position(symbol, reason='Signal SELL AI'):
                         actions['sell'] += 1
                         proceeds = position['qty'] * current_price
                         available_buying_power += proceeds
-                        logger.info(f"     ✅ Position fermée")
+                        execution_time = time.time() - start_time
+                        
+                        result = 'win' if position['unrealized_pl'] > 0 else 'loss'
+                        
+                        # ✅ MÉTRIQUES
+                        if self.metrics:
+                            self.metrics.record_trade(symbol, 'SELL', proceeds, execution_time, result)
                         
                         if RISK_AVAILABLE:
                             self.risk_manager.log_trade(symbol, 'SELL', position['unrealized_pl'])
@@ -374,7 +436,12 @@ class LiveTrader:
                                 alert_profit(symbol, position['unrealized_pl'], position['unrealized_plpc'] * 100)
                             else:
                                 alert_loss(symbol, position['unrealized_pl'], position['unrealized_plpc'] * 100)
+                        
+                        logger.info(f"     ✅ Position fermée")
                     else:
+                        if self.metrics:
+                            self.metrics.record_error('trading', 'close_failed')
+                        
                         logger.error(f"     ❌ Échec fermeture")
                 
                 else:
@@ -397,9 +464,15 @@ class LiveTrader:
         total_pl = current_value - self.initial_capital
         pl_pct = (total_pl / self.initial_capital) * 100
         logger.info(f"💸 P&L session: ${total_pl:+,.2f} ({pl_pct:+.2f}%)")
+        
+        # ✅ METTRE À JOUR MÉTRIQUES FINALES
+        if self.metrics:
+            self.metrics.total_pnl.set(total_pl)
+            current_positions = self.alpaca.get_positions()
+            self.metrics.update_portfolio_metrics(account, current_positions)
     
     def save_daily_stats(self):
-        """Sauvegarder les statistiques quotidiennes"""
+        """Sauvegarder stats quotidiennes"""
         if not DB_AVAILABLE:
             return
         
@@ -422,15 +495,23 @@ class LiveTrader:
             self.alpaca.log_current_positions()
             logger.info("✅ Stats quotidiennes sauvegardées")
             
+            # ✅ MÉTRIQUES PERFORMANCE
+            if self.metrics and DB_AVAILABLE:
+                win_loss = get_win_loss_ratio(days=30)
+                if win_loss['total'] > 0:
+                    self.metrics.update_performance_metrics(win_loss['win_rate'])
+            
             if ALERTS_AVAILABLE:
                 pl_pct = (total_pl / self.initial_capital * 100) if self.initial_capital > 0 else 0
                 alert_daily_summary(account['portfolio_value'], total_pl, pl_pct, len(trades_today))
             
         except Exception as e:
             logger.error(f"❌ Erreur save_daily_stats: {e}")
+            if self.metrics:
+                self.metrics.record_error('database', 'save_daily_stats')
     
     def check_performance_alerts(self):
-        """Vérifier alertes de performance"""
+        """Vérifier alertes performance"""
         if not ALERTS_AVAILABLE or not DB_AVAILABLE:
             return
         
@@ -438,13 +519,16 @@ class LiveTrader:
             win_loss = get_win_loss_ratio(days=7)
             if win_loss['win_rate'] < 50 and win_loss['total'] > 10:
                 alert_performance_warning(win_loss['win_rate'], 7)
+                
+                if self.metrics:
+                    self.metrics.record_alert('WARNING', 'low_win_rate')
         except Exception as e:
             logger.error(f"❌ Erreur check_performance_alerts: {e}")
     
     def run(self, check_interval_minutes=60):
         """Boucle principale"""
         logger.info("\n" + "="*70)
-        logger.info("🚀 LIVE TRADER - FULL FEATURED")
+        logger.info("🚀 LIVE TRADER - VERSION COMPLÈTE")
         logger.info("="*70)
         logger.info(f"⏱️  Intervalle: {check_interval_minutes} min")
         logger.info(f"📊 Mode: {'Paper' if self.paper_trading else '🔴 LIVE'}")
@@ -466,7 +550,7 @@ class LiveTrader:
                 cycle += 1
                 current_date = date.today()
                 
-                # Reset stats quotidiennes à minuit
+                # Reset quotidien
                 if current_date > last_daily_reset and RISK_AVAILABLE:
                     account = self.alpaca.get_account()
                     self.risk_manager.reset_daily_stats(account['portfolio_value'])
@@ -491,6 +575,9 @@ class LiveTrader:
             logger.info("\n\n🛑 Arrêt manuel")
         except Exception as e:
             logger.error(f"\n❌ Erreur: {e}", exc_info=True)
+            
+            if self.metrics:
+                self.metrics.record_error('system', 'critical_error')
             
             if ALERTS_AVAILABLE:
                 send_alert(f"🚨 **ERREUR CRITIQUE**\n\n{str(e)[:200]}", priority='ERROR')
