@@ -26,7 +26,7 @@ requests>=2.31.0
 # Ajoutez ces lignes à votre requirements.txt existant
 
 # Alpaca Trading API
-alpaca-py>=0.15.0
+alpaca-py==0.25.0
 python-dotenv>=1.0.0
 
 # Dashboard Web
@@ -39,3 +39,21 @@ eventlet==0.33.3
 # Visualisation
 plotly==5.18.0
 pandas==2.1.4
+
+# Core
+numpy==1.26.2
+pandas==2.1.4
+scikit-learn==1.3.2
+yfinance==0.2.33
+python-dotenv==1.0.0
+
+# Deep Learning
+tensorflow==2.15.0
+
+# Dashboard Web
+flask==3.0.0
+flask-cors==4.0.0
+flask-socketio==5.3.5
+python-socketio==5.10.0
+gevent==23.9.1
+gevent-websocket==0.10.1
