@@ -24,27 +24,29 @@ class LiveTrader:
     def __init__(self, paper_trading=True, capital=None):
         self.paper_trading = paper_trading
         
-        # Client Alpaca (stocks seulement)
+        # Client Alpaca
         self.alpaca = AlpacaClient(paper_trading=paper_trading)
         self.brain = BrainTrader(capital=capital, paper_trading=paper_trading)
         
         # Vérifier le compte
         account = self.alpaca.get_account()
         if account:
-            self.capital = account['portfolio_value']
-            logger.info(f"💰 Capital disponible: ${self.capital:,.2f}")
-            logger.info(f"💵 Cash: ${account['cash']:,.2f}")
-            logger.info(f"📊 Positions: ${self.capital - account['cash']:,.2f}")
+            self.initial_capital = account['portfolio_value']
+            self.available_cash = float(account['cash'])  # ✅ CASH RÉEL
+            
+            logger.info(f"💰 Portfolio total: ${self.initial_capital:,.2f}")
+            logger.info(f"💵 Cash disponible: ${self.available_cash:,.2f}")
+            logger.info(f"📊 Positions: ${self.initial_capital - self.available_cash:,.2f}")
         else:
             raise Exception("❌ Impossible de se connecter à Alpaca")
         
         # Paramètres de risque
-        self.max_position_size = 0.10      # 10% max par position
-        self.stop_loss_pct = 0.05          # Stop loss -5%
-        self.take_profit_pct = 0.15        # Take profit +15%
-        self.min_trade_amount = 100.0      # Min $100 par trade
+        self.max_position_size = 0.10      # 10% du CASH disponible
+        self.stop_loss_pct = 0.05
+        self.take_profit_pct = 0.15
+        self.min_trade_amount = 100.0
         
-        logger.info(f"🎯 Max position: {self.max_position_size*100:.0f}%")
+        logger.info(f"🎯 Max position: {self.max_position_size*100:.0f}% du cash")
         logger.info(f"🛑 Stop Loss: {self.stop_loss_pct*100:.0f}%")
         logger.info(f"🎯 Take Profit: {self.take_profit_pct*100:.0f}%")
     
@@ -73,11 +75,46 @@ class LiveTrader:
         logger.info("="*70)
         
         predictions = self.brain.predict_all()
+        
+        # ✅ RÉCUPÉRER LE CASH ACTUEL À CHAQUE CYCLE
         account = self.alpaca.get_account()
+        available_cash = float(account['cash'])
+        
+        logger.info(f"💵 Cash disponible: ${available_cash:,.2f}")
+        
         current_positions = {pos['symbol']: pos for pos in self.alpaca.get_positions()}
         
         actions = {'buy': 0, 'sell': 0, 'hold': 0}
         
+        # ✅ COLLECTER TOUS LES SIGNAUX BUY AVANT D'ACHETER
+        buy_signals = []
+        
+        for sector, sector_preds in predictions.items():
+            for pred in sector_preds:
+                if pred['action'] == 'BUY':
+                    symbol = pred['ticker']
+                    
+                    # Vérifier si position existe déjà
+                    if symbol not in current_positions:
+                        price = self.alpaca.get_current_price(symbol)
+                        if price:
+                            buy_signals.append({
+                                'symbol': symbol,
+                                'price': price,
+                                'sector': sector,
+                                'allocated': pred['capital']
+                            })
+        
+        # ✅ CALCULER L'INVESTISSEMENT PAR SIGNAL
+        if buy_signals:
+            # Diviser le cash disponible équitablement
+            cash_per_signal = available_cash / len(buy_signals)
+            max_per_position = available_cash * self.max_position_size
+            
+            logger.info(f"🎯 {len(buy_signals)} signaux BUY détectés")
+            logger.info(f"💰 Budget par signal: ${min(cash_per_signal, max_per_position):,.2f}")
+        
+        # EXÉCUTER LES TRADES
         for sector, sector_preds in predictions.items():
             logger.info(f"\n🧠 {sector.upper()}:")
             
@@ -101,13 +138,16 @@ class LiveTrader:
                         actions['hold'] += 1
                         continue
                     
-                    # Calculer investissement
-                    max_invest = self.capital * self.max_position_size
-                    allocated = pred['capital']
-                    invest_amount = min(max_invest, allocated, float(account['cash']))
+                    # ✅ UTILISER LE CASH DISPONIBLE RÉEL
+                    if buy_signals:
+                        cash_per_signal = available_cash / len(buy_signals)
+                        max_per_position = available_cash * self.max_position_size
+                        invest_amount = min(cash_per_signal, max_per_position)
+                    else:
+                        invest_amount = 0
                     
                     if invest_amount < self.min_trade_amount:
-                        logger.warning(f"     ⚠️  Montant trop faible: ${invest_amount:.2f}")
+                        logger.warning(f"     ⚠️  Cash insuffisant: ${invest_amount:.2f}")
                         continue
                     
                     # Calculer quantité
@@ -116,13 +156,22 @@ class LiveTrader:
                         logger.warning(f"     ⚠️  Quantité insuffisante: {qty}")
                         continue
                     
+                    actual_cost = qty * current_price
+                    
+                    # Vérifier qu'on a assez de cash
+                    if actual_cost > available_cash:
+                        logger.warning(f"     ⚠️  Coût ${actual_cost:.2f} > Cash ${available_cash:.2f}")
+                        continue
+                    
                     # Placer ordre
-                    logger.info(f"     💰 Achat: {qty} x ${current_price:.2f} = ${qty*current_price:,.2f}")
+                    logger.info(f"     💰 Achat: {qty} x ${current_price:.2f} = ${actual_cost:,.2f}")
                     order = self.alpaca.place_market_order(symbol, qty, 'buy')
                     
                     if order:
                         actions['buy'] += 1
+                        available_cash -= actual_cost  # ✅ DÉDUIRE DU CASH
                         logger.info(f"     ✅ Ordre: {order['id']}")
+                        logger.info(f"     💵 Cash restant: ${available_cash:,.2f}")
                     else:
                         logger.error(f"     ❌ Échec ordre")
                 
@@ -139,7 +188,11 @@ class LiveTrader:
                     
                     if self.alpaca.close_position(symbol):
                         actions['sell'] += 1
+                        # ✅ AJOUTER AU CASH
+                        proceeds = pos['qty'] * current_price
+                        available_cash += proceeds
                         logger.info(f"     ✅ Position fermée")
+                        logger.info(f"     💵 Cash après vente: ${available_cash:,.2f}")
                     else:
                         logger.error(f"     ❌ Échec fermeture")
                 
@@ -152,12 +205,16 @@ class LiveTrader:
         logger.info("="*70)
         logger.info(f"🎯 {actions['buy']} BUY | {actions['sell']} SELL | {actions['hold']} HOLD")
         
+        # Rafraîchir compte
         account = self.alpaca.get_account()
-        logger.info(f"💰 Cash: ${account['cash']:,.2f}")
-        logger.info(f"📈 Portfolio: ${account['portfolio_value']:,.2f}")
+        current_value = account['portfolio_value']
         
-        total_pl = account['portfolio_value'] - self.capital
-        logger.info(f"💵 P&L session: ${total_pl:+,.2f} ({(total_pl/self.capital)*100:+.2f}%)")
+        logger.info(f"💰 Cash: ${account['cash']:,.2f}")
+        logger.info(f"📈 Portfolio: ${current_value:,.2f}")
+        
+        total_pl = current_value - self.initial_capital
+        pl_pct = (total_pl / self.initial_capital) * 100
+        logger.info(f"💵 P&L session: ${total_pl:+,.2f} ({pl_pct:+.2f}%)")
     
     def run(self, check_interval_minutes=60):
         """Boucle principale"""
@@ -192,4 +249,12 @@ class LiveTrader:
             logger.error(f"\n❌ Erreur: {e}", exc_info=True)
         finally:
             account = self.alpaca.get_account()
-            logger.info(f"\n💵 Portfolio final: ${account['portfolio_value']:,.2f}")
+            final_value = account['portfolio_value']
+            total_pl = final_value - self.initial_capital
+            
+            logger.info("\n" + "="*70)
+            logger.info("📊 RÉSUMÉ FINAL")
+            logger.info("="*70)
+            logger.info(f"💰 Portfolio initial: ${self.initial_capital:,.2f}")
+            logger.info(f"💵 Portfolio final: ${final_value:,.2f}")
+            logger.info(f"📈 P&L total: ${total_pl:+,.2f} ({(total_pl/self.initial_capital)*100:+.2f}%)")
