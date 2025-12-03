@@ -1,5 +1,4 @@
-# trading/live_trader.py
-"""Trader en temps réel avec Alpaca - ACTIONS UNIQUEMENT"""
+# trading/live_trader.py - VERSION OPTIMISÉE
 
 # === FIX PATH ===
 import sys
@@ -19,37 +18,39 @@ import time
 logger = setup_logging(__name__, 'live_trader.log')
 
 class LiveTrader:
-    """Trader live avec Alpaca - Actions uniquement"""
+    """Trader live avec Alpaca - STRATÉGIE OPTIMISÉE"""
     
     def __init__(self, paper_trading=True, capital=None):
         self.paper_trading = paper_trading
         
-        # Client Alpaca
         self.alpaca = AlpacaClient(paper_trading=paper_trading)
         self.brain = BrainTrader(capital=capital, paper_trading=paper_trading)
         
-        # Vérifier le compte
         account = self.alpaca.get_account()
         if account:
             self.initial_capital = account['portfolio_value']
-            self.available_buying_power = float(account['buying_power'])  # ✅ BUYING POWER
+            self.available_buying_power = float(account['buying_power'])
             
             logger.info(f"💰 Portfolio total: ${self.initial_capital:,.2f}")
             logger.info(f"💵 Buying Power: ${self.available_buying_power:,.2f}")
             logger.info(f"💸 Cash: ${float(account['cash']):,.2f}")
-            
-            positions_value = self.initial_capital - float(account['cash'])
-            logger.info(f"📊 Positions ouvertes: ${positions_value:,.2f}")
         else:
             raise Exception("❌ Impossible de se connecter à Alpaca")
         
         # Paramètres de risque
-        self.max_position_size = 0.05      # ✅ 5% du buying power (plus conservateur)
+        self.max_position_size = 0.05      # 5% du portfolio
+        self.min_position_size = 0.02      # 2% minimum
         self.stop_loss_pct = 0.05
         self.take_profit_pct = 0.15
         self.min_trade_amount = 100.0
         
-        logger.info(f"🎯 Max position: {self.max_position_size*100:.0f}% du buying power")
+        # ✅ NOUVEAU : Paramètres de renforcement
+        self.max_position_accumulation = 0.10  # Max 10% du portfolio sur 1 ticker
+        self.add_to_winner = True              # Renforcer les positions gagnantes
+        self.add_to_loser = False              # Ne pas moyenner à la baisse
+        
+        logger.info(f"🎯 Position size: {self.min_position_size*100:.0f}%-{self.max_position_size*100:.0f}%")
+        logger.info(f"📈 Max accumulation: {self.max_position_accumulation*100:.0f}%")
         logger.info(f"🛑 Stop Loss: {self.stop_loss_pct*100:.0f}%")
         logger.info(f"🎯 Take Profit: {self.take_profit_pct*100:.0f}%")
     
@@ -71,48 +72,62 @@ class LiveTrader:
                 logger.info(f"🎯 TAKE PROFIT: {symbol} ({unrealized_plpc*100:.2f}%)")
                 self.alpaca.close_position(symbol)
     
+    def should_add_to_position(self, symbol, position, current_price):
+        """
+        Décider si on doit renforcer une position existante
+        
+        Returns:
+            bool, str: (should_add, reason)
+        """
+        account = self.alpaca.get_account()
+        portfolio_value = account['portfolio_value']
+        
+        # Taille actuelle de la position en % du portfolio
+        position_pct = position['market_value'] / portfolio_value
+        
+        # 1. Vérifier si on a atteint le max
+        if position_pct >= self.max_position_accumulation:
+            return False, f"Max accumulation atteint ({position_pct*100:.1f}%)"
+        
+        # 2. Vérifier le P&L
+        unrealized_plpc = position['unrealized_plpc']
+        
+        # Position gagnante
+        if unrealized_plpc > 0:
+            if self.add_to_winner:
+                return True, f"Renforcer gagnant (+{unrealized_plpc*100:.1f}%)"
+            else:
+                return False, "Mode renforcement gagnants désactivé"
+        
+        # Position perdante
+        elif unrealized_plpc < 0:
+            if self.add_to_loser:
+                return True, f"Moyenner à la baisse ({unrealized_plpc*100:.1f}%)"
+            else:
+                return False, "Pas de moyenne à la baisse"
+        
+        # Position neutre
+        else:
+            return True, "Position neutre, renforcement OK"
+    
     def execute_signals(self):
-        """Exécuter les signaux du Brain AI"""
+        """Exécuter les signaux du Brain AI - VERSION OPTIMISÉE"""
         logger.info("\n" + "="*70)
         logger.info(f"🧠 ANALYSE - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         logger.info("="*70)
         
         predictions = self.brain.predict_all()
         
-        # ✅ UTILISER BUYING POWER
         account = self.alpaca.get_account()
         available_buying_power = float(account['buying_power'])
+        portfolio_value = account['portfolio_value']
         
-        logger.info(f"💵 Buying Power disponible: ${available_buying_power:,.2f}")
+        logger.info(f"💵 Buying Power: ${available_buying_power:,.2f}")
+        logger.info(f"📊 Portfolio: ${portfolio_value:,.2f}")
         
         current_positions = {pos['symbol']: pos for pos in self.alpaca.get_positions()}
         
-        actions = {'buy': 0, 'sell': 0, 'hold': 0}
-        
-        # Collecter signaux BUY
-        buy_signals = []
-        
-        for sector, sector_preds in predictions.items():
-            for pred in sector_preds:
-                if pred['action'] == 'BUY':
-                    symbol = pred['ticker']
-                    
-                    if symbol not in current_positions:
-                        price = self.alpaca.get_current_price(symbol)
-                        if price:
-                            buy_signals.append({
-                                'symbol': symbol,
-                                'price': price,
-                                'sector': sector
-                            })
-        
-        # Calculer budget par signal
-        if buy_signals:
-            # ✅ Utiliser max_position_size du BUYING POWER
-            max_per_position = available_buying_power * self.max_position_size
-            
-            logger.info(f"🎯 {len(buy_signals)} signaux BUY détectés")
-            logger.info(f"💰 Budget max par position: ${max_per_position:,.2f}")
+        actions = {'buy': 0, 'add': 0, 'sell': 0, 'hold': 0}
         
         # EXÉCUTER LES TRADES
         for sector, sector_preds in predictions.items():
@@ -128,76 +143,126 @@ class LiveTrader:
                     continue
                 
                 emoji = {'BUY': '🟢', 'SELL': '🔴', 'HOLD': '⚪'}[action]
-                logger.info(f"  {emoji} {symbol}: {action} @ ${current_price:.2f}")
                 
-                # SIGNAL BUY
+                # ✅ VÉRIFIER SI POSITION EXISTE
+                position = current_positions.get(symbol)
+                
+                if position:
+                    position_value = position['market_value']
+                    position_pct = (position_value / portfolio_value) * 100
+                    pl = position['unrealized_pl']
+                    pl_pct = position['unrealized_plpc'] * 100
+                    
+                    logger.info(f"  {emoji} {symbol}: {action} @ ${current_price:.2f} | Position: ${position_value:,.0f} ({position_pct:.1f}%) | P&L: ${pl:+,.0f} ({pl_pct:+.1f}%)")
+                else:
+                    logger.info(f"  {emoji} {symbol}: {action} @ ${current_price:.2f} | Pas de position")
+                
+                # ===== SIGNAL BUY =====
                 if action == 'BUY':
-                    if symbol in current_positions:
-                        logger.info(f"     ⏭️  Position déjà ouverte")
-                        actions['hold'] += 1
-                        continue
                     
-                    # ✅ Utiliser max_position_size
-                    max_invest = available_buying_power * self.max_position_size
-                    invest_amount = min(max_invest, available_buying_power)
+                    # CAS 1 : Position existe déjà
+                    if position:
+                        should_add, reason = self.should_add_to_position(symbol, position, current_price)
+                        
+                        if should_add:
+                            # ✅ RENFORCER LA POSITION
+                            max_invest = portfolio_value * self.max_position_size
+                            current_value = position['market_value']
+                            remaining_capacity = max_invest - current_value
+                            
+                            if remaining_capacity < self.min_trade_amount:
+                                logger.info(f"     ⏭️  Capacité restante insuffisante: ${remaining_capacity:.0f}")
+                                actions['hold'] += 1
+                                continue
+                            
+                            invest_amount = min(remaining_capacity, available_buying_power * 0.5)
+                            
+                            if invest_amount < self.min_trade_amount:
+                                logger.info(f"     ⏭️  Budget insuffisant pour renforcer")
+                                actions['hold'] += 1
+                                continue
+                            
+                            qty = int(invest_amount / current_price)
+                            if qty < 1:
+                                logger.info(f"     ⏭️  Quantité insuffisante: {qty}")
+                                actions['hold'] += 1
+                                continue
+                            
+                            actual_cost = qty * current_price
+                            
+                            logger.info(f"     📈 RENFORCEMENT: +{qty} x ${current_price:.2f} = ${actual_cost:,.2f}")
+                            logger.info(f"     💡 Raison: {reason}")
+                            
+                            order = self.alpaca.place_market_order(symbol, qty, 'buy')
+                            
+                            if order:
+                                actions['add'] += 1
+                                available_buying_power -= actual_cost
+                                logger.info(f"     ✅ Ordre: {order['id']}")
+                            else:
+                                logger.error(f"     ❌ Échec ordre")
+                        
+                        else:
+                            # ❌ NE PAS RENFORCER
+                            logger.info(f"     ⏭️  {reason}")
+                            actions['hold'] += 1
                     
-                    if invest_amount < self.min_trade_amount:
-                        logger.warning(f"     ⚠️  Budget insuffisant: ${invest_amount:.2f}")
-                        continue
-                    
-                    # Calculer quantité
-                    qty = int(invest_amount / current_price)
-                    if qty < 1:
-                        logger.warning(f"     ⚠️  Quantité insuffisante: {qty}")
-                        continue
-                    
-                    actual_cost = qty * current_price
-                    
-                    # Vérifier buying power
-                    if actual_cost > available_buying_power:
-                        logger.warning(f"     ⚠️  Coût ${actual_cost:.2f} > BP ${available_buying_power:.2f}")
-                        continue
-                    
-                    # Placer ordre
-                    logger.info(f"     💰 Achat: {qty} x ${current_price:.2f} = ${actual_cost:,.2f}")
-                    order = self.alpaca.place_market_order(symbol, qty, 'buy')
-                    
-                    if order:
-                        actions['buy'] += 1
-                        available_buying_power -= actual_cost
-                        logger.info(f"     ✅ Ordre: {order['id']}")
-                        logger.info(f"     💵 BP restant: ${available_buying_power:,.2f}")
+                    # CAS 2 : Nouvelle position
                     else:
-                        logger.error(f"     ❌ Échec ordre")
+                        max_invest = portfolio_value * self.max_position_size
+                        invest_amount = min(max_invest, available_buying_power * 0.5)
+                        
+                        if invest_amount < self.min_trade_amount:
+                            logger.info(f"     ⚠️  Budget insuffisant: ${invest_amount:.2f}")
+                            continue
+                        
+                        qty = int(invest_amount / current_price)
+                        if qty < 1:
+                            logger.info(f"     ⚠️  Quantité insuffisante: {qty}")
+                            continue
+                        
+                        actual_cost = qty * current_price
+                        
+                        logger.info(f"     💰 NOUVELLE POSITION: {qty} x ${current_price:.2f} = ${actual_cost:,.2f}")
+                        
+                        order = self.alpaca.place_market_order(symbol, qty, 'buy')
+                        
+                        if order:
+                            actions['buy'] += 1
+                            available_buying_power -= actual_cost
+                            logger.info(f"     ✅ Ordre: {order['id']}")
+                        else:
+                            logger.error(f"     ❌ Échec ordre")
                 
-                # SIGNAL SELL
+                # ===== SIGNAL SELL =====
                 elif action == 'SELL':
-                    if symbol not in current_positions:
-                        logger.info(f"     ⏭️  Pas de position")
+                    if not position:
+                        logger.info(f"     ⏭️  Pas de position à vendre")
                         actions['hold'] += 1
                         continue
                     
-                    pos = current_positions[symbol]
-                    logger.info(f"     💰 Vente: {pos['qty']:.2f} @ ${current_price:.2f}")
-                    logger.info(f"     📊 P&L: ${pos['unrealized_pl']:+,.2f} ({pos['unrealized_plpc']*100:+.2f}%)")
+                    logger.info(f"     💰 FERMETURE: {position['qty']:.2f} @ ${current_price:.2f}")
+                    logger.info(f"     📊 P&L: ${position['unrealized_pl']:+,.2f} ({position['unrealized_plpc']*100:+.2f}%)")
                     
                     if self.alpaca.close_position(symbol):
                         actions['sell'] += 1
-                        proceeds = pos['qty'] * current_price
+                        proceeds = position['qty'] * current_price
                         available_buying_power += proceeds
                         logger.info(f"     ✅ Position fermée")
-                        logger.info(f"     💵 BP après vente: ${available_buying_power:,.2f}")
                     else:
                         logger.error(f"     ❌ Échec fermeture")
                 
+                # ===== SIGNAL HOLD =====
                 else:
+                    if position:
+                        logger.info(f"     ⏸️  Conservation de la position")
                     actions['hold'] += 1
         
         # Résumé
         logger.info("\n" + "="*70)
         logger.info("📊 RÉSUMÉ")
         logger.info("="*70)
-        logger.info(f"🎯 {actions['buy']} BUY | {actions['sell']} SELL | {actions['hold']} HOLD")
+        logger.info(f"🎯 {actions['buy']} NOUVEAU | {actions['add']} RENFORT | {actions['sell']} VENTE | {actions['hold']} HOLD")
         
         account = self.alpaca.get_account()
         current_value = account['portfolio_value']
@@ -212,7 +277,7 @@ class LiveTrader:
     def run(self, check_interval_minutes=60):
         """Boucle principale"""
         logger.info("\n" + "="*70)
-        logger.info("🚀 LIVE TRADER - ACTIONS UNIQUEMENT")
+        logger.info("🚀 LIVE TRADER - STRATÉGIE OPTIMISÉE")
         logger.info("="*70)
         logger.info(f"⏱️  Intervalle: {check_interval_minutes} min")
         logger.info(f"📊 Mode: {'Paper' if self.paper_trading else '🔴 LIVE'}")
