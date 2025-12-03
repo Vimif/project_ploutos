@@ -1,5 +1,13 @@
 # trading/portfolio.py
 """Gestion du portefeuille de trading"""
+
+# === FIX PATH ===
+import sys
+from pathlib import Path
+if str(Path(__file__).parent.parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+# ================
+
 from datetime import datetime
 from typing import Dict, List
 import json
@@ -15,7 +23,7 @@ class Portfolio:
     def __init__(self, initial_capital: float = 100000):
         self.initial_capital = initial_capital
         self.cash = initial_capital
-        self.positions = {}  # {ticker: {'shares': int, 'entry_price': float}}
+        self.positions = {}
         self.trades_history = []
         self.portfolio_value_history = []
     
@@ -28,23 +36,15 @@ class Portfolio:
         return self.cash + positions_value
     
     def buy(self, ticker: str, price: float, amount: float):
-        """
-        Acheter des actions
-        
-        Args:
-            ticker: Symbole de l'action
-            price: Prix unitaire
-            amount: Montant en $ à investir
-        """
+        """Acheter des actions"""
         if amount > self.cash:
-            logger.warning(f"⚠️  Fonds insuffisants pour {ticker} (demandé: ${amount:,.2f}, disponible: ${self.cash:,.2f})")
+            logger.warning(f"⚠️  Fonds insuffisants pour {ticker}")
             return False
         
         shares = amount / price
         cost = shares * price
         
         if ticker in self.positions:
-            # Moyenner le prix d'entrée
             old_shares = self.positions[ticker]['shares']
             old_entry = self.positions[ticker]['entry_price']
             new_shares = old_shares + shares
@@ -71,18 +71,11 @@ class Portfolio:
             'amount': cost
         })
         
-        logger.info(f"🟢 BUY {ticker}: {shares:.4f} @ ${price:.2f} = ${cost:,.2f}")
+        logger.info(f"🟢 BUY {ticker}: {shares:.4f} @ ${price:.2f}")
         return True
     
     def sell(self, ticker: str, price: float, percentage: float = 1.0):
-        """
-        Vendre des actions
-        
-        Args:
-            ticker: Symbole de l'action
-            price: Prix unitaire
-            percentage: Pourcentage de la position à vendre (0-1)
-        """
+        """Vendre des actions"""
         if ticker not in self.positions:
             logger.warning(f"⚠️  Aucune position sur {ticker}")
             return False
@@ -112,8 +105,7 @@ class Portfolio:
             'pnl_pct': pnl_pct
         })
         
-        emoji = "📈" if pnl > 0 else "📉"
-        logger.info(f"🔴 SELL {ticker}: {shares_to_sell:.4f} @ ${price:.2f} = ${proceeds:,.2f} {emoji} P&L: ${pnl:+,.2f} ({pnl_pct:+.2f}%)")
+        logger.info(f"🔴 SELL {ticker}: {shares_to_sell:.4f} @ ${price:.2f}")
         return True
     
     def get_position(self, ticker: str):
@@ -150,7 +142,7 @@ class Portfolio:
             'initial_capital': self.initial_capital,
             'cash': self.cash,
             'positions': self.positions,
-            'trades_history': self.trades_history[-100:]  # Garder les 100 derniers
+            'trades_history': self.trades_history[-100:]
         }
         
         with open(filepath, 'w') as f:

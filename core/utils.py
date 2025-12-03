@@ -1,5 +1,13 @@
 # core/utils.py
 """Fonctions utilitaires"""
+
+# === FIX PATH ===
+import sys
+from pathlib import Path
+if str(Path(__file__).parent.parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+# ================
+
 import logging
 import torch
 import gc
@@ -38,32 +46,22 @@ def setup_logging(name: str, log_file: str = None):
     return logger
 
 def cleanup_resources(*objects):
-    """
-    Nettoyer des ressources (envs, modèles, etc.)
-    
-    Usage:
-        cleanup_resources(env, model, autre_objet)
-    """
+    """Nettoyer des ressources"""
     for obj in objects:
         if obj is not None:
-            # Essayer .close()
             if hasattr(obj, 'close'):
                 try:
                     obj.close()
                 except:
                     pass
-            
-            # Supprimer
             try:
                 del obj
             except:
                 pass
     
-    # GPU cleanup
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
     
-    # Garbage collection
     gc.collect()
 
 def get_gpu_info():

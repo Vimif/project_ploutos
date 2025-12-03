@@ -1,12 +1,20 @@
 # core/features.py
 """Calcul des features pour le trading"""
+
+# === FIX PATH ===
+import sys
+from pathlib import Path
+if str(Path(__file__).parent.parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+# ================
+
 import numpy as np
 import pandas as pd
 import yfinance as yf
 from config.settings import N_FEATURES
 
 class FeatureCalculator:
-    """Calcul centralisé des features - UNE SEULE SOURCE DE VÉRITÉ"""
+    """Calcul centralisé des features"""
     
     @staticmethod
     def calculate(ticker, n_features=30, lookback_days=90):
@@ -70,13 +78,13 @@ class FeatureCalculator:
             # 5. MA 20
             if idx < n_features:
                 ma20 = df['Close'].rolling(20).mean().iloc[-1]
-                features[idx] = (current_price - ma20) / current_price if not pd.isna(ma20) else 0.0
+                features[idx] = float((current_price - ma20) / current_price) if not pd.isna(ma20) else 0.0
                 idx += 1
             
             # 6. MA 50
             if idx < n_features:
                 ma50 = df['Close'].rolling(50).mean().iloc[-1]
-                features[idx] = (current_price - ma50) / current_price if not pd.isna(ma50) else 0.0
+                features[idx] = float((current_price - ma50) / current_price) if not pd.isna(ma50) else 0.0
                 idx += 1
             
             # 7. Volatilité

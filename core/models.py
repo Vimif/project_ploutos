@@ -1,5 +1,13 @@
 # core/models.py
 """Gestion des modèles IA"""
+
+# === FIX PATH ===
+import sys
+from pathlib import Path
+if str(Path(__file__).parent.parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+# ================
+
 from pathlib import Path
 from stable_baselines3 import PPO
 import logging
@@ -45,18 +53,10 @@ class ModelManager:
             return None
     
     def save_model(self, model, model_name: str):
-        """
-        Sauvegarder un modèle
-        
-        Args:
-            model: Instance PPO
-            model_name: Nom du fichier (sans extension)
-        """
+        """Sauvegarder un modèle"""
         model_path = self.models_dir / f"{model_name}.zip"
         model.save(model_path)
         logger.info(f"💾 Modèle sauvegardé: {model_path}")
-        
-        # Mettre en cache
         self.models[model_name] = model
     
     def list_models(self):
