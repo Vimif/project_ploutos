@@ -1,27 +1,29 @@
-# Sensitive files
-config.py
-*.env
-.env
-
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+venv/
+env/
 
-# Models (trop gros pour Git)
-*.zip
-*.pkl
-
-# Logs
+# Données locales (NE PAS COMMIT)
+data/models/*.zip
+data/logs/
 *.log
-activity.log
+
+# WandB
+wandb/
 
 # IDE
 .vscode/
 .idea/
+*.swp
 
 # OS
 .DS_Store
 Thumbs.db
+
+# Credentials
+.env
+secrets.yaml
