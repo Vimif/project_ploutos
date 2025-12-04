@@ -48,7 +48,7 @@ if IS_WSL or 'BBC' in HOSTNAME.lower():
         'n_eval_episodes': 5,
         'learning_rate': 3e-4,
         'n_steps': 8192,
-        'batch_size': 4096,
+        'batch_size': 8192,
         'n_epochs': 10,
         'gamma': 0.99,
         'gae_lambda': 0.95,

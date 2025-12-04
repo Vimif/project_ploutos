@@ -19,8 +19,8 @@ from core.environment import TradingEnv
 from config.settings import TRAINING_CONFIG, WANDB_CONFIG, USE_GPU
 
 # --- CONFIGURATION ---
-N_ENVS = 32            # Nombre d'environnements parallèles (CPU)
-BATCH_SIZE = 4096      # Taille du batch pour GPU
+N_ENVS = 64            # Nombre d'environnements parallèles (CPU)
+BATCH_SIZE = 8192      # Taille du batch pour GPU
 N_STEPS = 2048         # Pas par environnement
 TIMESTEPS = 5_000_000  # Durée totale
 
