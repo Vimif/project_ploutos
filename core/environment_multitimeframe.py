@@ -16,60 +16,89 @@ class TradingEnvMultiTimeframe(gym.Env):
         # CHARGEMENT DONNÉES HORAIRES
         if csv_path and os.path.exists(csv_path):
             try:
-                self.df_hourly = pd.read_csv(csv_path, index_col=0, parse_dates=True)
-                # FIX : Retirer timezone si présente
-                if self.df_hourly.index.tz is not None:
-                    self.df_hourly.index = self.df_hourly.index.tz_localize(None)
+                self.df = pd.read_csv(csv_path, index_col=0, parse_dates=True)
+                # FIX : Retirer timezone
+                if self.df.index.tz is not None:
+                    self.df.index = self.df.index.tz_localize(None)
                 
-                ticker_name = csv_path.split("/")[-1].replace(".csv", "")
+                # Extraire ticker name du path
+                ticker_name = os.path.basename(csv_path).replace(".csv", "")
             except Exception as e:
                 raise ValueError(f"Erreur lecture CSV {csv_path}: {e}")
         elif ticker:
             ticker_name = ticker
-            print(f"⚠️ Warning: Téléchargement direct de {ticker} (LENT)")
-            self.df_hourly = yf.download(ticker, period="730d", interval="1h", auto_adjust=True, progress=False)
-            if isinstance(self.df_hourly.columns, pd.MultiIndex):
-                self.df_hourly = self.df_hourly.xs(ticker, axis=1, level=1)
-            # FIX : Retirer timezone
-            if self.df_hourly.index.tz is not None:
-                self.df_hourly.index = self.df_hourly.index.tz_localize(None)
+            print(f"⚠️ Téléchargement {ticker}...")
+            self.df = yf.download(ticker, period="730d", interval="1h", auto_adjust=True, progress=False)
+            if isinstance(self.df.columns, pd.MultiIndex):
+                self.df = self.df.xs(ticker, axis=1, level=1)
+            if self.df.index.tz is not None:
+                self.df.index = self.df.index.tz_localize(None)
         else:
-            raise ValueError("TradingEnvMultiTimeframe doit recevoir 'csv_path' ou 'ticker'")
+            raise ValueError("Doit recevoir 'csv_path' ou 'ticker'")
         
-        # NOUVEAU : TÉLÉCHARGEMENT DONNÉES DAILY
-        print(f"📥 Téléchargement données daily pour {ticker_name}...")
-        self.df_daily = yf.download(ticker_name, period="730d", interval="1d", auto_adjust=True, progress=False)
-        
-        if isinstance(self.df_daily.columns, pd.MultiIndex):
-            self.df_daily = self.df_daily.xs(ticker_name, axis=1, level=1)
-        
-        # FIX : Retirer timezone daily
-        if self.df_daily.index.tz is not None:
-            self.df_daily.index = self.df_daily.index.tz_localize(None)
-        
-        # Garder seulement Close pour daily
-        self.df_daily = self.df_daily[['Close']].rename(columns={'Close': 'Close_daily'})
-        
-        # MERGE : Broadcast daily sur hourly
-        self.df = self.df_hourly.join(self.df_daily, how='left')
-        self.df['Close_daily'] = self.df['Close_daily'].ffill()
         self.df = self.df.dropna()
         
-        print(f"✅ {len(self.df)} bougies horaires + daily data chargées")
+        # AJOUT : Indicateurs techniques (comme baseline)
+        self.df['RSI'] = self._calculate_rsi(self.df['Close'])
+        self.df['MACD'], self.df['MACD_signal'] = self._calculate_macd(self.df['Close'])
+        self.df['BB_upper'], self.df['BB_lower'] = self._calculate_bollinger_bands(self.df['Close'])
+        self.df['EMA_20'] = self.df['Close'].ewm(span=20).mean()
+        self.df = self.df.dropna()
+        
+        # NOUVEAU : Données DAILY simplifiées
+        # Au lieu de télécharger, on agrège les données horaires
+        print(f"📊 Agrégation données daily...")
+        df_daily = self.df.resample('D').agg({
+            'Open': 'first',
+            'High': 'max',
+            'Low': 'min',
+            'Close': 'last',
+            'Volume': 'sum'
+        }).dropna()
+        
+        # Ajouter colonne daily au df principal
+        self.df['Close_daily'] = self.df.index.map(
+            lambda x: df_daily.loc[:x.date()].iloc[-1]['Close'] if len(df_daily.loc[:x.date()]) > 0 else np.nan
+        )
+        self.df = self.df.dropna()
+        
+        print(f"✅ {len(self.df)} bougies horaires chargées avec contexte daily")
         
         if len(self.df) < lookback_window + 10:
-            raise ValueError(f"Pas assez de données: {len(self.df)} lignes")
+            raise ValueError(f"Pas assez de données: {len(self.df)} lignes (min {lookback_window + 10})")
         
         self.initial_balance = initial_balance
         self.lookback_window = lookback_window
         
-        # Espace d'observation élargi
-        obs_size = (5 * lookback_window) + 10 + 3
+        # Observation space : OHLCV + indicateurs + daily close + portfolio
+        # 5 (OHLCV) + 5 (indicateurs) + 1 (daily) = 11 features × 50 steps + 3 portfolio
+        obs_size = 11 * lookback_window + 3
         
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(obs_size,), dtype=np.float32
         )
         self.action_space = spaces.Discrete(3)
+    
+    def _calculate_rsi(self, prices, period=14):
+        delta = prices.diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+        rs = gain / (loss + 1e-8)
+        return 100 - (100 / (1 + rs))
+    
+    def _calculate_macd(self, prices):
+        ema12 = prices.ewm(span=12).mean()
+        ema26 = prices.ewm(span=26).mean()
+        macd = ema12 - ema26
+        signal = macd.ewm(span=9).mean()
+        return macd, signal
+    
+    def _calculate_bollinger_bands(self, prices, period=20):
+        sma = prices.rolling(window=period).mean()
+        std = prices.rolling(window=period).std()
+        upper = sma + (2 * std)
+        lower = sma - (2 * std)
+        return upper, lower
         
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
@@ -81,30 +110,22 @@ class TradingEnvMultiTimeframe(gym.Env):
         return self._next_observation(), {}
     
     def _next_observation(self):
-        """Construit l'observation MULTI-TIMEFRAME"""
+        """Observation avec données horaires + indicateurs + daily"""
         
-        # 1. DONNÉES HORAIRES
-        frame_hourly = self.df.iloc[self.current_step - self.lookback_window:self.current_step]
-        obs_hourly = frame_hourly[['Open', 'High', 'Low', 'Close', 'Volume']].values.flatten()
+        frame = self.df.iloc[self.current_step - self.lookback_window:self.current_step]
         
-        # 2. DONNÉES DAILY (10 derniers jours)
-        current_date = self.df.index[self.current_step]
-        df_before = self.df[self.df.index <= current_date]
-        daily_closes = df_before['Close_daily'].drop_duplicates().tail(10).values
+        # Features : OHLCV + indicateurs + daily close
+        features = ['Open', 'High', 'Low', 'Close', 'Volume', 
+                   'RSI', 'MACD', 'MACD_signal', 'BB_upper', 'BB_lower', 
+                   'Close_daily']
         
-        # Padding si moins de 10 jours
-        if len(daily_closes) < 10:
-            padding = np.full(10 - len(daily_closes), daily_closes[0] if len(daily_closes) > 0 else 0)
-            daily_closes = np.concatenate([padding, daily_closes])
+        obs = frame[features].values.flatten()
         
-        obs_daily = daily_closes
+        # Normalisation
+        current_close = frame['Close'].iloc[-1] + 1e-8
+        obs = obs / current_close
         
-        # 3. NORMALISATION
-        current_close = frame_hourly['Close'].iloc[-1] + 1e-8
-        obs_hourly_norm = obs_hourly / current_close
-        obs_daily_norm = obs_daily / current_close
-        
-        # 4. PORTFOLIO STATE
+        # Portfolio state
         current_price = self.df.iloc[self.current_step]['Close']
         portfolio_state = np.array([
             self.balance / self.initial_balance,
@@ -112,14 +133,13 @@ class TradingEnvMultiTimeframe(gym.Env):
             current_price / 1000.0
         ])
         
-        return np.concatenate([obs_hourly_norm, obs_daily_norm, portfolio_state]).astype(np.float32)
+        return np.concatenate([obs, portfolio_state]).astype(np.float32)
     
     def step(self, action):
-        """Step classique"""
+        """Step standard"""
         
         current_price = self.df.iloc[self.current_step]['Close']
-        prev_price = self.df.iloc[self.current_step - 1]['Close']
-        prev_value = self.balance + self.shares * prev_price
+        prev_value = self.balance + self.shares * current_price
         
         # Actions
         if action == 1:  # BUY
@@ -141,10 +161,11 @@ class TradingEnvMultiTimeframe(gym.Env):
         # Reward
         reward = (current_value - prev_value) / (prev_value + 1e-8)
         
+        # Bonus diversification
         if action != 0:
             reward += 0.0005
         else:
-            reward -= 0.0001
+            reward -= 0.0002
         
         # Fin
         terminated = False
