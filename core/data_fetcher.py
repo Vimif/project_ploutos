@@ -358,7 +358,7 @@ class UniversalDataFetcher:
                 print(f"  ❌ {ticker} : {str(e)[:50]}")
                 return (ticker, None)
         
-        with ThreadPoolExecutor(max_workers=10) as executor:
+        with ThreadPoolExecutor(max_workers=3) as executor:
             futures = [executor.submit(fetch_one, ticker) for ticker in tickers]
             
             for future in as_completed(futures):

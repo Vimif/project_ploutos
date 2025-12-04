@@ -161,7 +161,7 @@ class UniversalAssetSelector:
         
         scored_assets = []
         
-        with ThreadPoolExecutor(max_workers=10) as executor:
+        with ThreadPoolExecutor(max_workers=2) as executor:
             futures = {
                 executor.submit(self._score_asset, ticker, regime, lookback_days): ticker 
                 for ticker in candidates

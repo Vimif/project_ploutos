@@ -251,7 +251,7 @@ class MarketScanner:
         # Parallélisation massive (50 threads)
         print("    Processing...", end='', flush=True)
         
-        with ThreadPoolExecutor(max_workers=50) as executor:
+        with ThreadPoolExecutor(max_workers=3) as executor:
             results = list(executor.map(check_ticker, tickers))
         
         print(" Done")
@@ -353,7 +353,7 @@ class MarketScanner:
         # Parallélisation
         print("    Scoring...", end='', flush=True)
         
-        with ThreadPoolExecutor(max_workers=20) as executor:
+        with ThreadPoolExecutor(max_workers=3) as executor:
             results = list(executor.map(score_ticker, [row for _, row in df_filtered.iterrows()]))
         
         print(" Done")
