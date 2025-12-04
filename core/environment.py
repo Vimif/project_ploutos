@@ -74,33 +74,32 @@ class TradingEnv(gym.Env):
     
     def step(self, action):
         current_price = self.df.iloc[self.current_step]['Close']
+        prev_value = self.balance + self.shares * self.df.iloc[self.current_step - 1]['Close']
         
+        # Actions...
         if action == 1:  # BUY
             shares_to_buy = int(self.balance // current_price)
             if shares_to_buy > 0:
                 self.shares += shares_to_buy
                 self.balance -= shares_to_buy * current_price
-                
         elif action == 2:  # SELL
             if self.shares > 0:
                 self.balance += self.shares * current_price
                 self.shares = 0
         
         self.current_step += 1
+        current_value = self.balance + self.shares * current_price
         
-        # Vérifier fin (Terminated)
-        terminated = False
-        if self.current_step >= len(self.df) - 1:
-            terminated = True
-            
-        # Calcul Reward
-        total_value = self.balance + self.shares * current_price
-        reward = (total_value - self.initial_balance) / self.initial_balance
+        # NOUVELLE REWARD : Variation step-by-step (encourage les mouvements intelligents)
+        reward = (current_value - prev_value) / prev_value
         
-        # Ruine (Terminated)
-        if total_value <= 0:
-            terminated = True
-            reward = -1.0
+        # Bonus pour diversifier (éviter HOLD spam)
+        if action != 0:  # Si BUY ou SELL
+            reward += 0.001  # Petit bonus d'exploration
+
+        # Pénaliser HOLD prolongé
+        if action == 0:
+            reward -= 0.0001  # Petite pénalité pour encourager l'action
             
         # Gymnasium distingue "terminated" (fin naturelle/échec) et "truncated" (timelimit)
         truncated = False 
