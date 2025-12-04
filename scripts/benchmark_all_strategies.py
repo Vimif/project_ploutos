@@ -95,12 +95,13 @@ def action_to_int(action):
 # ========================================
 
 def train_strategy(strategy_name, config):
-    """Entraîne une stratégie"""
+    """Entraîne une stratégie donnée"""
     
     print("\n" + "="*70)
     print(f"🎯 ENTRAÎNEMENT : {config['name']}")
     print("="*70)
     
+    # FIX : Passer csv_path explicitement
     def make_env():
         return config['env_class'](csv_path=CSV_PATH)
     
