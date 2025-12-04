@@ -1,6 +1,5 @@
 """
-Benchmark automatique de TOUTES les stratégies d'entraînement
-Entraîne → Backtest → Compare → Génère rapport
+Benchmark automatique - VERSION CORRIGÉE
 """
 
 import sys
@@ -12,14 +11,30 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import json
-from stable_baselines3 import PPO, SAC
+from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import SubprocVecEnv
 
+# Imports conditionnels
 from core.environment import TradingEnv
-from core.environment_sharpe import TradingEnvSharpe
-from core.environment_continuous import TradingEnvContinuous
-from training.curriculum_trainer import train_curriculum
-from training.train_ensemble import train_full_ensemble
+
+try:
+    from core.environment_sharpe import TradingEnvSharpe
+    HAS_SHARPE = True
+except ImportError:
+    HAS_SHARPE = False
+
+try:
+    from core.environment_continuous import TradingEnvContinuous
+    from stable_baselines3 import SAC
+    HAS_SAC = True
+except ImportError:
+    HAS_SAC = False
+
+try:
+    from core.environment_multitimeframe import TradingEnvMultiTimeframe
+    HAS_MULTI = True
+except ImportError:
+    HAS_MULTI = False
 
 # ========================================
 # CONFIGURATION
@@ -27,36 +42,49 @@ from training.train_ensemble import train_full_ensemble
 
 TICKER = "NVDA"
 CSV_PATH = f"data_cache/{TICKER}.csv"
-N_ENVS = 64
-TIMESTEPS = 2_000_000  # Réduit pour benchmark rapide (augmenter en prod)
+N_ENVS = 32
+TIMESTEPS = 1_000_000
 
+# Construction dynamique
 STRATEGIES = {
     'baseline': {
         'name': 'Baseline (Indicateurs Techniques)',
         'env_class': TradingEnv,
         'algo': PPO,
         'timesteps': TIMESTEPS
-    },
-    'sharpe': {
+    }
+}
+
+if HAS_SHARPE:
+    STRATEGIES['sharpe'] = {
         'name': 'Sharpe Ratio Reward',
         'env_class': TradingEnvSharpe,
         'algo': PPO,
         'timesteps': TIMESTEPS
-    },
-    'continuous': {
+    }
+
+if HAS_SAC:
+    STRATEGIES['continuous'] = {
         'name': 'Actions Continues (SAC)',
         'env_class': TradingEnvContinuous,
         'algo': SAC,
         'timesteps': TIMESTEPS
     }
-}
+
+if HAS_MULTI:
+    STRATEGIES['multitimeframe'] = {
+        'name': 'Multi-Timeframe',
+        'env_class': TradingEnvMultiTimeframe,
+        'algo': PPO,
+        'timesteps': TIMESTEPS
+    }
 
 # ========================================
-# FONCTIONS D'ENTRAÎNEMENT
+# ENTRAÎNEMENT
 # ========================================
 
 def train_strategy(strategy_name, config):
-    """Entraîne une stratégie donnée"""
+    """Entraîne une stratégie"""
     
     print("\n" + "="*70)
     print(f"🎯 ENTRAÎNEMENT : {config['name']}")
@@ -69,17 +97,32 @@ def train_strategy(strategy_name, config):
     
     policy_kwargs = dict(net_arch=dict(pi=[512, 512, 512], vf=[512, 512, 512]))
     
-    model = config['algo'](
-        "MlpPolicy",
-        env,
-        verbose=1,
-        device="cuda",
-        learning_rate=1e-4,
-        batch_size=4096 if config['algo'] == PPO else 256,
-        n_steps=2048 if config['algo'] == PPO else None,
-        n_epochs=10 if config['algo'] == PPO else None,
-        policy_kwargs=policy_kwargs
-    )
+    # Paramètres adaptés selon l'algo
+    if config['algo'] == PPO:
+        model = PPO(
+            "MlpPolicy",
+            env,
+            verbose=1,
+            device="cuda",
+            learning_rate=1e-4,
+            batch_size=4096,
+            n_steps=2048,
+            n_epochs=10,
+            policy_kwargs=policy_kwargs
+        )
+    else:  # SAC
+        model = SAC(
+            "MlpPolicy",
+            env,
+            verbose=1,
+            device="cuda",
+            learning_rate=3e-4,
+            buffer_size=100_000,
+            batch_size=256,
+            tau=0.005,
+            gamma=0.99,
+            policy_kwargs=policy_kwargs
+        )
     
     print(f"🏋️ Entraînement {config['timesteps']:,} steps...")
     model.learn(total_timesteps=config['timesteps'], progress_bar=True)
@@ -89,28 +132,23 @@ def train_strategy(strategy_name, config):
     model.save(model_path)
     
     env.close()
-    
     print(f"✅ Modèle sauvegardé : {model_path}")
     
     return model_path
 
 # ========================================
-# BACKTESTING RENFORCÉ
+# BACKTESTING
 # ========================================
 
 def backtest_strategy(model_path, env_class, algo, test_days=90):
-    """Backtest détaillé d'un modèle"""
+    """Backtest détaillé"""
     
     print(f"\n📊 Backtesting {os.path.basename(model_path)}...")
     
-    # Charger modèle
     model = algo.load(model_path)
-    
-    # Environnement de test
     env = env_class(csv_path=CSV_PATH)
     obs, _ = env.reset()
     
-    # Métriques
     portfolio_values = []
     actions_taken = []
     rewards = []
@@ -122,47 +160,45 @@ def backtest_strategy(model_path, env_class, algo, test_days=90):
         obs, reward, terminated, truncated, info = env.step(action)
         
         portfolio_values.append(info['total_value'])
-        actions_taken.append(int(action))
+        
+        # FIX : Gérer actions continues
+        if hasattr(action, '__iter__') and not isinstance(action, str):
+            action_int = int(action[0]) if len(action) > 0 else 0
+        else:
+            action_int = int(action)
+        
+        actions_taken.append(action_int)
         rewards.append(reward)
         
         if terminated or truncated:
             break
     
-    # ========================================
-    # CALCUL DES MÉTRIQUES
-    # ========================================
-    
+    # Calcul métriques
     df_backtest = pd.DataFrame({
         'portfolio_value': portfolio_values,
         'action': actions_taken,
         'reward': rewards
     })
     
-    # Performance globale
     initial_value = 10000
     final_value = portfolio_values[-1]
     total_return = (final_value - initial_value) / initial_value
     
-    # Returns quotidiens
     df_backtest['returns'] = df_backtest['portfolio_value'].pct_change().fillna(0)
     
-    # Sharpe Ratio (annualisé)
     mean_return = df_backtest['returns'].mean()
     std_return = df_backtest['returns'].std()
     sharpe = (mean_return / std_return) * np.sqrt(252 * 24) if std_return > 0 else 0
     
-    # Max Drawdown
     cumulative = (1 + df_backtest['returns']).cumprod()
     running_max = cumulative.cummax()
     drawdown = (cumulative - running_max) / running_max
     max_drawdown = drawdown.min()
     
-    # Win Rate
     winning_days = (df_backtest['returns'] > 0).sum()
     total_days = len(df_backtest)
     win_rate = winning_days / total_days if total_days > 0 else 0
     
-    # Distribution des actions
     action_counts = df_backtest['action'].value_counts()
     action_dist = {
         'HOLD': action_counts.get(0, 0) / total_days * 100,
@@ -170,13 +206,9 @@ def backtest_strategy(model_path, env_class, algo, test_days=90):
         'SELL': action_counts.get(2, 0) / total_days * 100
     }
     
-    # Volatilité
-    volatility = std_return * np.sqrt(252 * 24)  # Annualisée
-    
-    # Calmar Ratio (Return / Max Drawdown)
+    volatility = std_return * np.sqrt(252 * 24)
     calmar = abs(total_return / max_drawdown) if max_drawdown < 0 else 0
     
-    # Sortino Ratio (downside risk)
     downside_returns = df_backtest['returns'][df_backtest['returns'] < 0]
     downside_std = downside_returns.std()
     sortino = (mean_return / downside_std) * np.sqrt(252 * 24) if downside_std > 0 else 0
@@ -198,7 +230,7 @@ def backtest_strategy(model_path, env_class, algo, test_days=90):
     return results
 
 # ========================================
-# BUY & HOLD BENCHMARK
+# BUY & HOLD
 # ========================================
 
 def calculate_buy_and_hold(csv_path, test_days=90):
@@ -207,20 +239,20 @@ def calculate_buy_and_hold(csv_path, test_days=90):
     df = pd.read_csv(csv_path, index_col=0, parse_dates=True)
     df = df.dropna()
     
-    initial_price = df['Close'].iloc[50]  # Après lookback
+    initial_price = df['Close'].iloc[50]
     final_price = df['Close'].iloc[min(50 + test_days * 24, len(df) - 1)]
     
     buy_hold_return = (final_price - initial_price) / initial_price
     
     return {
         'total_return_pct': buy_hold_return * 100,
-        'sharpe_ratio': 0,  # N/A pour buy&hold
-        'max_drawdown_pct': 0,  # Simplifié
+        'sharpe_ratio': 0,
+        'max_drawdown_pct': 0,
         'strategy': 'Buy & Hold'
     }
 
 # ========================================
-# RAPPORT COMPARATIF
+# RAPPORT
 # ========================================
 
 def generate_report(all_results, buy_hold_result):
@@ -230,7 +262,6 @@ def generate_report(all_results, buy_hold_result):
     report_dir = "reports/benchmarks"
     os.makedirs(report_dir, exist_ok=True)
     
-    # Markdown Report
     md_path = f"{report_dir}/benchmark_{TICKER}_{timestamp}.md"
     
     with open(md_path, 'w') as f:
@@ -242,12 +273,10 @@ def generate_report(all_results, buy_hold_result):
         
         f.write("---\n\n")
         
-        # Tableau comparatif
         f.write("## 🏆 CLASSEMENT DES STRATÉGIES\n\n")
         f.write("| Rang | Stratégie | Return | Sharpe | Max DD | Win Rate | Volatilité |\n")
         f.write("|------|-----------|--------|--------|--------|----------|------------|\n")
         
-        # Trier par Sharpe Ratio
         sorted_results = sorted(all_results.items(), 
                                key=lambda x: x[1]['sharpe_ratio'], 
                                reverse=True)
@@ -261,13 +290,11 @@ def generate_report(all_results, buy_hold_result):
                    f"{res['win_rate_pct']:.1f}% | "
                    f"{res['volatility_pct']:.1f}% |\n")
         
-        # Buy & Hold
         f.write(f"| 📈 | **Buy & Hold** | {buy_hold_result['total_return_pct']:+.2f}% | "
                f"N/A | N/A | N/A | N/A |\n\n")
         
         f.write("---\n\n")
         
-        # Détails par stratégie
         f.write("## 📋 DÉTAILS PAR STRATÉGIE\n\n")
         
         for name, res in sorted_results:
@@ -296,7 +323,6 @@ def generate_report(all_results, buy_hold_result):
         f.write(f"- Sharpe Ratio exceptionnel de **{best[1]['sharpe_ratio']:.2f}**\n")
         f.write(f"- Win Rate de **{best[1]['win_rate_pct']:.1f}%**\n")
     
-    # JSON Export
     json_path = f"{report_dir}/benchmark_{TICKER}_{timestamp}.json"
     
     export_data = {
@@ -320,27 +346,29 @@ def generate_report(all_results, buy_hold_result):
     return md_path
 
 # ========================================
-# MAIN : EXÉCUTION COMPLÈTE
+# MAIN
 # ========================================
 
 def main():
     print("\n" + "="*70)
-    print("🚀 BENCHMARK AUTOMATIQUE DE TOUTES LES STRATÉGIES")
+    print("🚀 BENCHMARK AUTOMATIQUE")
     print("="*70)
     print(f"📊 Ticker : {TICKER}")
-    print(f"🏋️ Training : {TIMESTEPS:,} steps par stratégie")
+    print(f"🏋️ Training : {TIMESTEPS:,} steps")
     print(f"📈 Backtest : 90 jours")
+    print(f"🎯 Stratégies : {len(STRATEGIES)}")
+    print("="*70)
+    
+    for name in STRATEGIES.keys():
+        print(f"  ✅ {STRATEGIES[name]['name']}")
+    
     print("="*70)
     
     all_results = {}
     
-    # 1. Entraîner et backtester chaque stratégie
     for strategy_name, config in STRATEGIES.items():
         try:
-            # Entraîner
             model_path = train_strategy(strategy_name, config)
-            
-            # Backtester
             results = backtest_strategy(model_path, config['env_class'], config['algo'])
             all_results[config['name']] = results
             
@@ -348,19 +376,19 @@ def main():
             
         except Exception as e:
             print(f"\n❌ Erreur {strategy_name} : {e}")
+            import traceback
+            traceback.print_exc()
             continue
     
-    # 2. Buy & Hold benchmark
     buy_hold_result = calculate_buy_and_hold(CSV_PATH)
     print(f"\n📈 Buy & Hold : Return {buy_hold_result['total_return_pct']:+.2f}%")
     
-    # 3. Générer rapport
     report_path = generate_report(all_results, buy_hold_result)
     
     print("\n" + "="*70)
     print("🎉 BENCHMARK TERMINÉ !")
     print("="*70)
-    print(f"\n📄 Consulter le rapport : {report_path}\n")
+    print(f"\n📄 Consulter : {report_path}\n")
 
 if __name__ == "__main__":
     main()
