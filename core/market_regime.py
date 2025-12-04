@@ -1,108 +1,221 @@
 """
-Détecteur de régime de marché automatique
-Analyse SPY pour comprendre le contexte macro
+Sélectionneur d'actifs universel
+Choisit automatiquement les meilleurs assets selon le contexte
 """
 
 import pandas as pd
 import numpy as np
 import yfinance as yf
 from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
-class MarketRegimeDetector:
-    """Détecte automatiquement le régime du marché"""
+class UniversalAssetSelector:
+    """Sélectionne les meilleurs assets selon le régime de marché"""
     
-    def __init__(self):
-        self.regimes = ['BULL', 'BEAR', 'SIDEWAYS', 'HIGH_VOLATILITY']
-        self.current_regime = None
+    # Univers d'investissement étendu (classé par catégorie)
+    UNIVERSE = {
+        'growth_stocks': [
+            'NVDA', 'MSFT', 'GOOGL', 'AMZN', 'META', 'TSLA', 
+            'AMD', 'CRM', 'ADBE', 'NFLX', 'AVGO', 'ORCL'
+        ],
+        'defensive_stocks': [
+            'PG', 'KO', 'JNJ', 'WMT', 'PEP', 'MCD', 'VZ', 'T',
+            'NEE', 'DUK', 'SO', 'AEP'
+        ],
+        'range_bound': [
+            'SPY', 'QQQ', 'IWM', 'DIA', 'XLF', 'XLE', 'XLK', 
+            'XLV', 'XLP', 'XLU'
+        ],
+        'low_beta': [
+            'VZ', 'KO', 'PG', 'JNJ', 'MCD', 'NEE', 'DUK', 'SO',
+            'WMT', 'PEP', 'T', 'AEP'
+        ]
+    }
+    
+    def __init__(self, regime_detector):
+        self.regime_detector = regime_detector
+        self.last_selection = None
+        self.selection_history = []
         
-    def detect(self):
-        """Analyse SPY pour détecter le régime actuel"""
+    def select_assets(self, n_assets=20, lookback_days=90):
+        """
+        Sélectionne les n meilleurs assets
         
-        # Télécharger SPY (indice de référence)
-        spy = yf.download('SPY', period='90d', interval='1d', progress=False)
+        Args:
+            n_assets: Nombre d'assets à sélectionner
+            lookback_days: Période d'analyse
+            
+        Returns:
+            list: Tickers sélectionnés
+        """
         
-        # Calculer métriques
-        returns = spy['Close'].pct_change().dropna()
+        print(f"\n🎯 Sélection de {n_assets} assets...")
         
-        # 1. Tendance (MA courte vs MA longue)
-        ma_20 = spy['Close'].rolling(20).mean().iloc[-1]
-        ma_50 = spy['Close'].rolling(50).mean().iloc[-1]
-        trend = (ma_20 - ma_50) / ma_50
+        # 1. Obtenir régime actuel
+        regime_info = self.regime_detector.detect()
+        regime = regime_info['regime']
+        strategy = self.regime_detector.get_optimal_strategy(regime)
         
-        # 2. Volatilité (écart-type annualisé)
-        volatility = returns.std() * np.sqrt(252)
+        # 2. Filtrer l'univers selon la catégorie
+        category = strategy['asset_selection']
+        candidates = self.UNIVERSE.get(category, self.UNIVERSE['range_bound'])
         
-        # 3. Drawdown actuel
-        cummax = spy['Close'].cummax()
-        drawdown = (spy['Close'].iloc[-1] - cummax.iloc[-1]) / cummax.iloc[-1]
+        print(f"  📊 Catégorie : {category} ({len(candidates)} candidats)")
         
-        # 4. Momentum (performance 30 derniers jours)
-        momentum = (spy['Close'].iloc[-1] - spy['Close'].iloc[-30]) / spy['Close'].iloc[-30]
+        # 3. Scorer chaque asset EN PARALLÈLE
+        scored_assets = self._score_assets_parallel(candidates, regime, lookback_days)
         
-        # LOGIQUE DE DÉTECTION
-        if volatility > 0.30:
-            regime = 'HIGH_VOLATILITY'
-        elif trend > 0.05 and momentum > 0.05:
-            regime = 'BULL'
-        elif trend < -0.05 or drawdown < -0.10:
-            regime = 'BEAR'
-        else:
-            regime = 'SIDEWAYS'
+        # 4. Filtrer les assets avec score nul (pas de données)
+        scored_assets = [a for a in scored_assets if a['score'] > 0]
         
-        self.current_regime = regime
+        if len(scored_assets) == 0:
+            print("⚠️ Aucun asset scoré, fallback sur SPY")
+            return ['SPY']
         
-        return {
+        # 5. Trier et retourner top N
+        df_scores = pd.DataFrame(scored_assets)
+        df_scores = df_scores.sort_values('score', ascending=False).head(n_assets)
+        
+        selected = df_scores['ticker'].tolist()
+        
+        # Affichage
+        print(f"\n  🏆 TOP {len(selected)} ASSETS SÉLECTIONNÉS ({regime}):")
+        for idx, row in df_scores.head(10).iterrows():
+            print(f"    {row['ticker']:6s} → Score: {row['score']:5.1f} | "
+                  f"Perf: {row.get('perf_30d', 0)*100:+5.1f}% | "
+                  f"Sharpe: {row.get('sharpe', 0):4.2f}")
+        
+        # Sauvegarder
+        self.last_selection = {
+            'timestamp': datetime.now().isoformat(),
             'regime': regime,
-            'trend': trend,
-            'volatility': volatility,
-            'drawdown': drawdown,
-            'momentum': momentum,
-            'confidence': self._calculate_confidence(trend, volatility, momentum)
+            'assets': selected,
+            'scores': df_scores.to_dict('records')
         }
+        self.selection_history.append(self.last_selection)
+        
+        return selected
     
-    def _calculate_confidence(self, trend, volatility, momentum):
-        """Score de confiance (0-1) dans la détection"""
+    def _score_assets_parallel(self, candidates, regime, lookback_days):
+        """Score les assets en parallèle pour plus de rapidité"""
         
-        # Plus les signaux sont forts et alignés, plus la confiance est haute
-        signal_strength = abs(trend) + abs(momentum)
+        scored_assets = []
         
-        # Pénaliser si volatilité trop haute (incertitude)
-        confidence = min(signal_strength / (volatility * 2), 1.0)
-        
-        return confidence
-    
-    def get_optimal_strategy(self):
-        """Retourne la stratégie optimale selon le régime"""
-        
-        strategies = {
-            'BULL': {
-                'asset_selection': 'growth_stocks',  # Tech, momentum
-                'position_size': 0.8,                # Agressif
-                'stop_loss': 0.15,                   # Large
-                'take_profit': 0.30,
-                'holding_period': 'long'
-            },
-            'BEAR': {
-                'asset_selection': 'defensive_stocks',  # Utilities, consumer staples
-                'position_size': 0.3,                   # Prudent
-                'stop_loss': 0.05,                      # Serré
-                'take_profit': 0.10,
-                'holding_period': 'short'
-            },
-            'SIDEWAYS': {
-                'asset_selection': 'range_bound',    # Mean reversion
-                'position_size': 0.5,
-                'stop_loss': 0.08,
-                'take_profit': 0.15,
-                'holding_period': 'medium'
-            },
-            'HIGH_VOLATILITY': {
-                'asset_selection': 'low_beta',       # Minimum variance
-                'position_size': 0.2,                # Très prudent
-                'stop_loss': 0.03,
-                'take_profit': 0.05,
-                'holding_period': 'very_short'
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            futures = {
+                executor.submit(self._score_asset, ticker, regime, lookback_days): ticker 
+                for ticker in candidates
             }
-        }
+            
+            for future in as_completed(futures):
+                ticker = futures[future]
+                try:
+                    result = future.result()
+                    if result:
+                        scored_assets.append(result)
+                except Exception as e:
+                    print(f"    ⚠️ Erreur {ticker}: {str(e)[:50]}")
         
-        return strategies.get(self.current_regime, strategies['SIDEWAYS'])
+        return scored_assets
+    
+    def _score_asset(self, ticker, regime, lookback_days):
+        """
+        Score un asset (0-100)
+        
+        Métriques évaluées :
+        - Performance récente (30j)
+        - Volatilité
+        - Sharpe ratio
+        - Volume (liquidité)
+        - Max Drawdown
+        """
+        
+        try:
+            # Télécharger données
+            data = yf.download(
+                ticker, 
+                period=f'{lookback_days}d', 
+                interval='1d', 
+                progress=False
+            )
+            
+            if len(data) < 30:
+                return None
+            
+            # Calculer métriques
+            returns = data['Close'].pct_change().dropna()
+            
+            # 1. Performance récente (30j)
+            perf_30d = (data['Close'].iloc[-1] - data['Close'].iloc[-30]) / data['Close'].iloc[-30]
+            
+            # 2. Volatilité annualisée
+            volatility = returns.std() * np.sqrt(252)
+            
+            # 3. Sharpe ratio
+            sharpe = (returns.mean() / returns.std()) * np.sqrt(252) if returns.std() > 0 else 0
+            
+            # 4. Volume moyen (liquidité)
+            avg_volume = data['Volume'].mean()
+            volume_score = min(avg_volume / 1e6, 20)
+            
+            # 5. Max Drawdown
+            cummax = data['Close'].cummax()
+            drawdowns = (data['Close'] - cummax) / cummax
+            max_drawdown = drawdowns.min()
+            
+            # SCORING ADAPTÉ AU RÉGIME
+            if regime == 'BULL':
+                # Bull : Favoriser momentum fort et Sharpe élevé
+                score = (
+                    max(0, perf_30d * 100) * 0.40 +    # Performance
+                    max(0, sharpe * 10) * 0.40 +        # Sharpe
+                    volume_score * 0.20                  # Liquidité
+                )
+            
+            elif regime == 'BEAR':
+                # Bear : Favoriser faible volatilité, Sharpe positif, faible drawdown
+                score = (
+                    max(0, (1 - volatility) * 50) * 0.30 +  # Anti-volatilité
+                    max(0, sharpe * 10) * 0.40 +             # Sharpe
+                    max(0, (1 + max_drawdown) * 50) * 0.20 + # Résistance DD
+                    volume_score * 0.10
+                )
+            
+            elif regime == 'SIDEWAYS':
+                # Sideways : Équilibré, favoriser Sharpe
+                score = (
+                    abs(perf_30d * 100) * 0.20 +
+                    max(0, sharpe * 10) * 0.50 +
+                    volume_score * 0.30
+                )
+            
+            else:  # HIGH_VOLATILITY
+                # High Vol : Minimum variance, liquidité maximale
+                score = (
+                    max(0, (1 - volatility) * 100) * 0.60 +
+                    volume_score * 0.40
+                )
+            
+            score = max(0, min(score, 100))
+            
+            return {
+                'ticker': ticker,
+                'score': score,
+                'perf_30d': perf_30d,
+                'volatility': volatility,
+                'sharpe': sharpe,
+                'volume': avg_volume,
+                'max_drawdown': max_drawdown
+            }
+            
+        except Exception as e:
+            # Si erreur, retourner None (sera filtré)
+            return None
+    
+    def save_history(self, filepath='data/selection_history.json'):
+        """Sauvegarde l'historique des sélections"""
+        if len(self.selection_history) > 0:
+            import json
+            with open(filepath, 'w') as f:
+                json.dump(self.selection_history, f, indent=2)
+            print(f"💾 Historique sélection sauvegardé : {filepath}")

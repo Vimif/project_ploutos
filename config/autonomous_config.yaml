@@ -1,0 +1,29 @@
+# Configuration du Système Autonome
+# Modifie ces valeurs selon tes besoins
+
+market:
+  reference_ticker: "SPY"        # Ticker de référence pour régime
+  lookback_days: 90              # Période d'analyse
+
+assets:
+  n_assets: 10                   # Nombre d'assets à trader
+  min_volume: 1000000            # Volume minimum
+
+optimization:
+  n_trials: 50                   # Nombre d'essais Optuna
+  n_jobs: 1                      # Parallélisation (-1 = tous CPUs)
+  timeout: null                  # Timeout en secondes (null = illimité)
+
+training:
+  timesteps: 2000000             # Steps d'entraînement
+  n_envs: 16                     # Environnements parallèles
+  device: "cuda"                 # "cuda" ou "cpu"
+
+validation:
+  min_sharpe: 1.5                # Sharpe minimum pour déploiement
+  test_days: 90                  # Période de backtest
+
+continuous_learning:
+  frequency: "weekly"            # "daily", "weekly", "monthly"
+  min_new_data: 50               # Minimum nouvelles bougies
+  fine_tune_steps: 500000        # Steps pour fine-tuning
