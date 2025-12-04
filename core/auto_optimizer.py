@@ -79,6 +79,7 @@ class AutoOptimizer:
         Fonction objectif pour Optuna
         Retourne le Sharpe Ratio moyen sur tous les tickers
         """
+        print(f"\n🔬 Trial #{trial.number} démarré...")
         
         # Suggérer des hyper-paramètres
         params = {
@@ -122,6 +123,8 @@ class AutoOptimizer:
         trial.report(mean_sharpe, step=0)
         if trial.should_prune():
             raise optuna.TrialPruned()
+        
+        print(f"✅ Trial #{trial.number} : Sharpe = {mean_sharpe:.3f}")
         
         return mean_sharpe
     
