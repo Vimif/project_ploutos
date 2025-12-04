@@ -49,6 +49,9 @@ class UniversalDataFetcher:
             # Créer client
             client = StockHistoricalDataClient(api_key, api_secret)
             
+            print("  ✅ Alpaca connecté (alpaca-py)")
+            return client
+            
             # Test de connexion
             test_request = StockBarsRequest(
                 symbol_or_symbols="SPY",
@@ -56,9 +59,6 @@ class UniversalDataFetcher:
                 start=datetime.now() - timedelta(days=2)
             )
             client.get_stock_bars(test_request)
-            
-            print("  ✅ Alpaca connecté (alpaca-py)")
-            return client
             
         except ImportError:
             print("  ⚠️ alpaca-py non installé (pip install alpaca-py)")
