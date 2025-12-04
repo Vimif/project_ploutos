@@ -32,11 +32,13 @@ class UniversalDataFetcher:
         print(f"📡 Data Fetcher initialisé : {', '.join(self.sources)}")
         
     def _init_alpaca(self):
-        """Initialise Alpaca (données gratuites et illimitées)"""
+        """Initialise Alpaca avec la nouvelle API alpaca-py"""
         try:
-            import alpaca_trade_api as tradeapi
+            from alpaca.data.historical import StockHistoricalDataClient
+            from alpaca.data.requests import StockBarsRequest
+            from alpaca.data.timeframe import TimeFrame
+            from datetime import datetime, timedelta
             
-            # Récupérer les clés depuis variables d'environnement
             api_key = os.getenv('ALPACA_API_KEY')
             api_secret = os.getenv('ALPACA_SECRET_KEY')
             
@@ -44,23 +46,27 @@ class UniversalDataFetcher:
                 print("⚠️ Variables ALPACA_API_KEY/SECRET non définies")
                 return None
             
-            api = tradeapi.REST(
-                key_id=api_key,
-                secret_key=api_secret,
-                base_url='https://paper-api.alpaca.markets'
-            )
+            # Créer client
+            client = StockHistoricalDataClient(api_key, api_secret)
             
             # Test de connexion
-            api.get_account()
-            print("  ✅ Alpaca connecté")
-            return api
+            test_request = StockBarsRequest(
+                symbol_or_symbols="SPY",
+                timeframe=TimeFrame.Day,
+                start=datetime.now() - timedelta(days=2)
+            )
+            client.get_stock_bars(test_request)
+            
+            print("  ✅ Alpaca connecté (alpaca-py)")
+            return client
             
         except ImportError:
-            print("  ⚠️ alpaca-trade-api non installé (pip install alpaca-trade-api)")
+            print("  ⚠️ alpaca-py non installé (pip install alpaca-py)")
             return None
         except Exception as e:
             print(f"  ⚠️ Alpaca échec : {str(e)[:50]}")
             return None
+
     
     def _init_polygon(self):
         """Initialise Polygon.io (optionnel, payant mais excellent)"""
@@ -147,26 +153,55 @@ class UniversalDataFetcher:
         raise ValueError(f"❌ Impossible de récupérer {ticker} depuis aucune source")
     
     def _fetch_alpaca(self, ticker, start_date, end_date, interval):
-        """Récupère depuis Alpaca (ILLIMITÉ et GRATUIT)"""
+        """Récupère depuis Alpaca (nouvelle API alpaca-py)"""
+        from alpaca.data.requests import StockBarsRequest
+        from alpaca.data.timeframe import TimeFrame
+        from datetime import datetime
         
-        # Conversion interval
+        # Mapping interval
         timeframe_map = {
-            '1m': '1Min', '5m': '5Min', '15m': '15Min', '30m': '30Min',
-            '1h': '1Hour', '4h': '4Hour', '1d': '1Day'
+            '1m': TimeFrame.Minute,
+            '5m': TimeFrame(5, "Min"),
+            '15m': TimeFrame(15, "Min"),
+            '30m': TimeFrame(30, "Min"),
+            '1h': TimeFrame.Hour,
+            '4h': TimeFrame(4, "Hour"),
+            '1d': TimeFrame.Day
         }
-        timeframe = timeframe_map.get(interval, '1Hour')
+        timeframe = timeframe_map.get(interval, TimeFrame.Hour)
         
-        # Requête Alpaca v2 API
-        bars = self.alpaca_api.get_bars(
-            ticker,
-            timeframe,
-            start=start_date,
-            end=end_date,
-            adjustment='all',  # Ajusté pour splits/dividendes
-            limit=10000
-        ).df
+        # Convertir dates en datetime
+        if isinstance(start_date, str):
+            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+        else:
+            start_dt = start_date
         
-        return bars
+        if isinstance(end_date, str):
+            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+        else:
+            end_dt = end_date
+        
+        # Requête
+        request = StockBarsRequest(
+            symbol_or_symbols=ticker,
+            timeframe=timeframe,
+            start=start_dt,
+            end=end_dt
+        )
+        
+        bars = self.alpaca_api.get_stock_bars(request)
+        
+        # Convertir en DataFrame
+        df = bars.df
+        
+        # Si MultiIndex (plusieurs symboles), extraire le ticker
+        if isinstance(df.index, pd.MultiIndex):
+            df = df.xs(ticker, level='symbol')
+        
+        # Renommer colonnes pour uniformité
+        df.columns = [col.title() for col in df.columns]
+        
+        return df
     
     def _fetch_yfinance(self, ticker, start_date, end_date, interval):
         """Récupère depuis yfinance (fallback universel)"""

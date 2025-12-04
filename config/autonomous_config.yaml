@@ -29,8 +29,8 @@ continuous_learning:
   fine_tune_steps: 500000        # Steps pour fine-tuning
 
 market_scan:
-  enabled: false              # true = scanner tout le marché
-  min_market_cap: 1000000000  # 1 milliard $ minimum
-  min_volume: 1000000         # 1 million volume/jour
-  max_stocks: 500             # Limiter à top 500 pour vitesse
-  cache_results: true         # Sauvegarder les résultats
+  enabled: true              # ✅ ACTIVER ICI
+  min_market_cap: 1000000000  # 1 milliard
+  min_volume: 1000000         # 1 million
+  max_stocks: 500             # Top 500 pour vitesse
+  cache_results: true
