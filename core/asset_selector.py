@@ -21,7 +21,7 @@ class UniversalAssetSelector:
     def __init__(self, regime_detector):
         self.regime_detector = regime_detector
         
-    def select_assets(self, n_assets=20):
+    def select_assets(self, n_assets=20, lookback_days=90):
         """Sélectionne les n meilleurs assets"""
         
         # 1. Obtenir régime actuel
