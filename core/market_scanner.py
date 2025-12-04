@@ -90,36 +90,54 @@ class MarketScanner:
     def _get_all_us_stocks(self):
         """
         Récupère la liste complète des actions US tradables
-        
-        Sources :
-        1. Alpaca universe (si disponible)
-        2. NASDAQ Screener API (fallback)
-        3. Liste hardcodée (dernier recours)
         """
         
         tickers = []
         
-        # Méthode 1 : Alpaca Universe (le plus fiable)
+        # Méthode 1 : Alpaca Universe (si disponible)
         if self.fetcher and self.fetcher.alpaca_api:
             try:
                 print("  Tentative Alpaca...")
-                assets = self.fetcher.alpaca_api.list_assets(
-                    status='active',
-                    asset_class='us_equity'
-                )
                 
-                alpaca_tickers = [
-                    a.symbol for a in assets 
-                    if a.tradable and a.fractionable and not a.symbol.startswith('$')
-                ]
+                # IMPORTANT : Alpaca-py utilise un client différent pour la liste d'assets
+                from alpaca.trading.client import TradingClient
                 
-                tickers.extend(alpaca_tickers)
-                print(f"    ✅ Alpaca : {len(alpaca_tickers)} actions")
+                # Récupérer les clés
+                import os
+                api_key = os.getenv('ALPACA_API_KEY')
+                api_secret = os.getenv('ALPACA_SECRET_KEY')
                 
+                if api_key and api_secret:
+                    # Créer un client TRADING (pas data) pour list_assets
+                    trading_client = TradingClient(api_key, api_secret, paper=True)
+                    
+                    # Récupérer tous les assets US
+                    from alpaca.trading.requests import GetAssetsRequest
+                    from alpaca.trading.enums import AssetClass, AssetStatus
+                    
+                    request = GetAssetsRequest(
+                        asset_class=AssetClass.US_EQUITY,
+                        status=AssetStatus.ACTIVE
+                    )
+                    
+                    assets = trading_client.get_all_assets(request)
+                    
+                    alpaca_tickers = [
+                        a.symbol for a in assets 
+                        if a.tradable and a.fractionable and not a.symbol.startswith('$')
+                    ]
+                    
+                    tickers.extend(alpaca_tickers)
+                    print(f"    ✅ Alpaca : {len(alpaca_tickers)} actions")
+                else:
+                    print("    ⚠️ Clés Alpaca non configurées")
+                    
+            except ImportError:
+                print("    ⚠️ alpaca-py non installé (pip install alpaca-py)")
             except Exception as e:
                 print(f"    ⚠️ Alpaca échec : {str(e)[:50]}")
         
-        # Méthode 2 : NASDAQ Screener (API publique)
+        # Méthode 2 : NASDAQ Screener (fallback - fonctionne sans API)
         if len(tickers) == 0:
             try:
                 print("  Tentative NASDAQ Screener...")
@@ -148,14 +166,13 @@ class MarketScanner:
             except Exception as e:
                 print(f"    ⚠️ NASDAQ Screener échec : {str(e)[:50]}")
         
-        # Méthode 3 : Liste Top 500 hardcodée (dernier recours)
+        # Méthode 3 : Liste hardcodée (dernier recours)
         if len(tickers) == 0:
             print("  Fallback : Liste SP500 + NASDAQ100...")
             tickers = self._get_hardcoded_universe()
             print(f"    ✅ Liste hardcodée : {len(tickers)} actions")
         
         # Nettoyage
-        # Retirer les ETFs, warrants, préférées, etc.
         tickers = [
             t for t in tickers 
             if '-' not in t and '.' not in t and '^' not in t 
