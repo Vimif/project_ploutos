@@ -86,7 +86,7 @@ class Trainer:
             logger.info("🤖 Création du modèle PPO...")
             device = 'cuda' if USE_GPU else 'cpu'
             policy_kwargs = dict(
-            net_arch=dict(pi=[256, 256, 256], vf=[256, 256, 256]))
+            net_arch=dict(pi=[512, 512, 512], vf=[512, 512, 512]))
 
             model = PPO(
                 "MlpPolicy",

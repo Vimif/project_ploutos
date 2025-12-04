@@ -42,12 +42,12 @@ if IS_WSL or 'BBC' in HOSTNAME.lower():
     ROLE = "TRAINING"
     USE_GPU = True
     TRAINING_CONFIG = {
-        'n_envs': 32,
+        'n_envs': 64,
         'total_timesteps': 5_000_000,
         'eval_freq': 50_000,
         'n_eval_episodes': 5,
         'learning_rate': 3e-4,
-        'n_steps': 4096,
+        'n_steps': 8192,
         'batch_size': 4096,
         'n_epochs': 10,
         'gamma': 0.99,
