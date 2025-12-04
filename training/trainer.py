@@ -8,6 +8,10 @@ from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.callbacks import CheckpointCallback
 from wandb.integration.sb3 import WandbCallback
 import wandb
+import warnings
+
+warnings.filterwarnings("ignore", category=UserWarning, module="gym")
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 # Import du projet
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

@@ -1,5 +1,5 @@
 import gymnasium as gym
-from gymnasium import spaces
+from gym import spaces
 import numpy as np
 import pandas as pd
 import yfinance as yf
