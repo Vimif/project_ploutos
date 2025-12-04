@@ -102,7 +102,7 @@ class Trainer:
                 max_grad_norm=self.config['max_grad_norm'],
                 verbose=0,
                 tensorboard_log=f"./tensorboard/{ticker}",
-                device=device
+                device=device,
                 policy_kwargs=policy_kwargs
             )
             
