@@ -1,5 +1,5 @@
 """
-Benchmark automatique - VERSION CORRIGÉE
+Benchmark automatique - VERSION ROBUSTE
 """
 
 import sys
@@ -22,6 +22,7 @@ try:
     HAS_SHARPE = True
 except ImportError:
     HAS_SHARPE = False
+    print("⚠️ TradingEnvSharpe non disponible")
 
 try:
     from core.environment_continuous import TradingEnvContinuous
@@ -29,12 +30,14 @@ try:
     HAS_SAC = True
 except ImportError:
     HAS_SAC = False
+    print("⚠️ SAC non disponible")
 
 try:
     from core.environment_multitimeframe import TradingEnvMultiTimeframe
     HAS_MULTI = True
 except ImportError:
     HAS_MULTI = False
+    print("⚠️ MultiTimeframe non disponible")
 
 # ========================================
 # CONFIGURATION
@@ -42,7 +45,7 @@ except ImportError:
 
 TICKER = "NVDA"
 CSV_PATH = f"data_cache/{TICKER}.csv"
-N_ENVS = 32
+N_ENVS = 16  # Réduit pour éviter connection reset
 TIMESTEPS = 1_000_000
 
 # Construction dynamique
@@ -97,7 +100,6 @@ def train_strategy(strategy_name, config):
     
     policy_kwargs = dict(net_arch=dict(pi=[512, 512, 512], vf=[512, 512, 512]))
     
-    # Paramètres adaptés selon l'algo
     if config['algo'] == PPO:
         model = PPO(
             "MlpPolicy",
@@ -105,8 +107,8 @@ def train_strategy(strategy_name, config):
             verbose=1,
             device="cuda",
             learning_rate=1e-4,
-            batch_size=4096,
-            n_steps=2048,
+            batch_size=2048,  # Réduit
+            n_steps=1024,      # Réduit
             n_epochs=10,
             policy_kwargs=policy_kwargs
         )
@@ -117,7 +119,7 @@ def train_strategy(strategy_name, config):
             verbose=1,
             device="cuda",
             learning_rate=3e-4,
-            buffer_size=100_000,
+            buffer_size=50_000,  # Réduit
             batch_size=256,
             tau=0.005,
             gamma=0.99,
@@ -161,7 +163,7 @@ def backtest_strategy(model_path, env_class, algo, test_days=90):
         
         portfolio_values.append(info['total_value'])
         
-        # FIX : Gérer actions continues
+        # Gérer actions continues
         if hasattr(action, '__iter__') and not isinstance(action, str):
             action_int = int(action[0]) if len(action) > 0 else 0
         else:
@@ -258,6 +260,11 @@ def calculate_buy_and_hold(csv_path, test_days=90):
 def generate_report(all_results, buy_hold_result):
     """Génère rapport Markdown + JSON"""
     
+    # FIX : Vérifier qu'il y a des résultats
+    if len(all_results) == 0:
+        print("\n⚠️ Aucun résultat à afficher (tous les entraînements ont échoué)")
+        return None
+    
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     report_dir = "reports/benchmarks"
     os.makedirs(report_dir, exist_ok=True)
@@ -269,13 +276,13 @@ def generate_report(all_results, buy_hold_result):
         f.write(f"**Date** : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
         f.write(f"**Ticker** : {TICKER}\n")
         f.write(f"**Training Steps** : {TIMESTEPS:,}\n")
-        f.write(f"**Test Period** : 90 jours (2160 heures)\n\n")
+        f.write(f"**Test Period** : 90 jours\n\n")
         
         f.write("---\n\n")
         
         f.write("## 🏆 CLASSEMENT DES STRATÉGIES\n\n")
-        f.write("| Rang | Stratégie | Return | Sharpe | Max DD | Win Rate | Volatilité |\n")
-        f.write("|------|-----------|--------|--------|--------|----------|------------|\n")
+        f.write("| Rang | Stratégie | Return | Sharpe | Max DD | Win Rate |\n")
+        f.write("|------|-----------|--------|--------|--------|----------|\n")
         
         sorted_results = sorted(all_results.items(), 
                                key=lambda x: x[1]['sharpe_ratio'], 
@@ -287,62 +294,27 @@ def generate_report(all_results, buy_hold_result):
                    f"{res['total_return_pct']:+.2f}% | "
                    f"{res['sharpe_ratio']:.2f} | "
                    f"{res['max_drawdown_pct']:.2f}% | "
-                   f"{res['win_rate_pct']:.1f}% | "
-                   f"{res['volatility_pct']:.1f}% |\n")
+                   f"{res['win_rate_pct']:.1f}% |\n")
         
-        f.write(f"| 📈 | **Buy & Hold** | {buy_hold_result['total_return_pct']:+.2f}% | "
-               f"N/A | N/A | N/A | N/A |\n\n")
+        f.write(f"| 📈 | **Buy & Hold** | {buy_hold_result['total_return_pct']:+.2f}% | N/A | N/A | N/A |\n\n")
         
         f.write("---\n\n")
-        
-        f.write("## 📋 DÉTAILS PAR STRATÉGIE\n\n")
+        f.write("## 📋 DÉTAILS\n\n")
         
         for name, res in sorted_results:
             f.write(f"### {name}\n\n")
-            f.write(f"- **Return Total** : {res['total_return_pct']:+.2f}%\n")
-            f.write(f"- **Sharpe Ratio** : {res['sharpe_ratio']:.2f}\n")
-            f.write(f"- **Sortino Ratio** : {res['sortino_ratio']:.2f}\n")
-            f.write(f"- **Calmar Ratio** : {res['calmar_ratio']:.2f}\n")
-            f.write(f"- **Max Drawdown** : {res['max_drawdown_pct']:.2f}%\n")
-            f.write(f"- **Win Rate** : {res['win_rate_pct']:.1f}%\n")
-            f.write(f"- **Volatilité** : {res['volatility_pct']:.1f}%\n")
-            f.write(f"- **Valeur Finale** : ${res['final_value']:,.2f}\n")
-            f.write(f"- **Reward Moyen** : {res['avg_reward']:.4f}\n\n")
-            
-            f.write(f"**Distribution Actions** :\n")
-            for action, pct in res['action_distribution'].items():
-                f.write(f"- {action} : {pct:.1f}%\n")
-            f.write("\n")
+            f.write(f"- Return : {res['total_return_pct']:+.2f}%\n")
+            f.write(f"- Sharpe : {res['sharpe_ratio']:.2f}\n")
+            f.write(f"- Win Rate : {res['win_rate_pct']:.1f}%\n\n")
+            f.write(f"**Actions** : HOLD {res['action_distribution']['HOLD']:.0f}%, "
+                   f"BUY {res['action_distribution']['BUY']:.0f}%, "
+                   f"SELL {res['action_distribution']['SELL']:.0f}%\n\n")
         
         f.write("---\n\n")
-        f.write("## 🎯 RECOMMANDATION\n\n")
-        
         best = sorted_results[0]
-        f.write(f"**Meilleure stratégie** : **{best[0]}**\n\n")
-        f.write(f"- Surperforme le Buy & Hold de **{best[1]['total_return_pct'] - buy_hold_result['total_return_pct']:+.2f}%**\n")
-        f.write(f"- Sharpe Ratio exceptionnel de **{best[1]['sharpe_ratio']:.2f}**\n")
-        f.write(f"- Win Rate de **{best[1]['win_rate_pct']:.1f}%**\n")
+        f.write(f"**Meilleure** : {best[0]} (Sharpe {best[1]['sharpe_ratio']:.2f})\n")
     
-    json_path = f"{report_dir}/benchmark_{TICKER}_{timestamp}.json"
-    
-    export_data = {
-        'metadata': {
-            'ticker': TICKER,
-            'timestamp': timestamp,
-            'training_steps': TIMESTEPS,
-            'test_days': 90
-        },
-        'results': all_results,
-        'buy_hold': buy_hold_result
-    }
-    
-    with open(json_path, 'w') as f:
-        json.dump(export_data, f, indent=2)
-    
-    print(f"\n✅ Rapport généré :")
-    print(f"   📄 Markdown : {md_path}")
-    print(f"   📊 JSON : {json_path}")
-    
+    print(f"\n✅ Rapport : {md_path}")
     return md_path
 
 # ========================================
@@ -354,10 +326,7 @@ def main():
     print("🚀 BENCHMARK AUTOMATIQUE")
     print("="*70)
     print(f"📊 Ticker : {TICKER}")
-    print(f"🏋️ Training : {TIMESTEPS:,} steps")
-    print(f"📈 Backtest : 90 jours")
     print(f"🎯 Stratégies : {len(STRATEGIES)}")
-    print("="*70)
     
     for name in STRATEGIES.keys():
         print(f"  ✅ {STRATEGIES[name]['name']}")
@@ -388,7 +357,9 @@ def main():
     print("\n" + "="*70)
     print("🎉 BENCHMARK TERMINÉ !")
     print("="*70)
-    print(f"\n📄 Consulter : {report_path}\n")
+    
+    if report_path:
+        print(f"\n📄 Rapport : {report_path}\n")
 
 if __name__ == "__main__":
     main()
