@@ -255,18 +255,41 @@ class AutonomousTradingSystem:
         
         for ticker in missing:
             try:
-                print(f"    {ticker}...", end=' ')
+                print(f"    {ticker}...", end=' ', flush=True)
+                
+                # Télécharger
                 data = yf.download(ticker, period='730d', interval='1h', progress=False)
                 
-                if isinstance(data.columns, pd.MultiIndex):
-                    data = data.xs(ticker, axis=1, level=1)
+                # Vérifier si données vides
+                if data.empty or len(data) < 100:
+                    print("❌ (pas de données)")
+                    continue
                 
+                # Si MultiIndex (plusieurs tickers), extraire le bon
+                if isinstance(data.columns, pd.MultiIndex):
+                    # Chercher le ticker dans les colonnes
+                    if ticker in data.columns.get_level_values(1):
+                        data = data.xs(ticker, axis=1, level=1)
+                    else:
+                        # Prendre la première colonne disponible
+                        data = data.iloc[:, :5]  # Prendre OHLCV
+                        data.columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+                
+                # Vérifier qu'on a bien les colonnes nécessaires
+                required_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
+                if not all(col in data.columns for col in required_cols):
+                    print(f"❌ (colonnes manquantes: {data.columns.tolist()})")
+                    continue
+                
+                # Sauvegarder
                 data.to_csv(f"data_cache/{ticker}.csv")
-                print("✅")
+                print(f"✅ ({len(data)} bougies)")
                 
             except Exception as e:
                 print(f"❌ ({str(e)[:30]})")
-    
+
+        print()
+        
     def _default_params(self):
         """Paramètres par défaut si skip optimization"""
         return {
