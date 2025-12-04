@@ -85,7 +85,9 @@ class Trainer:
             # Créer modèle
             logger.info("🤖 Création du modèle PPO...")
             device = 'cuda' if USE_GPU else 'cpu'
-            
+            policy_kwargs = dict(
+            net_arch=dict(pi=[256, 256, 256], vf=[256, 256, 256]))
+
             model = PPO(
                 "MlpPolicy",
                 base_env,
@@ -101,6 +103,7 @@ class Trainer:
                 verbose=0,
                 tensorboard_log=f"./tensorboard/{ticker}",
                 device=device
+                policy_kwargs=policy_kwargs
             )
             
             # Callbacks

@@ -38,17 +38,17 @@ for d in [MODELS_DIR, LOGS_DIR, TRADES_DIR]:
 N_FEATURES = 30
 
 # Training Config
-if IS_WSL or 'tower' in HOSTNAME.lower():
+if IS_WSL or 'BBC' in HOSTNAME.lower():
     ROLE = "TRAINING"
     USE_GPU = True
     TRAINING_CONFIG = {
-        'n_envs': 8,
+        'n_envs': 32,
         'total_timesteps': 5_000_000,
         'eval_freq': 50_000,
         'n_eval_episodes': 5,
         'learning_rate': 3e-4,
-        'n_steps': 2048,
-        'batch_size': 64,
+        'n_steps': 4096,
+        'batch_size': 4096,
         'n_epochs': 10,
         'gamma': 0.99,
         'gae_lambda': 0.95,
