@@ -13,20 +13,30 @@ class TradingEnvMultiTimeframe(gym.Env):
     def __init__(self, csv_path=None, ticker=None, initial_balance=10000, lookback_window=50):
         super(TradingEnvMultiTimeframe, self).__init__()
         
-        # CHARGEMENT DONNÉES HORAIRES
+        # CHARGEMENT DONNÉES HORAIRES ROBUSTE
         if csv_path and os.path.exists(csv_path):
             try:
-                self.df = pd.read_csv(csv_path, index_col=0, parse_dates=True)
-                # FIX : Retirer timezone
+                # 1. Lecture brute sans parser les dates au début
+                self.df = pd.read_csv(csv_path, index_col=0)
+                
+                # 2. Forcer l'index en Datetime
+                self.df.index = pd.to_datetime(self.df.index, utc=True)
+                
+                # 3. Nettoyer Timezone
                 if self.df.index.tz is not None:
                     self.df.index = self.df.index.tz_localize(None)
                 
-                # Extraire ticker name du path
-                ticker_name = os.path.basename(csv_path).replace(".csv", "")
+                # 4. Forcer les colonnes en numérique (au cas où c'est des strings)
+                for col in ['Open', 'High', 'Low', 'Close', 'Volume']:
+                    if col in self.df.columns:
+                        self.df[col] = pd.to_numeric(self.df[col], errors='coerce')
+                
+                self.df = self.df.dropna()
+                
             except Exception as e:
                 raise ValueError(f"Erreur lecture CSV {csv_path}: {e}")
+                
         elif ticker:
-            ticker_name = ticker
             print(f"⚠️ Téléchargement {ticker}...")
             self.df = yf.download(ticker, period="730d", interval="1h", auto_adjust=True, progress=False)
             if isinstance(self.df.columns, pd.MultiIndex):
@@ -36,18 +46,15 @@ class TradingEnvMultiTimeframe(gym.Env):
         else:
             raise ValueError("Doit recevoir 'csv_path' ou 'ticker'")
         
-        self.df = self.df.dropna()
-        
-        # AJOUT : Indicateurs techniques (comme baseline)
+        # AJOUT : Indicateurs techniques
         self.df['RSI'] = self._calculate_rsi(self.df['Close'])
         self.df['MACD'], self.df['MACD_signal'] = self._calculate_macd(self.df['Close'])
         self.df['BB_upper'], self.df['BB_lower'] = self._calculate_bollinger_bands(self.df['Close'])
         self.df['EMA_20'] = self.df['Close'].ewm(span=20).mean()
         self.df = self.df.dropna()
         
-        # NOUVEAU : Données DAILY simplifiées
-        # Au lieu de télécharger, on agrège les données horaires
-        print(f"📊 Agrégation données daily...")
+        # NOUVEAU : Données DAILY simplifiées (Agrégation)
+        # print(f"📊 Agrégation données daily...")
         df_daily = self.df.resample('D').agg({
             'Open': 'first',
             'High': 'max',
@@ -62,16 +69,13 @@ class TradingEnvMultiTimeframe(gym.Env):
         )
         self.df = self.df.dropna()
         
-        print(f"✅ {len(self.df)} bougies horaires chargées avec contexte daily")
-        
         if len(self.df) < lookback_window + 10:
-            raise ValueError(f"Pas assez de données: {len(self.df)} lignes (min {lookback_window + 10})")
+            raise ValueError(f"Pas assez de données: {len(self.df)} lignes")
         
         self.initial_balance = initial_balance
         self.lookback_window = lookback_window
         
-        # Observation space : OHLCV + indicateurs + daily close + portfolio
-        # 5 (OHLCV) + 5 (indicateurs) + 1 (daily) = 11 features × 50 steps + 3 portfolio
+        # Obs: 11 features * window + 3 portfolio
         obs_size = 11 * lookback_window + 3
         
         self.observation_space = spaces.Box(
@@ -102,72 +106,51 @@ class TradingEnvMultiTimeframe(gym.Env):
         
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
-        
         self.balance = self.initial_balance
         self.shares = 0
         self.current_step = self.lookback_window
-        
         return self._next_observation(), {}
     
     def _next_observation(self):
-        """Observation avec données horaires + indicateurs + daily"""
-        
         frame = self.df.iloc[self.current_step - self.lookback_window:self.current_step]
-        
-        # Features : OHLCV + indicateurs + daily close
         features = ['Open', 'High', 'Low', 'Close', 'Volume', 
                    'RSI', 'MACD', 'MACD_signal', 'BB_upper', 'BB_lower', 
                    'Close_daily']
-        
         obs = frame[features].values.flatten()
-        
-        # Normalisation
         current_close = frame['Close'].iloc[-1] + 1e-8
         obs = obs / current_close
         
-        # Portfolio state
         current_price = self.df.iloc[self.current_step]['Close']
         portfolio_state = np.array([
             self.balance / self.initial_balance,
             (self.shares * current_price) / self.initial_balance,
             current_price / 1000.0
         ])
-        
         return np.concatenate([obs, portfolio_state]).astype(np.float32)
     
     def step(self, action):
-        """Step standard"""
-        
         current_price = self.df.iloc[self.current_step]['Close']
         prev_value = self.balance + self.shares * current_price
         
-        # Actions
         if action == 1:  # BUY
             shares_to_buy = int(self.balance // current_price)
             if shares_to_buy > 0:
                 self.shares += shares_to_buy
                 self.balance -= shares_to_buy * current_price
-                
         elif action == 2:  # SELL
             if self.shares > 0:
                 self.balance += self.shares * current_price
                 self.shares = 0
         
-        # Avancer
         self.current_step += 1
         new_price = self.df.iloc[self.current_step]['Close']
         current_value = self.balance + self.shares * new_price
         
-        # Reward
         reward = (current_value - prev_value) / (prev_value + 1e-8)
         
-        # Bonus diversification
-        if action != 0:
-            reward += 0.0005
-        else:
-            reward -= 0.0002
+        if action != 0: reward += 0.0005
+        else: reward -= 0.0002
         
-        # Fin
         terminated = False
         if self.current_step >= len(self.df) - 1:
             terminated = True
@@ -178,14 +161,4 @@ class TradingEnvMultiTimeframe(gym.Env):
             terminated = True
             reward = -10.0
         
-        truncated = False
-        info = {"total_value": float(current_value)}
-        
-        return self._next_observation(), reward, terminated, truncated, info
-    
-    def render(self, mode='human'):
-        if self.current_step < len(self.df):
-            current_price = self.df.iloc[self.current_step]['Close']
-            total_value = self.balance + self.shares * current_price
-            pnl = ((total_value - self.initial_balance) / self.initial_balance) * 100
-            print(f"Step {self.current_step} | Value: ${total_value:.2f} | P&L: {pnl:+.2f}%")
+        return self._next_observation(), reward, terminated, False, {"total_value": float(current_value)}
