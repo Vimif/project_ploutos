@@ -1,199 +1,154 @@
-# training/trainer.py
-"""Module d'entraînement des modèles"""
-import warnings
-warnings.filterwarnings('ignore')
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import wandb
+import pandas as pd
+import yfinance as yf
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor
-from stable_baselines3.common.callbacks import EvalCallback
+from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
+from stable_baselines3.common.callbacks import CheckpointCallback
+from core.environment import TradingEnv
+from config.settings import TRAINING_CONFIG, WANDB_CONFIG, USE_GPU
+import wandb
 from wandb.integration.sb3 import WandbCallback
 
-from config.settings import TRAINING_CONFIG, WANDB_CONFIG, USE_GPU
-from config.tickers import ALL_TICKERS
-from core.environment import TradingEnv
-from core.models import ModelManager
-from core.utils import setup_logging, cleanup_resources, get_gpu_info, format_duration
-
-import time
-from datetime import datetime
-
-logger = setup_logging(__name__, 'training.log')
-
-class Trainer:
-    """Entraîneur de modèles IA pour trading"""
+def download_and_cache_data(ticker, data_dir="data_cache"):
+    """Télécharge et met en cache les données une seule fois"""
+    os.makedirs(data_dir, exist_ok=True)
+    file_path = f"{data_dir}/{ticker}.csv"
     
-    def __init__(self, config=None):
-        self.config = config or TRAINING_CONFIG
-        self.model_manager = ModelManager()
-        
-        # Info GPU
-        gpu_info = get_gpu_info()
-        if gpu_info['available']:
-            logger.info(f"🎮 GPU: {gpu_info['name']}")
-        else:
-            logger.info("⚠️  Pas de GPU, utilisation CPU")
+    # Vérifier si le fichier existe et n'est pas trop vieux (< 7 jours)
+    if os.path.exists(file_path):
+        file_age = (pd.Timestamp.now() - pd.Timestamp(os.path.getmtime(file_path), unit='s')).days
+        if file_age < 7:
+            print(f"📂 Utilisation du cache local pour {ticker} (age: {file_age} jours)")
+            return file_path
     
-    def make_env(self, ticker, rank=0):
-        """Factory pour créer un environnement"""
-        def _init():
-            return TradingEnv(ticker)
-        return _init
+    # Télécharger les données
+    print(f"📥 Téléchargement des données pour {ticker} (5 ans, hourly)...")
+    try:
+        df = yf.download(ticker, period="5y", interval="1h", auto_adjust=True, progress=False)
+        
+        if df.empty:
+            print(f"❌ Pas de données pour {ticker}")
+            return None
+            
+        # Nettoyer si MultiIndex
+        if isinstance(df.columns, pd.MultiIndex):
+            df = df.xs(ticker, axis=1, level=1)
+        
+        df.to_csv(file_path)
+        print(f"✅ Données sauvegardées : {file_path} ({len(df)} lignes)")
+        return file_path
+        
+    except Exception as e:
+        print(f"❌ Erreur téléchargement {ticker}: {e}")
+        return None
+
+def train_model(ticker, timesteps=5_000_000):
+    """Entraîne un modèle PPO pour un ticker spécifique"""
     
-    def train_single_ticker(self, ticker: str, run_name: str = None):
-        """
-        Entraîner un modèle pour un ticker
-        
-        Args:
-            ticker: Ticker à entraîner
-            run_name: Nom du run WandB (optionnel)
-        
-        Returns:
-            bool: True si succès
-        """
-        run_name = run_name or f"{ticker}_{datetime.now().strftime('%Y%m%d_%H%M')}"
-        
-        logger.info(f"\n{'='*70}")
-        logger.info(f"🎯 TRAINING: {ticker}")
-        logger.info(f"{'='*70}")
-        
-        # Init WandB
-        run = wandb.init(
-            project=WANDB_CONFIG['project'],
-            entity=WANDB_CONFIG['entity'],
-            name=run_name,
-            config=self.config,
-            sync_tensorboard=True,
-            reinit=True
+    print("\n" + "="*70)
+    print(f"🎯 TRAINING: {ticker}")
+    print("="*70)
+    
+    # 1. PRÉ-CHARGEMENT DES DONNÉES (UNE SEULE FOIS)
+    csv_path = download_and_cache_data(ticker)
+    if csv_path is None:
+        print(f"⚠️ Impossible de charger les données pour {ticker}, skip.")
+        return
+    
+    # 2. Initialiser W&B
+    run = wandb.init(
+        project=WANDB_CONFIG["project"],
+        name=f"{ticker}_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}",
+        config={
+            "ticker": ticker,
+            "timesteps": timesteps,
+            "algorithm": "PPO",
+            "policy": "MlpPolicy",
+            **TRAINING_CONFIG
+        },
+        sync_tensorboard=True,
+        monitor_gym=True,
+        save_code=True,
+        reinit=True
+    )
+    
+    # 3. CONFIGURATION GPU/CPU
+    device = "cuda" if USE_GPU else "cpu"
+    print(f"🖥️  Device: {device}")
+    
+    # 4. ENVIRONNEMENTS PARALLÈLES (Exploitation CPU maximale)
+    n_envs = 64  # <-- AUGMENTÉ À 64 pour utiliser tous tes cœurs
+    print(f"🔧 Création de {n_envs} environnements...")
+    
+    # Lambda pour créer des environnements qui lisent le MÊME fichier CSV
+    def make_env():
+        return TradingEnv(csv_path=csv_path)
+    
+    env = SubprocVecEnv([make_env for _ in range(n_envs)])
+    
+    # 5. CONFIGURATION RÉSEAU NEURONAL (Plus gros pour GPU)
+    policy_kwargs = dict(
+        net_arch=dict(
+            pi=[512, 512, 512],  # Policy network (actions)
+            vf=[512, 512, 512]   # Value network (critique)
         )
-        
-        base_env = None
-        eval_env = None
-        model = None
-        
-        try:
-            start_time = time.time()
-            
-            # Créer environnements
-            logger.info(f"🔧 Création de {self.config['n_envs']} environnements...")
-            env_fns = [self.make_env(ticker, i) for i in range(self.config['n_envs'])]
-            base_env = SubprocVecEnv(env_fns, start_method='fork')
-            base_env = VecMonitor(base_env)
-            
-            eval_env = TradingEnv(ticker)
-            
-            # Créer modèle
-            logger.info("🤖 Création du modèle PPO...")
-            device = 'cuda' if USE_GPU else 'cpu'
-            policy_kwargs = dict(
-            net_arch=dict(pi=[512, 512, 512], vf=[512, 512, 512]))
-
-            model = PPO(
-                "MlpPolicy",
-                base_env,
-                learning_rate=self.config['learning_rate'],
-                n_steps=self.config['n_steps'],
-                batch_size=self.config['batch_size'],
-                n_epochs=self.config['n_epochs'],
-                gamma=self.config['gamma'],
-                gae_lambda=self.config['gae_lambda'],
-                clip_range=self.config['clip_range'],
-                ent_coef=self.config['ent_coef'],
-                max_grad_norm=self.config['max_grad_norm'],
-                verbose=0,
-                tensorboard_log=f"./tensorboard/{ticker}",
-                device=device,
-                policy_kwargs=policy_kwargs
-            )
-            
-            # Callbacks
-            eval_callback = EvalCallback(
-                eval_env,
-                best_model_save_path=f"./temp_models/{ticker}",
-                log_path=f"./logs/{ticker}",
-                eval_freq=self.config['eval_freq'],
-                n_eval_episodes=self.config['n_eval_episodes'],
-                deterministic=True,
-                render=False
-            )
-            
-            wandb_callback = WandbCallback(
-                model_save_path=f"./temp_models/{ticker}",
-                verbose=2
-            )
-            
-            # Entraînement
-            logger.info(f"🚀 Début entraînement ({self.config['total_timesteps']:,} timesteps)...")
-            model.learn(
-                total_timesteps=self.config['total_timesteps'],
-                callback=[eval_callback, wandb_callback],
-                progress_bar=True
-            )
-            
-            # Sauvegarder
-            self.model_manager.save_model(model, f"{ticker}_final")
-            
-            # Temps
-            duration = time.time() - start_time
-            logger.info(f"⏱️  Durée: {format_duration(duration)}")
-            
-            # GPU info
-            gpu_info = get_gpu_info()
-            if gpu_info['available']:
-                logger.info(f"🎮 VRAM: {gpu_info['memory_allocated_gb']:.2f}GB / {gpu_info['memory_total_gb']:.2f}GB")
-            
-            logger.info(f"✅ {ticker} terminé avec succès")
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur sur {ticker}: {e}", exc_info=True)
-            return False
-        
-        finally:
-            # Nettoyage CRITIQUE
-            cleanup_resources(base_env, eval_env, model)
-            
-            try:
-                run.finish()
-            except:
-                pass
-            
-            wandb.finish()
+    )
     
-    def train_all(self, tickers=None):
-        """
-        Entraîner tous les tickers
+    print("🧠 Création du modèle PPO...")
+    model = PPO(
+        "MlpPolicy",
+        env,
+        verbose=1,
+        device=device,
+        learning_rate=1e-4,
         
-        Args:
-            tickers: Liste de tickers (ou ALL_TICKERS par défaut)
-        """
-        tickers = tickers or ALL_TICKERS
+        # PARAMÈTRES OPTIMISÉS POUR GPU
+        batch_size=4096,      # Batch énorme pour GPU (vs 64 par défaut)
+        n_steps=2048,         # Steps par env avant update (64 * 2048 = 131k buffer)
+        n_epochs=10,          # Passe 10 fois sur les données
         
-        logger.info("\n" + "="*70)
-        logger.info("🚀 ENTRAÎNEMENT MULTI-TICKERS")
-        logger.info("="*70)
-        logger.info(f"📊 Tickers: {', '.join(tickers)}")
-        logger.info(f"🔢 Timesteps par ticker: {self.config['total_timesteps']:,}")
-        logger.info("="*70)
-        
-        start_total = time.time()
-        results = {}
-        
-        for idx, ticker in enumerate(tickers, 1):
-            logger.info(f"\n[{idx}/{len(tickers)}] {ticker}")
-            success = self.train_single_ticker(ticker)
-            results[ticker] = success
-        
-        # Résumé
-        total_duration = time.time() - start_total
-        success_count = sum(results.values())
-        
-        logger.info("\n" + "="*70)
-        logger.info("📊 RÉSUMÉ FINAL")
-        logger.info("="*70)
-        logger.info(f"✅ Succès: {success_count}/{len(tickers)}")
-        logger.info(f"⏱️  Durée totale: {format_duration(total_duration)}")
-        
-        for ticker, success in results.items():
-            status = "✅" if success else "❌"
-            logger.info(f"   {status} {ticker}")
+        policy_kwargs=policy_kwargs,
+        tensorboard_log=f"{TRAINING_CONFIG.get('tensorboard_dir', 'tensorboard')}/{ticker}"
+    )
+    
+    # 6. CALLBACKS
+    checkpoint_callback = CheckpointCallback(
+        save_freq=100_000,
+        save_path=f"models/checkpoints/{ticker}",
+        name_prefix=f"{ticker}_model"
+    )
+    
+    wandb_callback = WandbCallback(
+        model_save_path=f"models/{ticker}",
+        verbose=2
+    )
+    
+    # 7. ENTRAÎNEMENT
+    print(f"🚀 Début entraînement ({timesteps:,} timesteps)...")
+    model.learn(
+        total_timesteps=timesteps,
+        callback=[checkpoint_callback, wandb_callback],
+        progress_bar=True
+    )
+    
+    # 8. SAUVEGARDE FINALE
+    model_path = f"models/{ticker}_final.zip"
+    model.save(model_path)
+    print(f"💾 Modèle sauvegardé: {model_path}")
+    
+    # 9. NETTOYAGE
+    env.close()
+    wandb.finish()
+    
+    print(f"✅ Training terminé pour {ticker}")
+
+if __name__ == "__main__":
+    # Liste des tickers à entraîner
+    tickers = ["NVDA", "MSFT", "AAPL", "GOOGL", "AMZN", "TSLA", "AMD"]
+    
+    for i, ticker in enumerate(tickers, 1):
+        print(f"\n[{i}/{len(tickers)}] {ticker}")
+        train_model(ticker, timesteps=5_000_000)
