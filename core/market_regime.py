@@ -53,25 +53,25 @@ class MarketRegimeDetector:
         # 1. Tendance (MA courte vs MA longue)
         ma_20 = spy['Close'].rolling(20).mean().iloc[-1]
         ma_50 = spy['Close'].rolling(50).mean().iloc[-1]
-        trend = (ma_20 - ma_50) / ma_50
+        trend = float((ma_20 - ma_50) / ma_50)  # FIX: Forcer float
         
         # 2. Volatilité (écart-type annualisé)
-        volatility = returns.std() * np.sqrt(252)
+        volatility = float(returns.std() * np.sqrt(252))  # FIX: Forcer float
         
         # 3. Drawdown actuel
         cummax = spy['Close'].cummax()
-        current_drawdown = (spy['Close'].iloc[-1] - cummax.iloc[-1]) / cummax.iloc[-1]
+        current_drawdown = float((spy['Close'].iloc[-1] - cummax.iloc[-1]) / cummax.iloc[-1])  # FIX: Forcer float
         
         # 4. Momentum (performance 30 derniers jours)
         if len(spy) >= 30:
-            momentum = (spy['Close'].iloc[-1] - spy['Close'].iloc[-30]) / spy['Close'].iloc[-30]
+            momentum = float((spy['Close'].iloc[-1] - spy['Close'].iloc[-30]) / spy['Close'].iloc[-30])  # FIX: Forcer float
         else:
-            momentum = 0
+            momentum = 0.0
         
         # 5. Volume trend (liquidité)
         volume_ma_20 = spy['Volume'].rolling(20).mean().iloc[-1]
         volume_current = spy['Volume'].iloc[-5:].mean()
-        volume_trend = (volume_current - volume_ma_20) / volume_ma_20
+        volume_trend = float((volume_current - volume_ma_20) / volume_ma_20)  # FIX: Forcer float
         
         # LOGIQUE DE DÉTECTION
         regime = self._classify_regime(trend, volatility, current_drawdown, momentum, volume_trend)
@@ -79,12 +79,12 @@ class MarketRegimeDetector:
         
         result = {
             'regime': regime,
-            'trend': float(trend),
-            'volatility': float(volatility),
-            'drawdown': float(current_drawdown),
-            'momentum': float(momentum),
-            'volume_trend': float(volume_trend),
-            'confidence': float(confidence),
+            'trend': trend,
+            'volatility': volatility,
+            'drawdown': current_drawdown,
+            'momentum': momentum,
+            'volume_trend': volume_trend,
+            'confidence': confidence,
             'timestamp': datetime.now().isoformat()
         }
         
@@ -96,6 +96,7 @@ class MarketRegimeDetector:
         print(f"  📈 Trend: {trend:+.2%} | Vol: {volatility:.1%} | DD: {current_drawdown:.1%}")
         
         return result
+
     
     def _classify_regime(self, trend, volatility, drawdown, momentum, volume_trend):
         """Classifie le régime selon les métriques"""
