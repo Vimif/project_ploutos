@@ -1,5 +1,5 @@
 """
-Benchmark automatique - VERSION ROBUSTE
+Benchmark automatique - VERSION FINALE FONCTIONNELLE
 """
 
 import sys
@@ -22,7 +22,6 @@ try:
     HAS_SHARPE = True
 except ImportError:
     HAS_SHARPE = False
-    print("⚠️ TradingEnvSharpe non disponible")
 
 try:
     from core.environment_continuous import TradingEnvContinuous
@@ -30,14 +29,12 @@ try:
     HAS_SAC = True
 except ImportError:
     HAS_SAC = False
-    print("⚠️ SAC non disponible")
 
 try:
     from core.environment_multitimeframe import TradingEnvMultiTimeframe
     HAS_MULTI = True
 except ImportError:
     HAS_MULTI = False
-    print("⚠️ MultiTimeframe non disponible")
 
 # ========================================
 # CONFIGURATION
@@ -45,10 +42,9 @@ except ImportError:
 
 TICKER = "NVDA"
 CSV_PATH = f"data_cache/{TICKER}.csv"
-N_ENVS = 16  # Réduit pour éviter connection reset
+N_ENVS = 16
 TIMESTEPS = 1_000_000
 
-# Construction dynamique
 STRATEGIES = {
     'baseline': {
         'name': 'Baseline (Indicateurs Techniques)',
@@ -83,6 +79,18 @@ if HAS_MULTI:
     }
 
 # ========================================
+# HELPER : Conversion action → int
+# ========================================
+
+def action_to_int(action):
+    """Convertit n'importe quel type d'action en int"""
+    if isinstance(action, np.ndarray):
+        # array(2) → 2
+        return int(action.item())
+    else:
+        return int(action)
+
+# ========================================
 # ENTRAÎNEMENT
 # ========================================
 
@@ -107,8 +115,8 @@ def train_strategy(strategy_name, config):
             verbose=1,
             device="cuda",
             learning_rate=1e-4,
-            batch_size=2048,  # Réduit
-            n_steps=1024,      # Réduit
+            batch_size=2048,
+            n_steps=1024,
             n_epochs=10,
             policy_kwargs=policy_kwargs
         )
@@ -119,7 +127,7 @@ def train_strategy(strategy_name, config):
             verbose=1,
             device="cuda",
             learning_rate=3e-4,
-            buffer_size=50_000,  # Réduit
+            buffer_size=50_000,
             batch_size=256,
             tau=0.005,
             gamma=0.99,
@@ -159,16 +167,13 @@ def backtest_strategy(model_path, env_class, algo, test_days=90):
     
     for step in range(total_steps):
         action, _ = model.predict(obs, deterministic=True)
-        obs, reward, terminated, truncated, info = env.step(action)
+        
+        # FIX : Conversion universelle
+        action_int = action_to_int(action)
+        
+        obs, reward, terminated, truncated, info = env.step(action_int)
         
         portfolio_values.append(info['total_value'])
-        
-        # Gérer actions continues
-        if hasattr(action, '__iter__') and not isinstance(action, str):
-            action_int = int(action[0]) if len(action) > 0 else 0
-        else:
-            action_int = int(action)
-        
         actions_taken.append(action_int)
         rewards.append(reward)
         
@@ -183,7 +188,7 @@ def backtest_strategy(model_path, env_class, algo, test_days=90):
     })
     
     initial_value = 10000
-    final_value = portfolio_values[-1]
+    final_value = portfolio_values[-1] if len(portfolio_values) > 0 else initial_value
     total_return = (final_value - initial_value) / initial_value
     
     df_backtest['returns'] = df_backtest['portfolio_value'].pct_change().fillna(0)
@@ -203,9 +208,9 @@ def backtest_strategy(model_path, env_class, algo, test_days=90):
     
     action_counts = df_backtest['action'].value_counts()
     action_dist = {
-        'HOLD': action_counts.get(0, 0) / total_days * 100,
-        'BUY': action_counts.get(1, 0) / total_days * 100,
-        'SELL': action_counts.get(2, 0) / total_days * 100
+        'HOLD': action_counts.get(0, 0) / total_days * 100 if total_days > 0 else 0,
+        'BUY': action_counts.get(1, 0) / total_days * 100 if total_days > 0 else 0,
+        'SELL': action_counts.get(2, 0) / total_days * 100 if total_days > 0 else 0
     }
     
     volatility = std_return * np.sqrt(252 * 24)
@@ -260,9 +265,8 @@ def calculate_buy_and_hold(csv_path, test_days=90):
 def generate_report(all_results, buy_hold_result):
     """Génère rapport Markdown + JSON"""
     
-    # FIX : Vérifier qu'il y a des résultats
     if len(all_results) == 0:
-        print("\n⚠️ Aucun résultat à afficher (tous les entraînements ont échoué)")
+        print("\n⚠️ Aucun résultat à afficher")
         return None
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -305,6 +309,7 @@ def generate_report(all_results, buy_hold_result):
             f.write(f"### {name}\n\n")
             f.write(f"- Return : {res['total_return_pct']:+.2f}%\n")
             f.write(f"- Sharpe : {res['sharpe_ratio']:.2f}\n")
+            f.write(f"- Sortino : {res['sortino_ratio']:.2f}\n")
             f.write(f"- Win Rate : {res['win_rate_pct']:.1f}%\n\n")
             f.write(f"**Actions** : HOLD {res['action_distribution']['HOLD']:.0f}%, "
                    f"BUY {res['action_distribution']['BUY']:.0f}%, "
@@ -312,7 +317,19 @@ def generate_report(all_results, buy_hold_result):
         
         f.write("---\n\n")
         best = sorted_results[0]
-        f.write(f"**Meilleure** : {best[0]} (Sharpe {best[1]['sharpe_ratio']:.2f})\n")
+        f.write(f"🏆 **Meilleure** : {best[0]}\n\n")
+        f.write(f"- Sharpe {best[1]['sharpe_ratio']:.2f}\n")
+        f.write(f"- Return {best[1]['total_return_pct']:+.2f}%\n")
+        f.write(f"- vs Buy&Hold : {best[1]['total_return_pct'] - buy_hold_result['total_return_pct']:+.2f}%\n")
+    
+    json_path = f"{report_dir}/benchmark_{TICKER}_{timestamp}.json"
+    
+    with open(json_path, 'w') as f:
+        json.dump({
+            'metadata': {'ticker': TICKER, 'timestamp': timestamp, 'steps': TIMESTEPS},
+            'results': all_results,
+            'buy_hold': buy_hold_result
+        }, f, indent=2)
     
     print(f"\n✅ Rapport : {md_path}")
     return md_path
@@ -322,16 +339,8 @@ def generate_report(all_results, buy_hold_result):
 # ========================================
 
 def main():
-    print("\n" + "="*70)
-    print("🚀 BENCHMARK AUTOMATIQUE")
-    print("="*70)
-    print(f"📊 Ticker : {TICKER}")
-    print(f"🎯 Stratégies : {len(STRATEGIES)}")
-    
-    for name in STRATEGIES.keys():
-        print(f"  ✅ {STRATEGIES[name]['name']}")
-    
-    print("="*70)
+    print("\n🚀 BENCHMARK AUTOMATIQUE")
+    print(f"📊 {len(STRATEGIES)} stratégies\n")
     
     all_results = {}
     
@@ -340,26 +349,15 @@ def main():
             model_path = train_strategy(strategy_name, config)
             results = backtest_strategy(model_path, config['env_class'], config['algo'])
             all_results[config['name']] = results
-            
-            print(f"\n✅ {config['name']} : Return {results['total_return_pct']:+.2f}%, Sharpe {results['sharpe_ratio']:.2f}")
-            
+            print(f"✅ {config['name']} : {results['total_return_pct']:+.2f}%, Sharpe {results['sharpe_ratio']:.2f}")
         except Exception as e:
-            print(f"\n❌ Erreur {strategy_name} : {e}")
+            print(f"❌ {strategy_name} : {e}")
             import traceback
             traceback.print_exc()
-            continue
     
-    buy_hold_result = calculate_buy_and_hold(CSV_PATH)
-    print(f"\n📈 Buy & Hold : Return {buy_hold_result['total_return_pct']:+.2f}%")
-    
-    report_path = generate_report(all_results, buy_hold_result)
-    
-    print("\n" + "="*70)
-    print("🎉 BENCHMARK TERMINÉ !")
-    print("="*70)
-    
-    if report_path:
-        print(f"\n📄 Rapport : {report_path}\n")
+    buy_hold = calculate_buy_and_hold(CSV_PATH)
+    generate_report(all_results, buy_hold)
+    print("\n🎉 Terminé !\n")
 
 if __name__ == "__main__":
     main()
