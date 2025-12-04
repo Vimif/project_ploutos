@@ -1,17 +1,13 @@
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
 venv/
-env/
-ENV/
+.Python
 
 # Data
 data_cache/
 *.csv
-*.zip
+!config/*.csv
 
 # Models
 models/
@@ -21,19 +17,16 @@ checkpoints/
 # Logs
 *.log
 logs/
-tensorboard/
 wandb/
+tensorboard/
 
 # Secrets
 .env
 *.key
-*.pem
 
 # IDE
 .vscode/
 .idea/
-*.swp
 
 # OS
 .DS_Store
-Thumbs.db
