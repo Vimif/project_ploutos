@@ -15,57 +15,33 @@ class UniversalTradingEnv(gym.Env):
     
     metadata = {'render_modes': ['human']}
     
-    def __init__(self, tickers, regime_detector=None, initial_balance=10000, lookback_window=50):
+    def __init__(self, regime_detector, enable_market_scan=False):
         """
         Args:
-            tickers: Liste de tickers à trader (ex: ['NVDA', 'MSFT', 'AAPL'])
-            regime_detector: Instance de MarketRegimeDetector (optionnel)
-            initial_balance: Capital initial
-            lookback_window: Fenêtre d'observation
+            regime_detector: Instance de MarketRegimeDetector
+            enable_market_scan: Si True, active le scan complet du marché
         """
-        super().__init__()
-        
-        self.tickers = tickers if isinstance(tickers, list) else [tickers]
         self.regime_detector = regime_detector
-        self.initial_balance = initial_balance
-        self.lookback_window = lookback_window
+        self.last_selection = None
+        self.selection_history = []
+        self.enable_market_scan = enable_market_scan
         
-        # Charger données de tous les tickers
-        self.data = {}
-        self.min_length = float('inf')
+        # Initialiser scanner si activé
+        self.fetcher = None
+        self.scanner = None
         
-        print(f"📦 Chargement de {len(self.tickers)} assets...")
-        
-        for ticker in self.tickers:
+        if enable_market_scan:
             try:
-                df = load_market_data(f"data_cache/{ticker}.csv")
-                self.data[ticker] = df
-                self.min_length = min(self.min_length, len(df))
-                print(f"  ✅ {ticker}: {len(df)} bougies")
-            except Exception as e:
-                print(f"  ⚠️ {ticker}: {str(e)[:50]}")
-        
-        if len(self.data) == 0:
-            raise ValueError("Aucun asset chargé avec succès")
-        
-        # Observation Space
-        # Pour chaque asset : 5 features (OHLCV) * lookback_window
-        # + Régime (5 dimensions one-hot)
-        # + Portfolio (n_assets * 2 pour position + cash ratio)
-        n_assets = len(self.data)
-        obs_size = (5 * lookback_window * n_assets) + 5 + (n_assets + 1)
-        
-        self.observation_space = spaces.Box(
-            low=-np.inf, high=np.inf, shape=(obs_size,), dtype=np.float32
-        )
-        
-        # Action Space : Pour chaque asset (HOLD=0, BUY=1, SELL=2)
-        self.action_space = spaces.MultiDiscrete([3] * n_assets)
-        
-        print(f"✅ Environnement universel initialisé:")
-        print(f"  Assets: {n_assets}")
-        print(f"  Obs dim: {obs_size}")
-        print(f"  Actions: {3**n_assets} possibilités\n")
+                from core.data_fetcher import UniversalDataFetcher
+                from core.market_scanner import MarketScanner
+                
+                self.fetcher = UniversalDataFetcher()
+                self.scanner = MarketScanner(self.fetcher)
+                print("🔍 Market Scanner activé")
+            except ImportError as e:
+                print(f"⚠️ Market Scanner non disponible : {e}")
+                print("  → Installer : pip install alpaca-trade-api requests")
+                self.enable_market_scan = False
     
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
