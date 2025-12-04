@@ -8,6 +8,7 @@ if str(Path(__file__).parent.parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).parent.parent))
 # ================
 
+import pandas as pd
 import gymnasium as gym
 import numpy as np
 import yfinance as yf
