@@ -94,7 +94,7 @@ class LiveTrader:
             self.risk_manager = None
         
         # Paramètres
-        self.stop_loss_pct = 0.05
+        self.stop_loss_pct = 0.02
         self.take_profit_pct = 0.15
         self.min_trade_amount = 100.0
         self.max_position_accumulation = 0.10
