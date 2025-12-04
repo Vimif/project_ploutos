@@ -224,3 +224,107 @@ class UniversalAssetSelector:
             with open(filepath, 'w') as f:
                 json.dump(self.selection_history, f, indent=2)
             print(f"💾 Historique sélection sauvegardé : {filepath}")
+
+# À ajouter dans la classe UniversalAssetSelector
+
+def __init__(self, regime_detector, enable_market_scan=False):
+    """
+    Args:
+        enable_market_scan: Si True, active le scan complet du marché
+    """
+    self.regime_detector = regime_detector
+    self.last_selection = None
+    self.selection_history = []
+    self.enable_market_scan = enable_market_scan
+    
+    # Initialiser scanner si activé
+    if enable_market_scan:
+        from core.data_fetcher import UniversalDataFetcher
+        from core.market_scanner import MarketScanner
+        
+        self.fetcher = UniversalDataFetcher()
+        self.scanner = MarketScanner(self.fetcher)
+        print("🔍 Market Scanner activé")
+
+def select_assets(self, n_assets=20, lookback_days=90, use_market_scan=False):
+    """
+    Sélectionne les meilleurs assets
+    
+    Args:
+        n_assets: Nombre d'assets à sélectionner
+        lookback_days: Période d'analyse
+        use_market_scan: Si True, scanne tout le marché US
+        
+    Returns:
+        list: Tickers sélectionnés
+    """
+    
+    # MODE 1 : Scan complet du marché (3000+ actions)
+    if use_market_scan and self.enable_market_scan:
+        print("\n🔍 MODE : MARKET SCAN COMPLET")
+        
+        # Scanner tout le marché
+        df_scored = self.scanner.scan_full_market(
+            min_market_cap=1e9,   # 1 milliard minimum
+            min_volume=1e6,       # 1 million volume/jour
+            max_stocks=500        # Limiter à top 500 pour vitesse
+        )
+        
+        if len(df_scored) == 0:
+            print("⚠️ Scan échoué, fallback sur univers fixe")
+            return self._select_from_universe(n_assets, lookback_days)
+        
+        # Stratégie de sélection selon régime
+        regime_info = self.regime_detector.detect()
+        regime = regime_info['regime']
+        
+        if regime in ['BULL', 'SIDEWAYS']:
+            # En bull/sideways : Prendre les meilleurs globalement
+            selected = self.scanner.get_top_overall(df_scored, n=n_assets)
+        else:
+            # En bear/high_vol : Diversifier par secteur
+            selected = self.scanner.get_top_by_sector(df_scored, n_per_sector=2)
+            selected = selected[:n_assets]
+        
+        # Sauvegarder résultats
+        self.scanner.save_results()
+        
+        return selected
+    
+    # MODE 2 : Univers fixe (mode classique)
+    else:
+        print("\n🎯 MODE : UNIVERS FIXE")
+        return self._select_from_universe(n_assets, lookback_days)
+
+def _select_from_universe(self, n_assets, lookback_days):
+    """Mode classique (code existant)"""
+    
+    # ... Le code existant de select_assets() va ici ...
+    # (Tout ce que tu avais avant, inchangé)
+    
+    regime_info = self.regime_detector.detect()
+    regime = regime_info['regime']
+    strategy = self.regime_detector.get_optimal_strategy(regime)
+    
+    category = strategy['asset_selection']
+    candidates = self.UNIVERSE.get(category, self.UNIVERSE['range_bound'])
+    
+    print(f"  📊 Catégorie : {category} ({len(candidates)} candidats)")
+    
+    scored_assets = self._score_assets_parallel(candidates, regime, lookback_days)
+    scored_assets = [a for a in scored_assets if a and a.get('score', 0) > 0]
+    
+    if len(scored_assets) == 0:
+        print("⚠️ Aucun asset scoré, fallback sur SPY + QQQ + NVDA")
+        return ['SPY', 'QQQ', 'NVDA']
+    
+    df_scores = pd.DataFrame(scored_assets)
+    df_scores = df_scores.sort_values('score', ascending=False).head(n_assets)
+    
+    selected = df_scores['ticker'].tolist()
+    
+    print(f"\n  🏆 TOP {len(selected)} ASSETS ({regime}):")
+    for idx, row in df_scores.head(10).iterrows():
+        print(f"    {row['ticker']:6s} → Score: {row['score']:5.1f}")
+    
+    return selected

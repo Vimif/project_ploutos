@@ -27,3 +27,10 @@ continuous_learning:
   frequency: "weekly"            # "daily", "weekly", "monthly"
   min_new_data: 50               # Minimum nouvelles bougies
   fine_tune_steps: 500000        # Steps pour fine-tuning
+
+market_scan:
+  enabled: false              # true = scanner tout le marché
+  min_market_cap: 1000000000  # 1 milliard $ minimum
+  min_volume: 1000000         # 1 million volume/jour
+  max_stocks: 500             # Limiter à top 500 pour vitesse
+  cache_results: true         # Sauvegarder les résultats
