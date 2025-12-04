@@ -182,26 +182,46 @@ class UniversalAssetSelector:
         """Score un asset (0-100)"""
         
         try:
+            # Télécharger
             data = yf.download(ticker, period=f'{lookback_days}d', interval='1d', progress=False)
             
             if isinstance(data.columns, pd.MultiIndex):
                 data.columns = data.columns.get_level_values(0)
             
             if len(data) < 30:
+                print(f"    ⚠️ {ticker}: Pas assez de données ({len(data)} jours)")
                 return None
             
             returns = data['Close'].pct_change().dropna()
             
-            perf_30d = float((data['Close'].iloc[-1] - data['Close'].iloc[-30]) / data['Close'].iloc[-30])
+            # Momentum 30j
+            if len(data) < 30:
+                perf_30d = 0.0
+            else:
+                perf_30d = float((data['Close'].iloc[-1] - data['Close'].iloc[-30]) / data['Close'].iloc[-30])
+            
+            # Volatilité
             volatility = float(returns.std() * np.sqrt(252))
-            sharpe = float((returns.mean() / returns.std()) * np.sqrt(252)) if returns.std() > 0 else 0.0
+            
+            # Sharpe
+            if returns.std() > 0:
+                sharpe = float((returns.mean() / returns.std()) * np.sqrt(252))
+            else:
+                sharpe = 0.0
+            
+            # Volume
             avg_volume = float(data['Volume'].mean())
             volume_score = min(avg_volume / 1e6, 20)
             
+            # Drawdown
             cummax = data['Close'].cummax()
             drawdowns = (data['Close'] - cummax) / cummax
             max_drawdown = float(drawdowns.min())
             
+            # DEBUG
+            print(f"    📊 {ticker}: perf={perf_30d:.2%}, vol={volatility:.2f}, sharpe={sharpe:.2f}")
+            
+            # SCORING selon régime
             if regime == 'BULL':
                 score = (
                     max(0, perf_30d * 100) * 0.40 +
@@ -221,13 +241,15 @@ class UniversalAssetSelector:
                     max(0, sharpe * 10) * 0.50 +
                     volume_score * 0.30
                 )
-            else:
+            else:  # HIGH_VOLATILITY
                 score = (
                     max(0, (1 - volatility) * 100) * 0.60 +
                     volume_score * 0.40
                 )
             
             score = float(max(0, min(score, 100)))
+            
+            print(f"    ✅ {ticker}: score final = {score:.1f}")
             
             return {
                 'ticker': ticker,
@@ -239,7 +261,8 @@ class UniversalAssetSelector:
                 'max_drawdown': max_drawdown
             }
             
-        except Exception:
+        except Exception as e:
+            print(f"    ❌ {ticker}: {str(e)}")
             return None
     
     def save_history(self, filepath='data/selection_history.json'):
