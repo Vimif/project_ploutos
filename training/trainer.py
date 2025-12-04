@@ -9,6 +9,7 @@ from stable_baselines3.common.callbacks import CheckpointCallback
 from wandb.integration.sb3 import WandbCallback
 import wandb
 import warnings
+from core.environment_factory import create_environment
 
 warnings.filterwarnings("ignore", category=UserWarning, module="gym")
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -98,8 +99,12 @@ def train_model(ticker, timesteps=TIMESTEPS, current=1, total=1):
     
     # 3. CRÉATION ENVIRONNEMENT MULTI-PROCESS
     print(f"🔨 Création du cluster d'environnements ({N_ENVS} workers)...")
+
     def make_env():
-        return TradingEnv(csv_path=csv_path) # Chaque worker lit son CSV localement
+        return create_environment(
+            env_type='sharpe',  # <-- Changer facilement ici
+            csv_path=csv_path
+        )
     
     env = SubprocVecEnv([make_env for _ in range(N_ENVS)])
     

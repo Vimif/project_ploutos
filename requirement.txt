@@ -1,60 +1,49 @@
-# requirements.txt
-
-# Core ML
+# ========================================
+# CORE ML & RL
+# ========================================
 torch>=2.0.0
 stable-baselines3>=2.0.0
 sb3-contrib>=2.0.0
 gymnasium>=0.29.0
 
-# Data & Market
-yfinance>=0.2.28
-pandas>=2.0.0
-numpy>=1.24.0
+# ========================================
+# DATA & MARKET
+# ========================================
+yfinance>=0.2.33
+pandas>=2.1.4
+numpy>=1.26.2
+scikit-learn>=1.3.2
+ta>=0.11.0
 
-# Logging & Monitoring
+# ========================================
+# ALPACA TRADING
+# ========================================
+alpaca-py>=0.25.0
+
+# ========================================
+# MONITORING & LOGGING
+# ========================================
 wandb>=0.15.0
 tensorboard>=2.13.0
+prometheus-client>=0.19.0
+psutil>=5.9.0
 
-# UI
+# ========================================
+# DATABASE
+# ========================================
+psycopg2-binary>=2.9.9
+
+# ========================================
+# WEB DASHBOARD
+# ========================================
+flask>=3.0.0
+flask-cors>=4.0.0
+flask-socketio>=5.3.5
 streamlit>=1.25.0
-plotly>=5.15.0
+plotly>=5.18.0
 
-# Utils
+# ========================================
+# UTILITIES
+# ========================================
 python-dotenv>=1.0.0
 requests>=2.31.0
-
-# Ajoutez ces lignes à votre requirements.txt existant
-
-# Alpaca Trading API
-alpaca-py==0.25.0
-python-dotenv>=1.0.0
-pandas
-
-# Dashboard Web
-flask==3.0.0
-flask-cors==4.0.0
-flask-socketio==5.3.5
-python-socketio==5.10.0
-eventlet==0.33.3
-
-# Visualisation
-plotly==5.18.0
-pandas==2.1.4
-
-# Core
-numpy==1.26.2
-pandas==2.1.4
-scikit-learn==1.3.2
-yfinance==0.2.33
-python-dotenv==1.0.0
-
-# Deep Learning
-tensorflow==2.15.0
-
-# Dashboard Web
-flask==3.0.0
-flask-cors==4.0.0
-flask-socketio==5.3.5
-python-socketio==5.10.0
-gevent==23.9.1
-gevent-websocket==0.10.1

@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Data
+data_cache/
+*.csv
+*.zip
+
+# Models
+models/
+checkpoints/
+*.zip
+
+# Logs
+*.log
+logs/
+tensorboard/
+wandb/
+
+# Secrets
+.env
+*.key
+*.pem
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
