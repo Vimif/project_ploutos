@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
-from core.environment import TradingEnv
+from core.universal_environment import TradingEnv
 import warnings
 warnings.filterwarnings('ignore')
 
