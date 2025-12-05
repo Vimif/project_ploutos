@@ -1,148 +1,110 @@
-## 📋 Table of Contents
-- [Quick Start](#quick-start)
-- [Architecture](#architecture)
-- [Installation](#installation)
-- [Usage](#usage)
+# 🤖 Ploutos Trading v2.0
 
-## 🚀 Quick Start
+Système de trading algorithmique autonome avec Reinforcement Learning (PPO).
 
-```bash
-# Clone and setup
-git clone https://github.com/your-username/ploutos_project.git
-cd ploutos_project
-./scripts/setup_infrastructure.sh
-source venv/bin/activate
+## ✨ Nouveautés v2.0
 
-# Train models
-python scripts/train_models.py --sector tech
-
-# Start trading
-python scripts/run_trader.py --paper
-
-# View dashboard
-streamlit run ui/dashboard.py
-```
-
-## 🏗️ Architecture
-
-```
-ploutos_project/
-├── config/          # Configuration files
-├── core/            # Business logic
-├── training/        # AI model training
-├── trading/         # Trading engine
-├── scripts/         # Executable scripts
-└── ui/              # Web interfaces
-```
+- 🏗️ **Architecture refactorisée** : Code modulaire et maintenable
+- 📊 **Logger centralisé** : Logs structurés fichier + console
+- ⚙️ **Configuration unifiée** : YAML + dataclasses typées
+- 🧪 **Tests unitaires** : Couverture 60%+
+- 🚀 **Scripts simplifiés** : CLI claire et intuitive
 
 ## 📦 Installation
 
-1. **Clone the repository**
-```bash
-git clone https://github.com/your-username/ploutos_project.git
-cd ploutos_project
-```
+Cloner
 
-2. **Run setup script**
-```bash
-./scripts/setup_infrastructure.sh
-```
+git clone https://github.com/Vimif/project_ploutos
+cd project_ploutos
+Virtualenv
 
-3. **Activate environment**
-```bash
+python3 -m venv venv
 source venv/bin/activate
-```
+Dépendances
 
-## 💻 Usage
+pip install -e .
 
-**Train Models**
-```bash
-python scripts/train_models.py --sector tech
-```
+text
 
-**Paper Trading**
-```bash
-python scripts/run_trader.py --paper --interval 60
-```
+## 🚀 Usage
 
-**Backtesting**
-```bash
-python scripts/backtest.py NVDA MSFT --days 180
-```
+### Entraînement
 
-**Dashboard**
-```bash
-streamlit run ui/dashboard.py
-```
+Simple
 
+python3 scripts/train.py
+Custom config
 
-### Lancer le trading
+python3 scripts/train.py --config config/my_config.yaml
+Output spécifique
 
-Paper trading (simulation)
+python3 scripts/train.py --output models/my_model.zip
 
-python scripts/run_trader.py --paper
-Live trading
+text
 
-python scripts/run_trader.py
-Avec options
+### Validation
 
-python scripts/run_trader.py --capital 50000 --interval 30 --paper
+Valider un modèle
 
+python3 scripts/validate.py models/autonomous/trained_model.zip
 
-### Dashboard
+text
 
-streamlit run ui/dashboard.py
+### Déploiement
 
+Déployer en production
 
-### Backtesting
+python3 scripts/deploy.py models/autonomous/trained_model.zip
 
-python scripts/backtest.py MSFT AAPL NVDA --days 365
+text
 
+## 📁 Structure
 
-## 🧠 Les 4 Cerveaux
+project_ploutos/
+├── config/ # Configuration
+├── core/ # Modules principaux
+│ ├── agents/ # Trainer, Validator, Deployer
+│ ├── data/ # Data fetching
+│ ├── environments/# Gym environments
+│ └── market/ # Regime detection, asset selection
+├── utils/ # Utilitaires
+├── scripts/ # Points d'entrée
+└── tests/ # Tests unitaires
 
-- **CRYPTO** (15%) : BTC-USD, ETH-USD, COIN
-- **DEFENSIVE** (40%) : SPY, QQQ, VOO
-- **ENERGY** (20%) : XOM, CVX, XLE
-- **TECH** (25%) : NVDA, MSFT, AAPL, GOOGL
+text
+
+## 🧪 Tests
+
+Lancer tous les tests
+
+pytest
+Avec couverture
+
+pytest --cov
+Test spécifique
+
+pytest tests/test_config.py
+
+text
+
+## 📊 Monitoring
+
+- **Logs** : `logs/ploutos_YYYYMMDD_HHMMSS.log`
+- **TensorBoard** : `tensorboard --logdir logs/tensorboard`
+- **W&B** : Configure dans script
 
 ## 🔧 Configuration
 
-Fichiers de config dans `config/`:
-- `settings.py` : Paramètres globaux
-- `tickers.py` : Organisation des secteurs
+Éditer `config/autonomous_config.yaml`:
 
-## 📝 Logs
+training:
+timesteps: 2000000
+n_envs: 8
+device: "cuda"
+learning_rate: 0.0001
 
-Tous les logs dans `/mnt/shared/ploutos_data/logs/` (ou `data/logs/` en local)
+text
 
-## 🤝 Contributing
-
-1. Fork le projet
-2. Créer une branche (`git checkout -b feature/amazing`)
-3. Commit (`git commit -m 'Add amazing feature'`)
-4. Push (`git push origin feature/amazing`)
-5. Pull Request
-
-## 📜 License
+## 📝 License
 
 MIT
-
-🎯 UTILISATION COMPLÈTE
-
-# SETUP INITIAL (une seule fois)
-cd ~/ploutos_project
-./scripts/setup_infrastructure.sh
-source venv/bin/activate
-
-# ENTRAÎNER (PC-TOUR avec GPU)
-python scripts/train_models.py --sector tech
-
-# LANCER TRADING (PROXMOX 24/7)
-python scripts/run_trader.py --paper --interval 60
-
-# DASHBOARD (n'importe où)
-streamlit run ui/dashboard.py
-
-# BACKTEST
-python scripts/backtest.py NVDA MSFT --days 180
