@@ -100,6 +100,39 @@ class AutonomousTradingSystem:
                 'max_stocks': 500
             }
         }
+        
+        # Si fichier existe, charger et merger
+        if os.path.exists(config_path):
+            try:
+                import yaml
+                with open(config_path, 'r') as f:
+                    user_config = yaml.safe_load(f)
+                
+                # Merge récursif
+                def merge_dicts(base, override):
+                    if override is None:
+                        return base
+                    for key, value in override.items():
+                        if isinstance(value, dict) and key in base:
+                            merge_dicts(base[key], value)
+                        else:
+                            base[key] = value
+                    return base
+                
+                default_config = merge_dicts(default_config, user_config)
+                print(f"✅ Config chargée : {config_path}")
+                
+            except ImportError:
+                print("⚠️ PyYAML non installé (pip install pyyaml)")
+                print("  → Utilisation config par défaut")
+            except Exception as e:
+                print(f"⚠️ Erreur chargement config : {e}")
+                print("  → Utilisation config par défaut")
+        else:
+            print(f"⚠️ Config non trouvée : {config_path}")
+            print("  → Utilisation config par défaut")
+        
+        return default_config  # ✅ TOUJOURS retourner default_config
 
     def _load_best_params(self):
         """Charge et ajuste les meilleurs hyperparamètres depuis Phase 3"""
