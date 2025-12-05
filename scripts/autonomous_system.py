@@ -100,6 +100,81 @@ class AutonomousTradingSystem:
                 'max_stocks': 500
             }
         }
+
+        def _load_best_params(self):
+            """Charge et ajuste les meilleurs hyperparamètres depuis Phase 3"""
+            
+            # Si best_params existe déjà (Phase 3 vient de tourner)
+            if hasattr(self, 'best_params') and self.best_params:
+                params = self.best_params.copy()
+                print("  ✅ Paramètres de Phase 3 (optimisation Optuna)")
+            
+            # Sinon charger depuis fichier
+            elif os.path.exists('models/autonomous/best_hyperparams.json'):
+                with open('models/autonomous/best_hyperparams.json', 'r') as f:
+                    params = json.load(f)
+                print("  ✅ Paramètres chargés depuis best_hyperparams.json")
+            
+            # Sinon utiliser params par défaut ajustés
+            else:
+                params = self._default_params()
+                print("  ⚠️ Utilisation paramètres par défaut (ajustés)")
+                return params
+            
+            # APPLIQUER CORRECTIFS ANTI-OVERFITTING
+            modified = False
+            
+            if params.get('batch_size', 256) < 200 and params.get('n_steps', 2048) >= 4096:
+                old = params['batch_size']
+                params['batch_size'] = 256
+                print(f"    🔧 batch_size : {old} → 256 (ratio optimal avec n_steps)")
+                modified = True
+            
+            if params.get('n_epochs', 10) > 20:
+                old = params['n_epochs']
+                params['n_epochs'] = 15
+                print(f"    🔧 n_epochs : {old} → 15 (réduction overfitting)")
+                modified = True
+            
+            if params.get('ent_coef', 0.01) < 0.001:
+                old = params['ent_coef']
+                params['ent_coef'] = 0.005
+                print(f"    🔧 ent_coef : {old:.2e} → 0.005 (plus d'exploration)")
+                modified = True
+            
+            if params.get('vf_coef', 0.5) > 0.7:
+                old = params['vf_coef']
+                params['vf_coef'] = 0.5
+                print(f"    🔧 vf_coef : {old:.3f} → 0.5 (équilibre)")
+                modified = True
+            
+            # Ajuster architecture si c'est un int ou trop de couches
+            if 'policy_kwargs' in params:
+                net_arch = params['policy_kwargs'].get('net_arch', {})
+                if isinstance(net_arch, dict):
+                    if 'pi' in net_arch and len(net_arch['pi']) > 2:
+                        params['policy_kwargs']['net_arch'] = dict(pi=[256, 256], vf=[256, 256])
+                        print(f"    🔧 net_arch : {len(net_arch['pi'])} couches → 2 couches")
+                        modified = True
+            elif 'net_arch' in params and isinstance(params['net_arch'], int):
+                params['policy_kwargs'] = dict(net_arch=dict(pi=[256, 256], vf=[256, 256]))
+                del params['net_arch']
+                print(f"    🔧 net_arch : Simple → Dict avec 2 couches")
+                modified = True
+            
+            if 'max_grad_norm' not in params:
+                params['max_grad_norm'] = 0.5
+                print(f"    🔧 max_grad_norm : ajouté (0.5)")
+                modified = True
+            
+            # Sauvegarder version ajustée
+            if modified:
+                adjusted_file = 'models/autonomous/best_hyperparams_adjusted.json'
+                with open(adjusted_file, 'w') as f:
+                    json.dump(params, f, indent=2)
+                print(f"  💾 Version ajustée sauvegardée : {adjusted_file}\n")
+            
+            return params
         
         # Si fichier existe, charger et merger avec défauts
         if os.path.exists(config_path):
@@ -378,16 +453,54 @@ class AutonomousTradingSystem:
         """Entraîne le modèle sur le portfolio sélectionné"""
         
         print(f"\n🏋️ Entraînement sur {len(self.selected_assets)} assets...")
-        print(f"  Device: {self.config['training']['device']}")
-        print(f"  Timesteps: {self.config['training']['timesteps']:,}")
-        print(f"  Parallel Envs: {self.config['training']['n_envs']}\n")
+        
+        # CHARGER PARAMÈTRES (avec correctifs automatiques)
+        params = self._load_best_params()
+        
+        # Afficher configuration
+        print(f"\n  📊 CONFIGURATION FINALE :")
+        print(f"  {'─'*50}")
+        print(f"  Learning Rate    : {params['learning_rate']:.6f}")
+        print(f"  N Steps          : {params['n_steps']}")
+        print(f"  Batch Size       : {params['batch_size']}")
+        print(f"  N Epochs         : {params['n_epochs']}")
+        print(f"  Gamma            : {params['gamma']:.4f}")
+        print(f"  GAE Lambda       : {params['gae_lambda']:.4f}")
+        print(f"  Clip Range       : {params['clip_range']:.4f}")
+        print(f"  Entropy Coef     : {params['ent_coef']:.6f}")
+        print(f"  Value Coef       : {params['vf_coef']:.4f}")
+        print(f"  Max Grad Norm    : {params.get('max_grad_norm', 0.5)}")
+        print(f"  {'─'*50}")
+        print(f"  Device           : {self.config['training']['device']}")
+        print(f"  Timesteps        : {self.config['training']['timesteps']:,}")
+        print(f"  Parallel Envs    : {self.config['training']['n_envs']}")
+        print(f"  {'─'*50}\n")
+        
+        # Charger données
+        print("  📥 Chargement données...")
+        data = {}
+        for ticker in self.selected_assets:
+            cache_file = f'data_cache/{ticker}_730d.csv'
+            if os.path.exists(cache_file):
+                data[ticker] = pd.read_csv(cache_file, index_col=0, parse_dates=True)
+            else:
+                # Fallback sans suffix
+                cache_file = f'data_cache/{ticker}.csv'
+                if os.path.exists(cache_file):
+                    data[ticker] = pd.read_csv(cache_file, index_col=0, parse_dates=True)
+        
+        if len(data) == 0:
+            raise ValueError("❌ Aucune donnée disponible pour entraînement")
+        
+        print(f"  ✅ {len(data)} datasets chargés\n")
         
         # Créer environnements parallèles
         def make_env():
             return UniversalTradingEnv(
-                tickers=self.selected_assets,
-                regime_detector=self.regime_detector,
-                data_dir='data_cache'
+                data=data,
+                initial_balance=100000,
+                commission=0.001,
+                max_steps=1000
             )
         
         # Utiliser SubprocVecEnv pour parallélisation réelle
@@ -396,18 +509,27 @@ class AutonomousTradingSystem:
         else:
             env = DummyVecEnv([make_env])
         
+        # Extraire policy_kwargs
+        policy_kwargs = params.pop('policy_kwargs', dict(net_arch=dict(pi=[256, 256], vf=[256, 256])))
+        
         # Créer modèle avec meilleurs params
+        print("  🤖 Création modèle PPO...")
         model = PPO(
             "MlpPolicy",
             env,
             verbose=1,
             device=self.config['training']['device'],
             tensorboard_log="logs/tensorboard",
-            **self.best_params
+            policy_kwargs=policy_kwargs,
+            **params
         )
         
+        print("  ✅ Modèle créé\n")
+        
         # Entraîner
-        print("⏳ Entraînement en cours...\n")
+        print("  🚀 DÉBUT ENTRAÎNEMENT\n")
+        print("  💡 Monitoring : nvidia-smi (autre terminal)")
+        print("  💡 TensorBoard : tensorboard --logdir logs/tensorboard\n")
         
         model.learn(
             total_timesteps=self.config['training']['timesteps'],
@@ -415,6 +537,13 @@ class AutonomousTradingSystem:
         )
         
         env.close()
+        
+        print("\n  ✅ ENTRAÎNEMENT TERMINÉ\n")
+        
+        # Sauvegarder
+        model_path = 'models/autonomous/final_model.zip'
+        model.save(model_path)
+        print(f"  💾 Modèle sauvegardé : {model_path}\n")
         
         return model
     
