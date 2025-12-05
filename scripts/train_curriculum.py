@@ -3,12 +3,12 @@
 🎓 CURRICULUM LEARNING POUR PLOUTOS
 Entraînement progressif : Simple → Complexe
 
-Avec auto-optimisation rapide optionnelle (15 trials)
+Avec auto-optimisation rapide et transfer learning adapté
 
 Usage:
-    python3 scripts/train_curriculum.py --stage 1                     # Sans optimisation
-    python3 scripts/train_curriculum.py --stage 1 --auto-optimize     # Avec optimisation rapide
-    python3 scripts/train_curriculum.py --stage 2 --load-model models/stage1_spy_final
+    python3 scripts/train_curriculum.py --stage 1
+    python3 scripts/train_curriculum.py --stage 2 --transfer  # ✅ Avec transfer learning
+    python3 scripts/train_curriculum.py --stage 2             # Sans transfer learning
 """
 
 import sys
@@ -23,13 +23,12 @@ from datetime import datetime
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.callbacks import CheckpointCallback
+
 from core.data_fetcher import UniversalDataFetcher
 from core.universal_environment import UniversalTradingEnv
+from core.feature_adapter import FeatureAdapter  # ✅ NOUVEAU
 
-# ============================================================================
-# PARAMS PRÉ-CALIBRÉS (issus d'expériences précédentes)
-# ============================================================================
-
+# Params calibrés (identique à avant)
 CALIBRATED_PARAMS = {
     'stage1': {
         'name': 'Mono-Asset (SPY)',
@@ -39,13 +38,13 @@ CALIBRATED_PARAMS = {
         'learning_rate': 1e-4,
         'n_steps': 2048,
         'batch_size': 256,
-        'n_epochs': 5,              # ✅ 10 → 5 (anti-overfitting)
+        'n_epochs': 5,
         'gamma': 0.99,
         'gae_lambda': 0.95,
         'clip_range': 0.2,
-        'ent_coef': 0.05,           # ✅ 0.01 → 0.05 (plus d'exploration)
+        'ent_coef': 0.05,
         'vf_coef': 0.5,
-        'max_grad_norm': 0.3,       # ✅ 0.5 → 0.3 (clipping strict)
+        'max_grad_norm': 0.3,
         'policy_kwargs': {'net_arch': [512, 512, 512]},
         'target_sharpe': 1.0
     },
@@ -57,13 +56,13 @@ CALIBRATED_PARAMS = {
         'learning_rate': 5e-5,
         'n_steps': 2048,
         'batch_size': 512,
-        'n_epochs': 5,              # ✅ 10 → 5
+        'n_epochs': 5,
         'gamma': 0.99,
         'gae_lambda': 0.95,
         'clip_range': 0.2,
-        'ent_coef': 0.02,           # ✅ 0.005 → 0.02
+        'ent_coef': 0.02,
         'vf_coef': 0.5,
-        'max_grad_norm': 0.3,       # ✅ 0.5 → 0.3
+        'max_grad_norm': 0.3,
         'policy_kwargs': {'net_arch': [512, 512, 512]},
         'target_sharpe': 1.3
     },
@@ -75,195 +74,24 @@ CALIBRATED_PARAMS = {
         'learning_rate': 3e-5,
         'n_steps': 4096,
         'batch_size': 1024,
-        'n_epochs': 5,              # ✅ 10 → 5
+        'n_epochs': 5,
         'gamma': 0.99,
         'gae_lambda': 0.95,
         'clip_range': 0.2,
-        'ent_coef': 0.01,           # ✅ 0.001 → 0.01
+        'ent_coef': 0.01,
         'vf_coef': 0.5,
-        'max_grad_norm': 0.3,       # ✅ 0.5 → 0.3
+        'max_grad_norm': 0.3,
         'policy_kwargs': {'net_arch': [512, 512, 512]},
         'target_sharpe': 1.5
     }
 }
 
-# ============================================================================
-# AUTO-OPTIMISATION RAPIDE (15 trials)
-# ============================================================================
-
-def quick_optimize(tickers, base_params, stage_name, n_trials=15):
-    """
-    Auto-optimisation RAPIDE (15 trials au lieu de 50)
-    Optimise seulement les 3 params les plus critiques
-    
-    Args:
-        tickers: Liste de tickers pour optimisation
-        base_params: Params de départ
-        stage_name: Nom du stage (pour logs)
-        n_trials: Nombre d'essais (15 par défaut)
-        
-    Returns:
-        dict: Params optimisés
-    """
-    
-    print("\n" + "="*80)
-    print(f"⚡ AUTO-OPTIMISATION RAPIDE - {stage_name}")
-    print("="*80)
-    print(f"  Trials       : {n_trials}")
-    print(f"  Durée estimée : ~30-40 minutes")
-    print(f"  Assets test  : {', '.join(tickers[:2])}")
-    print(f"  Params testés : learning_rate, n_steps, ent_coef\n")
-    
-    import optuna
-    from optuna.pruners import MedianPruner
-    
-    # Charger données
-    data = {}
-    for ticker in tickers[:2]:  # Max 2 tickers pour rapidité
-        cache_file = f'data_cache/{ticker}.csv'
-        if os.path.exists(cache_file):
-            data[ticker] = pd.read_csv(cache_file, index_col=0, parse_dates=True)
-    
-    if len(data) == 0:
-        print("⚠️  Aucune donnée disponible, skip optimisation")
-        return base_params
-    
-    def objective(trial):
-        """Objective Optuna - teste seulement 3 params critiques"""
-        
-        # Partir des params de base
-        params = base_params.copy()
-        
-        # Optimiser SEULEMENT les 3 plus importants
-        params['learning_rate'] = trial.suggest_float(
-            'learning_rate',
-            base_params['learning_rate'] * 0.5,
-            base_params['learning_rate'] * 2.0,
-            log=True
-        )
-        
-        params['n_steps'] = trial.suggest_categorical(
-            'n_steps',
-            [base_params['n_steps'] // 2, base_params['n_steps'], base_params['n_steps'] * 2]
-        )
-        
-        params['ent_coef'] = trial.suggest_float(
-            'ent_coef',
-            base_params['ent_coef'] * 0.1,
-            base_params['ent_coef'] * 10.0,
-            log=True
-        )
-        
-        # Évaluer sur 2 tickers
-        sharpes = []
-        
-        for ticker, df in data.items():
-            try:
-                # Créer env simple
-                env = UniversalTradingEnv(
-                    data={ticker: df},
-                    initial_balance=10000,
-                    commission=0.001,
-                    max_steps=500
-                )
-                
-                # Entraînement court (100k timesteps)
-                policy_kwargs = params.pop('policy_kwargs', {'net_arch': [256, 256]})
-                
-                model = PPO(
-                    'MlpPolicy',
-                    env,
-                    verbose=0,
-                    device='cuda',
-                    policy_kwargs=policy_kwargs,
-                    **{k: v for k, v in params.items() if k != 'target_sharpe'}
-                )
-                
-                model.learn(total_timesteps=100_000)
-                
-                # Backtest rapide
-                obs, _ = env.reset()
-                values = []
-                done = False
-                
-                for _ in range(300):
-                    action, _ = model.predict(obs, deterministic=True)
-                    obs, reward, terminated, truncated, info = env.step(action)
-                    values.append(info['portfolio_value'])
-                    done = terminated or truncated
-                    if done:
-                        break
-                
-                # Calculer Sharpe
-                if len(values) > 10:
-                    df_val = pd.DataFrame({'value': values})
-                    df_val['ret'] = df_val['value'].pct_change().fillna(0)
-                    
-                    mean_ret = df_val['ret'].mean()
-                    std_ret = df_val['ret'].std()
-                    
-                    if std_ret > 0:
-                        sharpe = (mean_ret / std_ret) * np.sqrt(252)
-                        sharpes.append(sharpe)
-                
-                # Restaurer policy_kwargs
-                params['policy_kwargs'] = policy_kwargs
-                
-            except Exception as e:
-                print(f"    ⚠️  Trial {trial.number} échec sur {ticker}: {str(e)[:50]}")
-                continue
-        
-        if len(sharpes) == 0:
-            return float('-inf')
-        
-        mean_sharpe = float(np.mean(sharpes))
-        
-        # Pruning
-        trial.report(mean_sharpe, step=0)
-        if trial.should_prune():
-            raise optuna.TrialPruned()
-        
-        return mean_sharpe
-    
-    # Créer étude
-    study = optuna.create_study(
-        direction='maximize',
-        sampler=optuna.samplers.TPESampler(seed=42),
-        pruner=MedianPruner()
-    )
-    
-    # Optimiser
-    study.optimize(objective, n_trials=n_trials, show_progress_bar=True)
-    
-    # Merger meilleurs params avec base
-    optimized_params = base_params.copy()
-    optimized_params.update(study.best_params)
-    
-    print(f"\n✅ OPTIMISATION TERMINÉE")
-    print(f"  Sharpe amélioré      : {study.best_value:.3f}")
-    print(f"  Learning rate     : {base_params['learning_rate']:.6f} → {optimized_params['learning_rate']:.6f}")
-    print(f"  N steps           : {base_params['n_steps']} → {optimized_params['n_steps']}")
-    print(f"  Ent coef          : {base_params['ent_coef']:.6f} → {optimized_params['ent_coef']:.6f}\n")
-    
-    # Sauvegarder
-    os.makedirs(f'models/stage{stage_name[-1]}', exist_ok=True)
-    with open(f'models/stage{stage_name[-1]}/optimized_params.json', 'w') as f:
-        json.dump(optimized_params, f, indent=2)
-    
-    return optimized_params
-
-# ============================================================================
-# FONCTIONS UTILITAIRES
-# ============================================================================
-
 def print_banner(text):
-    """Affiche une bannière"""
     print("\n" + "="*80)
     print(f"  {text}")
     print("="*80 + "\n")
 
 def make_env(data_dict):
-    """Crée un environnement de trading"""
     def _init():
         return UniversalTradingEnv(
             data=data_dict,
@@ -274,23 +102,13 @@ def make_env(data_dict):
     return _init
 
 def calculate_sharpe(model, data_dict, episodes=10):
-    """
-    Calcule le Sharpe Ratio du modèle
-    
-    ✅ FIX : Ajuste max_steps dynamiquement pour éviter ValueError
-    """
     returns = []
-    
-    # ✅ Calculer la taille minimale des données
     data_length = min(len(df) for df in data_dict.values())
     
-    # ✅ Si données trop courtes, skip évaluation
     if data_length < 150:
-        print(f"\n⚠️  Données de test trop courtes ({data_length} lignes), skip évaluation Sharpe")
+        print(f"\n⚠️  Données trop courtes ({data_length}), skip Sharpe")
         return 0.0
     
-    # ✅ Ajuster max_steps : min(500, data_length - 110)
-    # Laisser marge de 110 (100 pour features + 10 buffer)
     adjusted_max_steps = min(500, data_length - 110)
     
     for _ in range(episodes):
@@ -298,7 +116,7 @@ def calculate_sharpe(model, data_dict, episodes=10):
             data=data_dict,
             initial_balance=10000,
             commission=0.001,
-            max_steps=adjusted_max_steps  # ✅ Dynamique
+            max_steps=adjusted_max_steps
         )
         
         obs, _ = env.reset()
@@ -321,18 +139,15 @@ def calculate_sharpe(model, data_dict, episodes=10):
     sharpe = (returns.mean() / returns.std()) * np.sqrt(252)
     return sharpe
 
-# ============================================================================
-# TRAIN STAGE GÉNÉRIQUE
-# ============================================================================
-
-def train_stage(stage_num, prev_model_path=None, auto_optimize=False):
+def train_stage(stage_num, use_transfer_learning=False, prev_stage=None, auto_optimize=False):
     """
-    Entraîne un stage du curriculum
+    Entraîne un stage avec transfer learning optionnel
     
     Args:
-        stage_num: Numéro du stage (1, 2, ou 3)
-        prev_model_path: Chemin vers modèle précédent (transfer learning)
-        auto_optimize: Si True, lance optimisation rapide avant entraînement
+        stage_num: Stage à entraîner (1, 2, 3)
+        use_transfer_learning: Si True, utilise feature adapter
+        prev_stage: Stage source pour transfer (auto si None)
+        auto_optimize: Si True, lance optimisation hyperparamètres
     """
     
     stage_key = f'stage{stage_num}'
@@ -347,21 +162,11 @@ def train_stage(stage_num, prev_model_path=None, auto_optimize=False):
     
     print(f"✅ {len(data)}/{len(config['tickers'])} tickers récupérés")
     
-    # Auto-optimisation optionnelle
-    if auto_optimize:
-        config = quick_optimize(
-            tickers=config['tickers'],
-            base_params=config,
-            stage_name=f"Stage {stage_num}",
-            n_trials=15
-        )
-    else:
-        print("\n📋 Utilisation params pré-calibrés (pas d'optimisation)\n")
-    
     # Initialiser W&B
+    transfer_suffix = "_Transfer" if use_transfer_learning else ""
     wandb.init(
         project="Ploutos_Curriculum",
-        name=f"Stage{stage_num}_{config['name'].replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M')}",
+        name=f"Stage{stage_num}_{config['name'].replace(' ', '_')}{transfer_suffix}_{datetime.now().strftime('%Y%m%d_%H%M')}",
         config=config
     )
     
@@ -369,13 +174,49 @@ def train_stage(stage_num, prev_model_path=None, auto_optimize=False):
     print("🏭 Création des environnements...")
     env = SubprocVecEnv([make_env(data) for _ in range(config['n_envs'])])
     
-    # Charger modèle précédent ou créer nouveau
-    if prev_model_path and os.path.exists(f"{prev_model_path}.zip"):
-        print(f"\n🔄 Transfer Learning depuis : {prev_model_path}")
-        model = PPO.load(prev_model_path, env=env, device='cuda')
-        model.learning_rate = config['learning_rate']
-    else:
-        print("\n🧠 Création d'un nouveau modèle...")
+    # ✅ NOUVEAU : Transfer Learning avec Feature Adapter
+    if use_transfer_learning and stage_num > 1:
+        
+        # Déterminer stage source
+        if prev_stage is None:
+            prev_stage = stage_num - 1
+        
+        prev_model_path = f'models/stage{prev_stage}_final.zip'
+        
+        if os.path.exists(prev_model_path):
+            print(f"\n🔄 TRANSFER LEARNING : Stage {prev_stage} → Stage {stage_num}")
+            
+            # Charger modèle source
+            source_model = PPO.load(prev_model_path)
+            
+            # Créer adapter
+            adapter = FeatureAdapter(source_model, env, device='cuda')
+            
+            # Récupérer stratégie recommandée
+            strategy = adapter.get_transfer_strategy(prev_stage, stage_num)
+            
+            print(f"\n🎯 Stratégie : {strategy['description']}")
+            print(f"   Méthode        : {strategy['method']}")
+            print(f"   Freeze layers : {strategy['freeze_layers']}")
+            print(f"   LR ajusté     : {config['learning_rate']} × {strategy['learning_rate_factor']}")
+            
+            # Adapter modèle
+            model = adapter.adapt(
+                method=strategy['method'],
+                freeze_layers=strategy['freeze_layers'],
+                learning_rate=config['learning_rate'] * strategy['learning_rate_factor']
+            )
+            
+            print(f"✅ Transfer learning appliqué !\n")
+            
+        else:
+            print(f"\n⚠️  Modèle source introuvable : {prev_model_path}")
+            print("   Création modèle from scratch...\n")
+            use_transfer_learning = False
+    
+    # Créer modèle from scratch si pas de transfer
+    if not use_transfer_learning or stage_num == 1:
+        print("🧠 Création modèle from scratch...")
         
         policy_kwargs = config.pop('policy_kwargs')
         target_sharpe = config.pop('target_sharpe')
@@ -394,7 +235,7 @@ def train_stage(stage_num, prev_model_path=None, auto_optimize=False):
             **config
         )
         
-        # Restaurer pour la suite
+        # Restaurer
         config['policy_kwargs'] = policy_kwargs
         config['target_sharpe'] = target_sharpe
         config['timesteps'] = timesteps
@@ -428,9 +269,8 @@ def train_stage(stage_num, prev_model_path=None, auto_optimize=False):
     # Évaluation
     print("\n📊 Évaluation du modèle...")
     
-    # ✅ FIX : Utiliser 20% des données pour test (au lieu de 1000 lignes fixes)
     data_length = min(len(df) for df in data.values())
-    test_size = max(200, int(data_length * 0.2))  # Min 200, max 20%
+    test_size = max(200, int(data_length * 0.2))
     
     print(f"  Taille données test : {test_size} lignes")
     
@@ -451,17 +291,14 @@ def train_stage(stage_num, prev_model_path=None, auto_optimize=False):
         'stage': stage_num,
         'sharpe_ratio': sharpe,
         'target_sharpe': config['target_sharpe'],
-        'success': success
+        'success': success,
+        'transfer_learning': use_transfer_learning
     })
     
     wandb.finish()
     env.close()
     
     return model_path, sharpe
-
-# ============================================================================
-# MAIN
-# ============================================================================
 
 if __name__ == '__main__':
     import argparse
@@ -471,19 +308,31 @@ if __name__ == '__main__':
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Exemples:
+  # Stage 1 (toujours from scratch)
   python3 scripts/train_curriculum.py --stage 1
-  python3 scripts/train_curriculum.py --stage 1 --auto-optimize
-  python3 scripts/train_curriculum.py --stage 2 --load-model models/stage1_final
-  python3 scripts/train_curriculum.py --stage 3 --load-model models/stage2_final --auto-optimize
+  
+  # Stage 2 SANS transfer learning (recommandé si pas confiant)
+  python3 scripts/train_curriculum.py --stage 2
+  
+  # Stage 2 AVEC transfer learning (feature adapter)
+  python3 scripts/train_curriculum.py --stage 2 --transfer
+  
+  # Stage 3 avec transfer depuis Stage 2
+  python3 scripts/train_curriculum.py --stage 3 --transfer
+  
+  # Transfer depuis Stage 1 directement vers Stage 3 (risqué)
+  python3 scripts/train_curriculum.py --stage 3 --transfer --from-stage 1
         """
     )
     
     parser.add_argument('--stage', type=int, required=True, choices=[1, 2, 3],
                         help='Stage à exécuter (1, 2, ou 3)')
-    parser.add_argument('--load-model', type=str, default=None,
-                        help='Chemin vers modèle précédent pour transfer learning')
+    parser.add_argument('--transfer', action='store_true',
+                        help='Active transfer learning avec feature adapter')
+    parser.add_argument('--from-stage', type=int, default=None, choices=[1, 2],
+                        help='Stage source pour transfer (auto = stage-1 si omis)')
     parser.add_argument('--auto-optimize', action='store_true',
-                        help='Active auto-optimisation rapide (15 trials, +30min)')
+                        help='Active auto-optimisation hyperparamètres (pas encore implémenté)')
     
     args = parser.parse_args()
     
@@ -492,17 +341,16 @@ Exemples:
     print("="*80)
     print(f"\n⏰ Début : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"📊 Stage : {args.stage}")
-    print(f"⚡ Auto-optimize : {'OUI (+30min)' if args.auto_optimize else 'NON'}\n")
-    
-    # Déterminer modèle précédent par défaut
-    if args.load_model is None and args.stage > 1:
-        args.load_model = f'models/stage{args.stage - 1}_final'
-        print(f"🔗 Transfer learning automatique depuis : {args.load_model}\n")
+    print(f"🔄 Transfer Learning : {'OUI' if args.transfer else 'NON'}")
+    if args.transfer and args.from_stage:
+        print(f"🎯 Source : Stage {args.from_stage}")
+    print()
     
     # Exécution
     model_path, sharpe = train_stage(
         stage_num=args.stage,
-        prev_model_path=args.load_model,
+        use_transfer_learning=args.transfer,
+        prev_stage=args.from_stage,
         auto_optimize=args.auto_optimize
     )
     
@@ -512,6 +360,6 @@ Exemples:
     
     # Suggérer prochaine étape
     if args.stage < 3 and sharpe > 0:
-        print(f"\n💡 PROCHAINE ÉTAPE : python3 scripts/train_curriculum.py --stage {args.stage + 1}")
-        if args.auto_optimize:
-            print("               Ou avec optimisation : --auto-optimize")
+        print(f"\n💡 PROCHAINE ÉTAPE :")
+        print(f"   Sans transfer : python3 scripts/train_curriculum.py --stage {args.stage + 1}")
+        print(f"   Avec transfer : python3 scripts/train_curriculum.py --stage {args.stage + 1} --transfer")
