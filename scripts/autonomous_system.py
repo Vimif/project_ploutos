@@ -585,11 +585,29 @@ class AutonomousTradingSystem:
         
         print("\n📊 Backtesting sur données de test...\n")
         
+        # Charger données
+        print("  📥 Chargement données validation...")
+        data = {}
+        for ticker in self.selected_assets:
+            cache_file = f'data_cache/{ticker}_730d.csv'
+            if os.path.exists(cache_file):
+                data[ticker] = pd.read_csv(cache_file, index_col=0, parse_dates=True)
+            else:
+                cache_file = f'data_cache/{ticker}.csv'
+                if os.path.exists(cache_file):
+                    data[ticker] = pd.read_csv(cache_file, index_col=0, parse_dates=True)
+        
+        if len(data) == 0:
+            raise ValueError("❌ Aucune donnée pour validation")
+        
+        print(f"  ✅ {len(data)} datasets chargés\n")
+        
         # Créer env de test (sans parallélisation)
         env = UniversalTradingEnv(
-            tickers=self.selected_assets,
-            regime_detector=self.regime_detector,
-            data_dir='data_cache'
+            data=data,
+            initial_balance=100000,
+            commission=0.001,
+            max_steps=2000  # Plus long pour validation
         )
         
         obs, _ = env.reset()
@@ -597,58 +615,88 @@ class AutonomousTradingSystem:
         values = []
         actions_log = []
         
-        # Tester sur les derniers jours disponibles
-        test_steps = min(2160, env.min_length - env.lookback_window - 1)
+        print(f"  🔄 Test sur période de validation...")
         
-        print(f"  🔄 Test sur {test_steps} steps...")
+        done = False
+        truncated = False
+        step = 0
+        max_steps = 2000  # Limiter pour éviter boucle infinie
         
-        for step in range(test_steps):
+        while not done and not truncated and step < max_steps:
             action, _ = self.model.predict(obs, deterministic=True)
-            obs, reward, done, trunc, info = env.step(action)
+            obs, reward, done, truncated, info = env.step(action)
             
-            values.append(info['total_value'])
+            values.append(info['portfolio_value'])
             actions_log.append({
                 'step': step,
-                'positions': info['n_active_positions'],
-                'value': info['total_value']
+                'positions': sum(1 for p in info['positions'].values() if p > 0),
+                'value': info['portfolio_value'],
+                'balance': info['balance']
             })
             
-            if done or trunc:
-                break
+            step += 1
+            
+            if step % 100 == 0:
+                print(f"    Step {step}/{max_steps} - Value: ${info['portfolio_value']:,.2f}")
+        
+        print(f"\n  ✅ Backtest terminé ({step} steps)\n")
         
         # Calculer métriques
         df = pd.DataFrame({'value': values})
         df['returns'] = df['value'].pct_change().fillna(0)
         
-        initial = 10000
+        initial = 100000
         final = values[-1] if values else initial
         total_return = (final - initial) / initial
         
         mean_ret = df['returns'].mean()
         std_ret = df['returns'].std()
-        sharpe = (mean_ret / std_ret) * np.sqrt(252 * 24) if std_ret > 0 else 0
+        
+        # Sharpe annualisé (data horaires)
+        sharpe = (mean_ret / std_ret) * np.sqrt(252 * 6.5) if std_ret > 0 else 0
         
         cumulative = (1 + df['returns']).cumprod()
         running_max = cumulative.cummax()
         drawdown = (cumulative - running_max) / running_max
         max_drawdown = drawdown.min()
         
+        # Win rate
+        win_rate = (df['returns'] > 0).mean()
+        
+        # Profit factor
+        gains = df[df['returns'] > 0]['returns'].sum()
+        losses = abs(df[df['returns'] < 0]['returns'].sum())
+        profit_factor = gains / losses if losses > 0 else float('inf')
+        
         results = {
             'total_return': float(total_return * 100),
             'sharpe': float(sharpe),
             'max_drawdown': float(max_drawdown * 100),
             'final_value': float(final),
-            'win_rate': float((df['returns'] > 0).mean() * 100),
-            'n_trades': len(values),
+            'win_rate': float(win_rate * 100),
+            'profit_factor': float(profit_factor),
+            'n_steps': len(values),
             'avg_positions': float(np.mean([a['positions'] for a in actions_log]))
         }
         
-        print(f"\n  📈 Résultats :")
-        print(f"    Return      : {results['total_return']:+.2f}%")
-        print(f"    Sharpe      : {results['sharpe']:.2f}")
-        print(f"    Max Drawdown: {results['max_drawdown']:.2f}%")
-        print(f"    Win Rate    : {results['win_rate']:.1f}%")
-        print(f"    Avg Positions: {results['avg_positions']:.1f}")
+        print(f"  📊 RÉSULTATS VALIDATION :")
+        print(f"  {'─'*50}")
+        print(f"  Total Return     : {results['total_return']:+.2f}%")
+        print(f"  Sharpe Ratio     : {results['sharpe']:.2f}")
+        print(f"  Max Drawdown     : {results['max_drawdown']:.2f}%")
+        print(f"  Win Rate         : {results['win_rate']:.1f}%")
+        print(f"  Profit Factor    : {results['profit_factor']:.2f}")
+        print(f"  Final Value      : ${results['final_value']:,.2f}")
+        print(f"  Avg Positions    : {results['avg_positions']:.1f}/{len(self.selected_assets)}")
+        print(f"  {'─'*50}\n")
+        
+        # Verdict
+        min_sharpe = self.config['validation']['min_sharpe']
+        
+        if results['sharpe'] >= min_sharpe:
+            print(f"  ✅ VALIDATION RÉUSSIE (Sharpe {results['sharpe']:.2f} ≥ {min_sharpe})")
+        else:
+            print(f"  ⚠️ VALIDATION ÉCHOUÉE (Sharpe {results['sharpe']:.2f} < {min_sharpe})")
         
         return results
     
