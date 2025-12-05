@@ -1,218 +1,231 @@
 """
-Environnement de trading universel
-Peut trader N'IMPORTE QUEL asset avec les mêmes features
-Supporte portfolio multi-assets
+Environnement de trading universel pour multi-assets
 """
 
 import gymnasium as gym
-from gymnasium import spaces
 import numpy as np
 import pandas as pd
-from core.data_loader import load_market_data
+from gymnasium import spaces
 
 class UniversalTradingEnv(gym.Env):
     """Environnement générique pour trader un portfolio multi-assets"""
-    
+
     metadata = {'render_modes': ['human']}
-    
-    def __init__(self, regime_detector, enable_market_scan=False):
+
+    def __init__(self, data, initial_balance=100000, commission=0.001, max_steps=1000):
         """
         Args:
-            regime_detector: Instance de MarketRegimeDetector
-            enable_market_scan: Si True, active le scan complet du marché
+            data (dict): {ticker: DataFrame} avec colonnes [Open, High, Low, Close, Volume]
+            initial_balance (float): Capital initial
+            commission (float): Commission par trade (0.001 = 0.1%)
+            max_steps (int): Nombre max de steps par épisode
         """
-        self.regime_detector = regime_detector
-        self.last_selection = None
-        self.selection_history = []
-        self.enable_market_scan = enable_market_scan
+        super().__init__()
         
-        # Initialiser scanner si activé
-        self.fetcher = None
-        self.scanner = None
+        self.data = data
+        self.tickers = list(data.keys())
+        self.n_assets = len(self.tickers)
+        self.initial_balance = initial_balance
+        self.commission = commission
+        self.max_steps = max_steps
         
-        if enable_market_scan:
-            try:
-                from core.data_fetcher import UniversalDataFetcher
-                from core.market_scanner import MarketScanner
-                
-                self.fetcher = UniversalDataFetcher()
-                self.scanner = MarketScanner(self.fetcher)
-                print("🔍 Market Scanner activé")
-            except ImportError as e:
-                print(f"⚠️ Market Scanner non disponible : {e}")
-                print("  → Installer : pip install alpaca-trade-api requests")
-                self.enable_market_scan = False
-    
+        # Vérifier que tous les DataFrames ont la même longueur
+        self.data_length = min(len(df) for df in data.values())
+        
+        # Observation space : features par asset + portfolio state
+        # Features par asset : [close_norm, volume_norm, rsi, macd, returns_1d, returns_5d]
+        n_features_per_asset = 6
+        n_portfolio_features = 3  # [cash_ratio, total_value_norm, n_positions]
+        
+        obs_size = self.n_assets * n_features_per_asset + n_portfolio_features
+        self.observation_space = spaces.Box(
+            low=-np.inf, 
+            high=np.inf, 
+            shape=(obs_size,), 
+            dtype=np.float32
+        )
+        
+        # Action space : position pour chaque asset [-1, 1]
+        # -1 = short max, 0 = neutral, 1 = long max
+        self.action_space = spaces.Box(
+            low=-1, 
+            high=1, 
+            shape=(self.n_assets,), 
+            dtype=np.float32
+        )
+        
+        # État interne
+        self.current_step = 0
+        self.balance = initial_balance
+        self.positions = {ticker: 0 for ticker in self.tickers}  # Nombre d'actions
+        self.portfolio_value = initial_balance
+        self.trades_history = []
+        
     def reset(self, seed=None, options=None):
+        """Reset environnement"""
         super().reset(seed=seed)
         
+        # Choisir point de départ aléatoire (laisser 100 steps pour calcul features)
+        self.current_step = np.random.randint(100, self.data_length - self.max_steps)
+        
         self.balance = self.initial_balance
-        self.positions = {ticker: 0 for ticker in self.data.keys()}
-        self.current_step = self.lookback_window
+        self.positions = {ticker: 0 for ticker in self.tickers}
+        self.portfolio_value = self.initial_balance
+        self.trades_history = []
         
-        return self._get_obs(), {}
+        return self._get_observation(), {}
     
-    def _get_obs(self):
-        """Construit l'observation multi-assets"""
-        
-        obs_parts = []
-        
-        # 1. Features de chaque asset (OHLCV normalisé)
-        for ticker in self.data.keys():
-            df = self.data[ticker]
-            
-            # Protection bounds
-            start_idx = max(0, self.current_step - self.lookback_window)
-            end_idx = min(self.current_step, len(df))
-            
-            frame = df.iloc[start_idx:end_idx]
-            
-            if len(frame) < self.lookback_window:
-                # Padding si pas assez de données
-                padding = np.zeros((self.lookback_window - len(frame), 5))
-                features = np.vstack([padding, frame[['Open', 'High', 'Low', 'Close', 'Volume']].values])
-            else:
-                features = frame[['Open', 'High', 'Low', 'Close', 'Volume']].values
-            
-            # Normalisation par le dernier prix de clôture
-            last_close = frame['Close'].iloc[-1] if len(frame) > 0 else 1.0
-            features = features / (last_close + 1e-8)
-            
-            obs_parts.append(features.flatten())
-        
-        # 2. Régime de marché (one-hot encoding)
-        if self.regime_detector:
-            try:
-                regime_info = self.regime_detector.detect()
-                regime_encoded = self._encode_regime(regime_info['regime'])
-            except:
-                regime_encoded = np.zeros(5)
-                regime_encoded[2] = 1  # SIDEWAYS par défaut
-        else:
-            regime_encoded = np.zeros(5)
-            regime_encoded[2] = 1
-        
-        obs_parts.append(regime_encoded)
-        
-        # 3. État du portfolio
-        portfolio_state = [self.balance / self.initial_balance]
-        
-        for ticker in self.data.keys():
-            df = self.data[ticker]
-            if self.current_step < len(df):
-                price = df.iloc[self.current_step]['Close']
-                position_value = self.positions[ticker] * price
-                portfolio_state.append(position_value / self.initial_balance)
-        
-        obs_parts.append(np.array(portfolio_state))
-        
-        # Concaténer tout
-        return np.concatenate(obs_parts).astype(np.float32)
-    
-    def _encode_regime(self, regime):
-        """Encode le régime en vecteur one-hot"""
-        regimes = ['BULL', 'BEAR', 'SIDEWAYS', 'HIGH_VOLATILITY', 'UNKNOWN']
-        encoded = np.zeros(5)
-        if regime in regimes:
-            encoded[regimes.index(regime)] = 1
-        else:
-            encoded[4] = 1  # UNKNOWN
-        return encoded
-    
-    def step(self, actions):
-        """
-        Exécute les actions sur tous les assets
-        
-        Args:
-            actions: Array d'actions [action_asset1, action_asset2, ...]
-        
-        Returns:
-            obs, reward, terminated, truncated, info
-        """
-        
-        # Calculer valeur portfolio avant action
-        prev_value = self.balance
-        for ticker in self.data.keys():
-            df = self.data[ticker]
-            if self.current_step < len(df):
-                price = df.iloc[self.current_step]['Close']
-                prev_value += self.positions[ticker] * price
-        
-        # Exécuter chaque action
-        for idx, ticker in enumerate(self.data.keys()):
-            action = actions[idx]
-            df = self.data[ticker]
-            
-            if self.current_step >= len(df):
-                continue
-            
-            price = df.iloc[self.current_step]['Close']
-            
-            if action == 1:  # BUY
-                # Diviser le capital disponible par le nombre d'assets
-                available = self.balance / len(self.data)
-                shares = int(available / (price * 1.001))  # Commission 0.1%
-                
-                if shares > 0:
-                    cost = shares * price * 1.001
-                    self.positions[ticker] += shares
-                    self.balance -= cost
-            
-            elif action == 2:  # SELL
-                if self.positions[ticker] > 0:
-                    revenue = self.positions[ticker] * price * 0.999  # Commission
-                    self.balance += revenue
-                    self.positions[ticker] = 0
-        
-        # Avancer d'un step
+    def step(self, action):
+        """Exécuter une action"""
         self.current_step += 1
         
-        # Calculer valeur portfolio après action
-        current_value = self.balance
-        for ticker in self.data.keys():
-            df = self.data[ticker]
-            if self.current_step < len(df):
-                price = df.iloc[self.current_step]['Close']
-                current_value += self.positions[ticker] * price
-        
-        # Reward = Log return (plus stable)
-        reward = np.log((current_value + 1e-8) / (prev_value + 1e-8))
-        
-        # Bonus pour diversification
-        n_positions = sum(1 for pos in self.positions.values() if pos > 0)
-        if n_positions > 1:
-            reward += 0.0001 * n_positions
-        
-        # Pénalité si tout le capital est bloqué (pas de liquidité)
-        if self.balance < self.initial_balance * 0.05:
-            reward -= 0.001
-        
-        # Condition de terminaison
-        terminated = False
-        if self.current_step >= self.min_length - 1:
-            terminated = True
-        
-        # Stop loss global (-70%)
-        if current_value < self.initial_balance * 0.30:
-            terminated = True
-            reward = -5.0
-        
-        info = {
-            'total_value': float(current_value),
-            'balance': float(self.balance),
-            'positions': {k: int(v) for k, v in self.positions.items()},
-            'n_active_positions': n_positions
+        # Récupérer prix actuels
+        current_prices = {
+            ticker: float(self.data[ticker].iloc[self.current_step]['Close'])
+            for ticker in self.tickers
         }
         
-        return self._get_obs(), reward, terminated, False, info
+        # Calculer valeur actuelle du portfolio
+        positions_value = sum(
+            self.positions[ticker] * current_prices[ticker]
+            for ticker in self.tickers
+        )
+        self.portfolio_value = self.balance + positions_value
+        
+        # Exécuter actions (ajuster positions selon action)
+        for i, ticker in enumerate(self.tickers):
+            target_position = action[i]  # -1 à 1
+            
+            # Convertir en valeur monétaire cible
+            target_value = target_position * self.portfolio_value * 0.95 / self.n_assets
+            
+            current_value = self.positions[ticker] * current_prices[ticker]
+            trade_value = target_value - current_value
+            
+            # Exécuter trade si significatif
+            if abs(trade_value) > self.portfolio_value * 0.01:  # Min 1% portfolio
+                shares_to_trade = int(trade_value / current_prices[ticker])
+                
+                if shares_to_trade != 0:
+                    cost = abs(shares_to_trade * current_prices[ticker])
+                    commission_cost = cost * self.commission
+                    
+                    # Vérifier si assez de cash
+                    if shares_to_trade > 0:  # Achat
+                        if self.balance >= cost + commission_cost:
+                            self.positions[ticker] += shares_to_trade
+                            self.balance -= (cost + commission_cost)
+                            self.trades_history.append({
+                                'step': self.current_step,
+                                'ticker': ticker,
+                                'action': 'BUY',
+                                'shares': shares_to_trade,
+                                'price': current_prices[ticker]
+                            })
+                    else:  # Vente
+                        if self.positions[ticker] >= abs(shares_to_trade):
+                            self.positions[ticker] += shares_to_trade  # shares_to_trade est négatif
+                            self.balance += (cost - commission_cost)
+                            self.trades_history.append({
+                                'step': self.current_step,
+                                'ticker': ticker,
+                                'action': 'SELL',
+                                'shares': abs(shares_to_trade),
+                                'price': current_prices[ticker]
+                            })
+        
+        # Recalculer valeur finale
+        positions_value = sum(
+            self.positions[ticker] * current_prices[ticker]
+            for ticker in self.tickers
+        )
+        new_portfolio_value = self.balance + positions_value
+        
+        # Calculer reward (variation en %)
+        reward = (new_portfolio_value - self.portfolio_value) / self.portfolio_value
+        
+        self.portfolio_value = new_portfolio_value
+        
+        # Terminer si max_steps atteint ou portfolio <= 0
+        terminated = (
+            self.current_step >= self.data_length - 1 or
+            self.portfolio_value <= self.initial_balance * 0.1
+        )
+        truncated = self.current_step - self.reset_step >= self.max_steps if hasattr(self, 'reset_step') else False
+        
+        info = {
+            'portfolio_value': self.portfolio_value,
+            'balance': self.balance,
+            'positions': self.positions.copy(),
+            'n_trades': len(self.trades_history)
+        }
+        
+        return self._get_observation(), reward, terminated, truncated, info
+    
+    def _get_observation(self):
+        """Construire observation"""
+        obs = []
+        
+        # Features par asset
+        for ticker in self.tickers:
+            df = self.data[ticker]
+            idx = self.current_step
+            
+            # Prix normalisé
+            close = df.iloc[idx]['Close']
+            close_norm = (close - df['Close'].iloc[max(0, idx-20):idx].mean()) / df['Close'].iloc[max(0, idx-20):idx].std()
+            
+            # Volume normalisé
+            volume = df.iloc[idx]['Volume']
+            volume_norm = (volume - df['Volume'].iloc[max(0, idx-20):idx].mean()) / df['Volume'].iloc[max(0, idx-20):idx].std()
+            
+            # Returns
+            returns_1d = (df.iloc[idx]['Close'] - df.iloc[idx-1]['Close']) / df.iloc[idx-1]['Close'] if idx > 0 else 0
+            returns_5d = (df.iloc[idx]['Close'] - df.iloc[idx-5]['Close']) / df.iloc[idx-5]['Close'] if idx > 5 else 0
+            
+            # RSI simplifié
+            gains = df['Close'].diff().clip(lower=0).iloc[max(0, idx-14):idx].mean()
+            losses = -df['Close'].diff().clip(upper=0).iloc[max(0, idx-14):idx].mean()
+            rsi = 100 - (100 / (1 + gains / (losses + 1e-8)))
+            rsi_norm = (rsi - 50) / 50
+            
+            # MACD approximatif
+            ema12 = df['Close'].iloc[max(0, idx-12):idx].ewm(span=12).mean().iloc[-1] if idx > 12 else close
+            ema26 = df['Close'].iloc[max(0, idx-26):idx].ewm(span=26).mean().iloc[-1] if idx > 26 else close
+            macd = (ema12 - ema26) / close
+            
+            obs.extend([
+                float(close_norm),
+                float(volume_norm),
+                float(rsi_norm),
+                float(macd),
+                float(returns_1d),
+                float(returns_5d)
+            ])
+        
+        # Portfolio features
+        cash_ratio = self.balance / self.portfolio_value
+        total_value_norm = (self.portfolio_value - self.initial_balance) / self.initial_balance
+        n_positions = sum(1 for pos in self.positions.values() if pos > 0) / self.n_assets
+        
+        obs.extend([
+            float(cash_ratio),
+            float(total_value_norm),
+            float(n_positions)
+        ])
+        
+        # Remplacer NaN/Inf par 0
+        obs = np.nan_to_num(obs, nan=0.0, posinf=1.0, neginf=-1.0)
+        
+        return np.array(obs, dtype=np.float32)
     
     def render(self, mode='human'):
-        """Affiche l'état actuel"""
-        print(f"\nStep {self.current_step}")
-        print(f"Balance: ${self.balance:,.2f}")
-        for ticker, shares in self.positions.items():
-            if shares > 0:
-                df = self.data[ticker]
-                price = df.iloc[min(self.current_step, len(df)-1)]['Close']
-                value = shares * price
-                print(f"  {ticker}: {shares} shares @ ${price:.2f} = ${value:,.2f}")
+        """Afficher état"""
+        if mode == 'human':
+            print(f"\n{'='*60}")
+            print(f"Step: {self.current_step}")
+            print(f"Portfolio Value: ${self.portfolio_value:,.2f}")
+            print(f"Cash: ${self.balance:,.2f}")
+            print(f"Positions: {self.positions}")
+            print(f"Total Trades: {len(self.trades_history)}")
+            print(f"{'='*60}")
