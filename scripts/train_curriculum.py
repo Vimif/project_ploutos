@@ -22,13 +22,14 @@ import pandas as pd
 from datetime import datetime
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import SubprocVecEnv
-from stable_baselines3.common.callbacks import CheckpointCallback
+from stable_baselines3.common.callbacks import CheckpointCallback, CallbackList
+from wandb.integration.sb3 import WandbCallback  # ✅ AJOUT
 
 from core.data_fetcher import UniversalDataFetcher
 from core.universal_environment import UniversalTradingEnv
-from core.feature_adapter import FeatureAdapter  # ✅ NOUVEAU
+from core.feature_adapter import FeatureAdapter
 
-# Params calibrés (identique à avant)
+# Params calibrés
 CALIBRATED_PARAMS = {
     'stage1': {
         'name': 'Mono-Asset (SPY)',
@@ -162,19 +163,28 @@ def train_stage(stage_num, use_transfer_learning=False, prev_stage=None, auto_op
     
     print(f"✅ {len(data)}/{len(config['tickers'])} tickers récupérés")
     
-    # Initialiser W&B
+    # ✅ INITIALISER W&B AVEC SYNC TENSORBOARD
     transfer_suffix = "_Transfer" if use_transfer_learning else ""
+    run_name = f"Stage{stage_num}_{config['name'].replace(' ', '_')}{transfer_suffix}_{datetime.now().strftime('%Y%m%d_%H%M')}"
+    
     wandb.init(
         project="Ploutos_Curriculum",
-        name=f"Stage{stage_num}_{config['name'].replace(' ', '_')}{transfer_suffix}_{datetime.now().strftime('%Y%m%d_%H%M')}",
-        config=config
+        name=run_name,
+        config=config,
+        sync_tensorboard=True,  # ✅ Sync automatique TensorBoard
+        monitor_gym=True,       # ✅ Monitor gym environments
+        save_code=True          # ✅ Sauvegarder code source
     )
+    
+    print(f"\n🔗 W&B Run : {wandb.run.get_url()}")
+    print(f"   Projet : Ploutos_Curriculum")
+    print(f"   Run    : {run_name}\n")
     
     # Créer environnements
     print("🏭 Création des environnements...")
     env = SubprocVecEnv([make_env(data) for _ in range(config['n_envs'])])
     
-    # ✅ NOUVEAU : Transfer Learning avec Feature Adapter
+    # Transfer Learning avec Feature Adapter
     if use_transfer_learning and stage_num > 1:
         
         # Déterminer stage source
@@ -199,6 +209,15 @@ def train_stage(stage_num, use_transfer_learning=False, prev_stage=None, auto_op
             print(f"   Méthode        : {strategy['method']}")
             print(f"   Freeze layers : {strategy['freeze_layers']}")
             print(f"   LR ajusté     : {config['learning_rate']} × {strategy['learning_rate_factor']}")
+            
+            # Logger strategy dans W&B
+            wandb.config.update({
+                'transfer_learning': True,
+                'source_stage': prev_stage,
+                'adaptation_method': strategy['method'],
+                'freeze_layers': strategy['freeze_layers'],
+                'lr_factor': strategy['learning_rate_factor']
+            })
             
             # Adapter modèle
             model = adapter.adapt(
@@ -229,7 +248,7 @@ def train_stage(stage_num, use_transfer_learning=False, prev_stage=None, auto_op
             'MlpPolicy',
             env,
             verbose=1,
-            tensorboard_log=f'./logs/{stage_key}',
+            tensorboard_log=f'./logs/{stage_key}',  # ✅ TensorBoard logs
             device='cuda',
             policy_kwargs=policy_kwargs,
             **config
@@ -243,21 +262,34 @@ def train_stage(stage_num, use_transfer_learning=False, prev_stage=None, auto_op
         config['name'] = name
         config['tickers'] = tickers
     
-    # Callbacks
+    # ✅ CALLBACKS : Checkpoint + WandbCallback
     os.makedirs(f'models/{stage_key}', exist_ok=True)
+    
     checkpoint_callback = CheckpointCallback(
         save_freq=50000 * stage_num,
         save_path=f'./models/{stage_key}',
         name_prefix=f'ploutos_{stage_key}'
     )
     
+    # ✅ WANDB CALLBACK pour monitoring temps réel
+    wandb_callback = WandbCallback(
+        gradient_save_freq=1000,        # Sauvegarder gradients toutes les 1000 steps
+        model_save_path=f'models/{stage_key}',
+        model_save_freq=100000,         # Sauvegarder modèle tous les 100k steps
+        verbose=2
+    )
+    
+    # Combiner callbacks
+    callback = CallbackList([checkpoint_callback, wandb_callback])
+    
     # Entraînement
     print(f"\n🚀 Entraînement : {config['timesteps']:,} timesteps...")
-    print(f"⏱️  Durée estimée : ~{config['timesteps'] // 500_000} heures sur RTX 3080\n")
+    print(f"⏱️  Durée estimée : ~{config['timesteps'] // 500_000} heures sur RTX 3080")
+    print(f"🔗 Suivre en temps réel : {wandb.run.get_url()}\n")
     
     model.learn(
         total_timesteps=config['timesteps'],
-        callback=checkpoint_callback,
+        callback=callback,  # ✅ Callbacks combinés
         progress_bar=True
     )
     
@@ -265,6 +297,9 @@ def train_stage(stage_num, use_transfer_learning=False, prev_stage=None, auto_op
     model_path = f'models/{stage_key}_final'
     model.save(model_path)
     print(f"\n✅ Modèle sauvegardé : {model_path}.zip")
+    
+    # ✅ Upload modèle final vers W&B
+    wandb.save(f'{model_path}.zip')
     
     # Évaluation
     print("\n📊 Évaluation du modèle...")
@@ -287,13 +322,18 @@ def train_stage(stage_num, use_transfer_learning=False, prev_stage=None, auto_op
     else:
         print(f"\n⚠️  Sharpe insuffisant, mais on continue...")
     
+    # ✅ Logger résultats finaux
     wandb.log({
-        'stage': stage_num,
-        'sharpe_ratio': sharpe,
-        'target_sharpe': config['target_sharpe'],
-        'success': success,
-        'transfer_learning': use_transfer_learning
+        'final/sharpe_ratio': sharpe,
+        'final/target_sharpe': config['target_sharpe'],
+        'final/success': success,
+        'final/timesteps': config['timesteps']
     })
+    
+    # ✅ Summary final
+    wandb.run.summary['sharpe_ratio'] = sharpe
+    wandb.run.summary['success'] = success
+    wandb.run.summary['stage'] = stage_num
     
     wandb.finish()
     env.close()
@@ -322,6 +362,14 @@ Exemples:
   
   # Transfer depuis Stage 1 directement vers Stage 3 (risqué)
   python3 scripts/train_curriculum.py --stage 3 --transfer --from-stage 1
+  
+Monitoring W&B:
+  Le lien W&B s'affiche au démarrage de l'entraînement.
+  Métriques loggées en temps réel :
+    - rollout/* : rewards, ep_len, ep_rew
+    - train/* : loss, entropy, value_loss
+    - time/* : fps, iterations
+    - final/* : sharpe, success
         """
     )
     
