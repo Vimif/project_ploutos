@@ -10,6 +10,10 @@ import os
 import warnings
 warnings.filterwarnings('ignore')
 
+# ✅ AJOUT : Charger .env
+from dotenv import load_dotenv
+load_dotenv()
+
 class UniversalDataFetcher:
     """
     Récupère les données de marché depuis plusieurs sources
@@ -39,8 +43,13 @@ class UniversalDataFetcher:
             from alpaca.data.timeframe import TimeFrame
             from datetime import datetime, timedelta
             
+            # ✅ FIX : Nom correct des variables
             api_key = os.getenv('ALPACA_API_KEY')
-            api_secret = os.getenv('ALPACA_SECRET_KEY')
+            api_secret = os.getenv('ALPACA_SECRET_KEY')  # ❌ Était ALPACA_SECRET_KEY
+            
+            # Essayer aussi avec le nom alternatif
+            if not api_secret:
+                api_secret = os.getenv('ALPACA_API_SECRET')  # ✅ Alternative
             
             if not api_key or not api_secret:
                 print("⚠️ Variables ALPACA_API_KEY/SECRET non définies")
@@ -49,22 +58,25 @@ class UniversalDataFetcher:
             # Créer client
             client = StockHistoricalDataClient(api_key, api_secret)
             
-            print("  ✅ Alpaca connecté (alpaca-py)")
-            return client
-            
-            # Test de connexion
-            test_request = StockBarsRequest(
-                symbol_or_symbols="SPY",
-                timeframe=TimeFrame.Day,
-                start=datetime.now() - timedelta(days=2)
-            )
-            client.get_stock_bars(test_request)
+            # ✅ FIX : Test AVANT le return
+            try:
+                test_request = StockBarsRequest(
+                    symbol_or_symbols="SPY",
+                    timeframe=TimeFrame.Day,
+                    start=datetime.now() - timedelta(days=2)
+                )
+                client.get_stock_bars(test_request)
+                print("  ✅ Alpaca connecté (alpaca-py)")
+                return client
+            except Exception as test_err:
+                print(f"  ⚠️ Alpaca test échec : {str(test_err)[:80]}")
+                return None
             
         except ImportError:
             print("  ⚠️ alpaca-py non installé (pip install alpaca-py)")
             return None
         except Exception as e:
-            print(f"  ⚠️ Alpaca échec : {str(e)[:50]}")
+            print(f"  ⚠️ Alpaca échec : {str(e)[:80]}")
             return None
 
     
@@ -146,7 +158,7 @@ class UniversalDataFetcher:
                     
                 except Exception as e:
                     if attempt == max_retries - 1:
-                        print(f"  ⚠️ {source} échec (tentative {attempt+1}/{max_retries}) : {str(e)[:50]}")
+                        print(f"  ⚠️ {source} échec (tentative {attempt+1}/{max_retries}) : {str(e)[:80]}")
                     continue
         
         # Si toutes les sources ont échoué
@@ -206,6 +218,18 @@ class UniversalDataFetcher:
     def _fetch_yfinance(self, ticker, start_date, end_date, interval):
         """Récupère depuis yfinance (fallback universel)"""
         import yfinance as yf
+        
+        # ✅ FIX : Gérer la limite 730 jours pour les intervalles horaires
+        if interval in ['1h', '30m', '15m', '5m', '1m']:
+            start_dt = datetime.strptime(start_date, '%Y-%m-%d') if isinstance(start_date, str) else start_date
+            end_dt = datetime.strptime(end_date, '%Y-%m-%d') if isinstance(end_date, str) else end_date
+            
+            delta_days = (end_dt - start_dt).days
+            
+            if delta_days > 729:
+                # Ajuster automatiquement
+                start_date = (end_dt - timedelta(days=729)).strftime('%Y-%m-%d')
+                print(f"    ⚠️ Yahoo limite 730j pour {interval} : ajusté à {start_date}")
         
         # Mapping interval
         interval_map = {
@@ -355,7 +379,7 @@ class UniversalDataFetcher:
                 
                 return (ticker, df)
             except Exception as e:
-                print(f"  ❌ {ticker} : {str(e)[:50]}")
+                print(f"  ❌ {ticker} : {str(e)[:80]}")
                 return (ticker, None)
         
         with ThreadPoolExecutor(max_workers=3) as executor:
@@ -379,7 +403,6 @@ class UniversalDataFetcher:
         os.makedirs(cache_dir, exist_ok=True)
         path = f"{cache_dir}/{ticker}.csv"
         df.to_csv(path)
-        # print(f"  💾 {ticker} → {path}")
     
     def load_from_cache(self, ticker, cache_dir='data_cache', max_age_days=7):
         """
