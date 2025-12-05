@@ -487,10 +487,10 @@ class AutonomousTradingSystem:
         
         print(f"\n🏋️ Entraînement sur {len(self.selected_assets)} assets...")
         
-        # CHARGER PARAMÈTRES (avec correctifs automatiques)
+        # Charger paramètres
         params = self._load_best_params()
         
-        # Afficher configuration
+        # Afficher config
         print(f"\n  📊 CONFIGURATION FINALE :")
         print(f"  {'─'*50}")
         print(f"  Learning Rate    : {params['learning_rate']:.6f}")
@@ -513,14 +513,11 @@ class AutonomousTradingSystem:
         print("  📥 Chargement données...")
         data = {}
         for ticker in self.selected_assets:
-            cache_file = f'data_cache/{ticker}_730d.csv'
-            if os.path.exists(cache_file):
-                data[ticker] = pd.read_csv(cache_file, index_col=0, parse_dates=True)
-            else:
-                # Fallback sans suffix
-                cache_file = f'data_cache/{ticker}.csv'
+            for suffix in ['_730d', '']:
+                cache_file = f'data_cache/{ticker}{suffix}.csv'
                 if os.path.exists(cache_file):
                     data[ticker] = pd.read_csv(cache_file, index_col=0, parse_dates=True)
+                    break
         
         if len(data) == 0:
             raise ValueError("❌ Aucune donnée disponible pour entraînement")
@@ -536,7 +533,6 @@ class AutonomousTradingSystem:
                 max_steps=1000
             )
         
-        # Utiliser SubprocVecEnv pour parallélisation réelle
         if self.config['training']['n_envs'] > 1:
             env = SubprocVecEnv([make_env for _ in range(self.config['training']['n_envs'])])
         else:
@@ -545,7 +541,49 @@ class AutonomousTradingSystem:
         # Extraire policy_kwargs
         policy_kwargs = params.pop('policy_kwargs', dict(net_arch=dict(pi=[256, 256], vf=[256, 256])))
         
-        # Créer modèle avec meilleurs params
+        # ════════════════════════════════════════════════════════════════
+        # 🆕 INITIALISER WANDB
+        # ════════════════════════════════════════════════════════════════
+        import wandb
+        from wandb.integration.sb3 import WandbCallback
+        
+        # Config W&B
+        wandb_config = {
+            **params,
+            'policy_kwargs': policy_kwargs,
+            'assets': self.selected_assets,
+            'n_assets': len(self.selected_assets),
+            'timesteps': self.config['training']['timesteps'],
+            'n_envs': self.config['training']['n_envs'],
+            'device': self.config['training']['device']
+        }
+        
+        # Initialiser run
+        run_name = f"autonomous_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
+        wandb.init(
+            project="Ploutos_Trading_Autonomous",
+            name=run_name,
+            config=wandb_config,
+            sync_tensorboard=True,  # Sync TensorBoard logs aussi
+            monitor_gym=True,
+            save_code=True
+        )
+        
+        print(f"  📊 W&B initialisé : {run_name}")
+        print(f"  🔗 Dashboard : https://wandb.ai/your-username/Ploutos_Trading_Autonomous\n")
+        
+        # Créer callback W&B
+        wandb_callback = WandbCallback(
+            model_save_path=f"models/autonomous/wandb_checkpoints/{run_name}",
+            verbose=2,
+            gradient_save_freq=100,
+            model_save_freq=10000
+        )
+        
+        # ════════════════════════════════════════════════════════════════
+        
+        # Créer modèle
         print("  🤖 Création modèle PPO...")
         model = PPO(
             "MlpPolicy",
@@ -559,24 +597,52 @@ class AutonomousTradingSystem:
         
         print("  ✅ Modèle créé\n")
         
-        # Entraîner
+        # Entraîner avec W&B
         print("  🚀 DÉBUT ENTRAÎNEMENT\n")
-        print("  💡 Monitoring : nvidia-smi (autre terminal)")
-        print("  💡 TensorBoard : tensorboard --logdir logs/tensorboard\n")
+        print("  💡 Monitoring temps réel :")
+        print(f"    - W&B      : https://wandb.ai")
+        print(f"    - GPU      : nvidia-smi (autre terminal)")
+        print(f"    - TBoard   : tensorboard --logdir logs/tensorboard\n")
         
-        model.learn(
-            total_timesteps=self.config['training']['timesteps'],
-            progress_bar=True
-        )
+        try:
+            model.learn(
+                total_timesteps=self.config['training']['timesteps'],
+                callback=wandb_callback,  # ← Callback W&B
+                progress_bar=True
+            )
+            
+            print("\n  ✅ ENTRAÎNEMENT TERMINÉ\n")
+            
+            # Finaliser W&B
+            wandb.finish()
+            
+        except KeyboardInterrupt:
+            print("\n\n  ⚠️ Entraînement interrompu")
+            wandb.finish()
+            raise
         
         env.close()
-        
-        print("\n  ✅ ENTRAÎNEMENT TERMINÉ\n")
         
         # Sauvegarder
         model_path = 'models/autonomous/final_model.zip'
         model.save(model_path)
         print(f"  💾 Modèle sauvegardé : {model_path}\n")
+        
+        # Sauvegarder metadata
+        metadata = {
+            'timestamp': datetime.now().isoformat(),
+            'assets': self.selected_assets,
+            'regime': getattr(self.regime_detector, 'current_regime', 'UNKNOWN'),
+            'timesteps': self.config['training']['timesteps'],
+            'hyperparams': params,
+            'n_envs': self.config['training']['n_envs'],
+            'wandb_run': run_name
+        }
+        
+        with open('models/autonomous/final_model_metadata.json', 'w') as f:
+            json.dump(metadata, f, indent=2)
+        
+        print(f"  💾 Metadata sauvegardée\n")
         
         return model
     
