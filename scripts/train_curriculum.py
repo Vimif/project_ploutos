@@ -12,7 +12,7 @@ import wandb
 from datetime import datetime
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import SubprocVecEnv
-from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
+from stable_baselines3.common.callbacks import CheckpointCallback
 from core.data_fetcher import UniversalDataFetcher
 from core.universal_environment import UniversalTradingEnv
 
@@ -66,31 +66,44 @@ def print_banner(text):
     print(f"  {text}")
     print("="*80 + "\n")
 
-def make_env(ticker, df):
-    """Crée un environnement de trading"""
+def make_env(data_dict):
+    """
+    Crée un environnement de trading
+    
+    Args:
+        data_dict: Dictionary {ticker: DataFrame}
+    """
     def _init():
         return UniversalTradingEnv(
-            df=df,
-            ticker=ticker,
+            data=data_dict,
             initial_balance=10000,
-            transaction_fee=0.001
+            commission=0.001,
+            max_steps=1000
         )
     return _init
 
-def calculate_sharpe(model, env, episodes=10):
+def calculate_sharpe(model, data_dict, episodes=10):
     """Calcule le Sharpe Ratio du modèle"""
     import numpy as np
     
     returns = []
     
     for _ in range(episodes):
-        obs = env.reset()
+        env = UniversalTradingEnv(
+            data=data_dict,
+            initial_balance=10000,
+            commission=0.001,
+            max_steps=1000
+        )
+        
+        obs, _ = env.reset()
         done = False
         episode_return = 0
         
         while not done:
             action, _ = model.predict(obs, deterministic=True)
-            obs, reward, done, info = env.step(action)
+            obs, reward, terminated, truncated, info = env.step(action)
+            done = terminated or truncated
             episode_return += reward
         
         returns.append(episode_return)
@@ -129,10 +142,10 @@ def train_stage1():
     
     print(f"✅ Données récupérées : {len(data['SPY'])} bougies")
     
-    # Créer environnement
-    print("\n🏗️  Création de l'environnement...")
+    # Créer environnements (tous avec les mêmes données)
+    print("\n🏗️  Création des environnements...")
     env = SubprocVecEnv([
-        make_env('SPY', data['SPY']) 
+        make_env(data) 
         for _ in range(CONFIG['stage1']['n_envs'])
     ])
     
@@ -179,24 +192,20 @@ def train_stage1():
     model.save(model_path)
     print(f"\n✅ Modèle sauvegardé : {model_path}.zip")
     
-    # Évaluation
+    # Évaluation (sur les dernières données)
     print("\n📊 Évaluation du modèle...")
-    test_env = UniversalTradingEnv(
-        df=data['SPY'].iloc[-1000:],  # Dernières 1000 bougies
-        ticker='SPY',
-        initial_balance=10000
-    )
+    test_data = {ticker: df.iloc[-1000:] for ticker, df in data.items()}
     
-    sharpe = calculate_sharpe(model, test_env, episodes=10)
+    sharpe = calculate_sharpe(model, test_data, episodes=10)
     print(f"\n📈 Sharpe Ratio : {sharpe:.2f}")
     print(f"🎯 Objectif      : {CONFIG['stage1']['target_sharpe']:.2f}")
     
-    if sharpe >= CONFIG['stage1']['target_sharpe']:
+    success = sharpe >= CONFIG['stage1']['target_sharpe']
+    
+    if success:
         print("\n✅ STAGE 1 RÉUSSI ! Passage au Stage 2.")
-        success = True
     else:
         print("\n⚠️  Sharpe insuffisant, mais on continue...")
-        success = False
     
     wandb.log({
         'stage': 1,
@@ -231,24 +240,19 @@ def train_stage2(prev_model_path=None):
     fetcher = UniversalDataFetcher()
     data = fetcher.bulk_fetch(CONFIG['stage2']['tickers'], interval='1h')
     
-    if len(data) < len(CONFIG['stage2']['tickers']):
-        print(f"⚠️  Seulement {len(data)}/{len(CONFIG['stage2']['tickers'])} tickers récupérés")
+    print(f"✅ {len(data)}/{len(CONFIG['stage2']['tickers'])} tickers récupérés")
     
     # Créer environnements
     print("\n🏗️  Création des environnements...")
-    envs = []
-    for ticker in data.keys():
-        for _ in range(CONFIG['stage2']['n_envs'] // len(data)):
-            envs.append(make_env(ticker, data[ticker]))
-    
-    env = SubprocVecEnv(envs)
+    env = SubprocVecEnv([
+        make_env(data) 
+        for _ in range(CONFIG['stage2']['n_envs'])
+    ])
     
     # Charger modèle précédent ou créer nouveau
     if prev_model_path and os.path.exists(f"{prev_model_path}.zip"):
         print(f"\n🔄 Transfer Learning depuis : {prev_model_path}")
         model = PPO.load(prev_model_path, env=env, device='cuda')
-        
-        # Ajuster learning rate (plus fin)
         model.learning_rate = CONFIG['stage2']['learning_rate']
     else:
         print("\n🧠 Création d'un nouveau modèle...")
@@ -293,25 +297,15 @@ def train_stage2(prev_model_path=None):
     model.save(model_path)
     print(f"\n✅ Modèle sauvegardé : {model_path}.zip")
     
-    # Évaluation sur chaque ticker
+    # Évaluation
     print("\n📊 Évaluation du modèle...")
-    sharpes = {}
+    test_data = {ticker: df.iloc[-1000:] for ticker, df in data.items()}
     
-    for ticker in data.keys():
-        test_env = UniversalTradingEnv(
-            df=data[ticker].iloc[-1000:],
-            ticker=ticker,
-            initial_balance=10000
-        )
-        sharpe = calculate_sharpe(model, test_env, episodes=5)
-        sharpes[ticker] = sharpe
-        print(f"  {ticker} : Sharpe = {sharpe:.2f}")
-    
-    avg_sharpe = sum(sharpes.values()) / len(sharpes)
-    print(f"\n📈 Sharpe Moyen : {avg_sharpe:.2f}")
+    sharpe = calculate_sharpe(model, test_data, episodes=10)
+    print(f"\n📈 Sharpe Ratio : {sharpe:.2f}")
     print(f"🎯 Objectif     : {CONFIG['stage2']['target_sharpe']:.2f}")
     
-    success = avg_sharpe >= CONFIG['stage2']['target_sharpe']
+    success = sharpe >= CONFIG['stage2']['target_sharpe']
     
     if success:
         print("\n✅ STAGE 2 RÉUSSI ! Passage au Stage 3.")
@@ -320,16 +314,15 @@ def train_stage2(prev_model_path=None):
     
     wandb.log({
         'stage': 2,
-        'sharpe_ratio': avg_sharpe,
+        'sharpe_ratio': sharpe,
         'target_sharpe': CONFIG['stage2']['target_sharpe'],
-        'success': success,
-        **{f'sharpe_{t}': s for t, s in sharpes.items()}
+        'success': success
     })
     
     wandb.finish()
     env.close()
     
-    return model_path, avg_sharpe
+    return model_path, sharpe
 
 # ============================================================================
 # STAGE 3 : ACTIONS COMPLEXES
@@ -356,12 +349,10 @@ def train_stage3(prev_model_path=None):
     
     # Créer environnements
     print("\n🏗️  Création des environnements...")
-    envs = []
-    for ticker in data.keys():
-        for _ in range(CONFIG['stage3']['n_envs'] // len(data)):
-            envs.append(make_env(ticker, data[ticker]))
-    
-    env = SubprocVecEnv(envs)
+    env = SubprocVecEnv([
+        make_env(data) 
+        for _ in range(CONFIG['stage3']['n_envs'])
+    ])
     
     # Transfer Learning
     if prev_model_path and os.path.exists(f"{prev_model_path}.zip"):
@@ -415,22 +406,13 @@ def train_stage3(prev_model_path=None):
     print("\n📊 ÉVALUATION FINALE")
     print("="*80)
     
-    sharpes = {}
-    for ticker in data.keys():
-        test_env = UniversalTradingEnv(
-            df=data[ticker].iloc[-1000:],
-            ticker=ticker,
-            initial_balance=10000
-        )
-        sharpe = calculate_sharpe(model, test_env, episodes=10)
-        sharpes[ticker] = sharpe
-        print(f"  {ticker:6s} : Sharpe = {sharpe:5.2f}")
+    test_data = {ticker: df.iloc[-1000:] for ticker, df in data.items()}
+    sharpe = calculate_sharpe(model, test_data, episodes=10)
     
-    avg_sharpe = sum(sharpes.values()) / len(sharpes)
-    print(f"\n📈 Sharpe Moyen : {avg_sharpe:.2f}")
+    print(f"\n📈 Sharpe Ratio : {sharpe:.2f}")
     print(f"🎯 Objectif     : {CONFIG['stage3']['target_sharpe']:.2f}")
     
-    success = avg_sharpe >= CONFIG['stage3']['target_sharpe']
+    success = sharpe >= CONFIG['stage3']['target_sharpe']
     
     if success:
         print("\n🎉 CURRICULUM LEARNING TERMINÉ AVEC SUCCÈS !")
@@ -440,16 +422,15 @@ def train_stage3(prev_model_path=None):
     
     wandb.log({
         'stage': 3,
-        'sharpe_ratio': avg_sharpe,
+        'sharpe_ratio': sharpe,
         'target_sharpe': CONFIG['stage3']['target_sharpe'],
-        'success': success,
-        **{f'sharpe_{t}': s for t, s in sharpes.items()}
+        'success': success
     })
     
     wandb.finish()
     env.close()
     
-    return model_path, avg_sharpe
+    return model_path, sharpe
 
 # ============================================================================
 # MAIN
@@ -459,12 +440,10 @@ if __name__ == '__main__':
     import argparse
     
     parser = argparse.ArgumentParser(description='Curriculum Learning pour Ploutos')
-    parser.add_argument('--stage', type=int, default=0, 
-                        help='Stage à exécuter (0=tous, 1-3=stage spécifique)')
-    parser.add_argument('--skip-stage1', action='store_true',
-                        help='Sauter le stage 1 (utiliser modèle existant)')
-    parser.add_argument('--skip-stage2', action='store_true',
-                        help='Sauter le stage 2 (utiliser modèle existant)')
+    parser.add_argument('--stage', type=int, default=1, 
+                        help='Stage à exécuter (1-3, défaut: 1)')
+    parser.add_argument('--load-model', type=str, default=None,
+                        help='Chemin vers modèle précédent pour transfer learning')
     
     args = parser.parse_args()
     
@@ -474,43 +453,17 @@ if __name__ == '__main__':
     print(f"\n⏰ Début : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
     
     # Exécution
-    if args.stage == 0:
-        # Exécuter tous les stages
-        
-        if not args.skip_stage1:
-            model1, sharpe1 = train_stage1()
-        else:
-            model1 = 'models/stage1_spy_final'
-            print(f"\n⏩ Stage 1 sauté, utilisation de : {model1}")
-        
-        if not args.skip_stage2:
-            model2, sharpe2 = train_stage2(prev_model_path=model1)
-        else:
-            model2 = 'models/stage2_etfs_final'
-            print(f"\n⏩ Stage 2 sauté, utilisation de : {model2}")
-        
-        model3, sharpe3 = train_stage3(prev_model_path=model2)
-        
-        print("\n" + "="*80)
-        print("✅ CURRICULUM LEARNING TERMINÉ")
-        print("="*80)
-        print(f"\n📊 Résultats finaux :")
-        if not args.skip_stage1:
-            print(f"   Stage 1 (SPY)    : Sharpe = {sharpe1:.2f}")
-        if not args.skip_stage2:
-            print(f"   Stage 2 (ETFs)   : Sharpe = {sharpe2:.2f}")
-        print(f"   Stage 3 (Stocks) : Sharpe = {sharpe3:.2f}")
-        print(f"\n🎯 Modèle final : {model3}.zip")
-        
-    elif args.stage == 1:
-        train_stage1()
+    if args.stage == 1:
+        model_path, sharpe = train_stage1()
         
     elif args.stage == 2:
-        prev_model = 'models/stage1_spy_final' if not args.skip_stage1 else None
-        train_stage2(prev_model_path=prev_model)
+        prev_model = args.load_model or 'models/stage1_spy_final'
+        model_path, sharpe = train_stage2(prev_model_path=prev_model)
         
     elif args.stage == 3:
-        prev_model = 'models/stage2_etfs_final' if not args.skip_stage2 else None
-        train_stage3(prev_model_path=prev_model)
+        prev_model = args.load_model or 'models/stage2_etfs_final'
+        model_path, sharpe = train_stage3(prev_model_path=prev_model)
     
     print(f"\n⏰ Fin : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"✅ Modèle final : {model_path}.zip")
+    print(f"📊 Sharpe Ratio : {sharpe:.2f}")
