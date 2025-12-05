@@ -359,18 +359,18 @@ class AutonomousTradingSystem:
     def _default_params(self):
         """Paramètres par défaut (pré-optimisés)"""
         return {
-            'learning_rate': 1e-4,
-            'n_steps': 2048,
-            'batch_size': 256,
-            'n_epochs': 10,
-            'gamma': 0.99,
-            'gae_lambda': 0.95,
-            'clip_range': 0.2,
-            'ent_coef': 0.01,
-            'vf_coef': 0.5,
+            'learning_rate': 0.0001348446603871995,
+            'n_steps': 4096,
+            'batch_size': 128,
+            'n_epochs': 24,
+            'gamma': 0.9777938516012863,
+            'gae_lambda': 0.9464447027181514,
+            'clip_range': 0.15055301968865417,
+            'ent_coef': 1.1495971093353151e-06,
+            'vf_coef': 0.8722227842006296,
             'max_grad_norm': 0.5,
             'policy_kwargs': dict(
-                net_arch=dict(pi=[512, 512, 512], vf=[512, 512, 512])
+                net_arch=dict(pi=[256, 256, 256], vf=[256, 256, 256])
             )
         }
     
