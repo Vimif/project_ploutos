@@ -3,9 +3,16 @@ Data Fetcher - Téléchargement données Yahoo Finance
 Version refactorisée
 """
 
+import sys
+from pathlib import Path
+
+# Ajouter root au path
+root = Path(__file__).parent.parent.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
 import yfinance as yf
 import pandas as pd
-from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 
