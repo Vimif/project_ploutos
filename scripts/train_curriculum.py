@@ -39,13 +39,13 @@ CALIBRATED_PARAMS = {
         'learning_rate': 1e-4,
         'n_steps': 2048,
         'batch_size': 256,
-        'n_epochs': 10,
+        'n_epochs': 5,              # ✅ 10 → 5 (anti-overfitting)
         'gamma': 0.99,
         'gae_lambda': 0.95,
         'clip_range': 0.2,
-        'ent_coef': 0.01,
+        'ent_coef': 0.05,           # ✅ 0.01 → 0.05 (plus d'exploration)
         'vf_coef': 0.5,
-        'max_grad_norm': 0.5,
+        'max_grad_norm': 0.3,       # ✅ 0.5 → 0.3 (clipping strict)
         'policy_kwargs': {'net_arch': [512, 512, 512]},
         'target_sharpe': 1.0
     },
@@ -57,13 +57,13 @@ CALIBRATED_PARAMS = {
         'learning_rate': 5e-5,
         'n_steps': 2048,
         'batch_size': 512,
-        'n_epochs': 10,
+        'n_epochs': 5,              # ✅ 10 → 5
         'gamma': 0.99,
         'gae_lambda': 0.95,
         'clip_range': 0.2,
-        'ent_coef': 0.005,
+        'ent_coef': 0.02,           # ✅ 0.005 → 0.02
         'vf_coef': 0.5,
-        'max_grad_norm': 0.5,
+        'max_grad_norm': 0.3,       # ✅ 0.5 → 0.3
         'policy_kwargs': {'net_arch': [512, 512, 512]},
         'target_sharpe': 1.3
     },
@@ -75,13 +75,13 @@ CALIBRATED_PARAMS = {
         'learning_rate': 3e-5,
         'n_steps': 4096,
         'batch_size': 1024,
-        'n_epochs': 10,
+        'n_epochs': 5,              # ✅ 10 → 5
         'gamma': 0.99,
         'gae_lambda': 0.95,
         'clip_range': 0.2,
-        'ent_coef': 0.001,
+        'ent_coef': 0.01,           # ✅ 0.001 → 0.01
         'vf_coef': 0.5,
-        'max_grad_norm': 0.5,
+        'max_grad_norm': 0.3,       # ✅ 0.5 → 0.3
         'policy_kwargs': {'net_arch': [512, 512, 512]},
         'target_sharpe': 1.5
     }
@@ -210,7 +210,7 @@ def quick_optimize(tickers, base_params, stage_name, n_trials=15):
                 params['policy_kwargs'] = policy_kwargs
                 
             except Exception as e:
-                print(f"    ⚠️ Trial {trial.number} échec sur {ticker}: {str(e)[:50]}")
+                print(f"    ⚠️  Trial {trial.number} échec sur {ticker}: {str(e)[:50]}")
                 continue
         
         if len(sharpes) == 0:
@@ -274,15 +274,31 @@ def make_env(data_dict):
     return _init
 
 def calculate_sharpe(model, data_dict, episodes=10):
-    """Calcule le Sharpe Ratio du modèle"""
+    """
+    Calcule le Sharpe Ratio du modèle
+    
+    ✅ FIX : Ajuste max_steps dynamiquement pour éviter ValueError
+    """
     returns = []
+    
+    # ✅ Calculer la taille minimale des données
+    data_length = min(len(df) for df in data_dict.values())
+    
+    # ✅ Si données trop courtes, skip évaluation
+    if data_length < 150:
+        print(f"\n⚠️  Données de test trop courtes ({data_length} lignes), skip évaluation Sharpe")
+        return 0.0
+    
+    # ✅ Ajuster max_steps : min(500, data_length - 110)
+    # Laisser marge de 110 (100 pour features + 10 buffer)
+    adjusted_max_steps = min(500, data_length - 110)
     
     for _ in range(episodes):
         env = UniversalTradingEnv(
             data=data_dict,
             initial_balance=10000,
             commission=0.001,
-            max_steps=1000
+            max_steps=adjusted_max_steps  # ✅ Dynamique
         )
         
         obs, _ = env.reset()
@@ -299,7 +315,7 @@ def calculate_sharpe(model, data_dict, episodes=10):
     
     returns = np.array(returns)
     
-    if returns.std() == 0:
+    if len(returns) == 0 or returns.std() == 0:
         return 0
     
     sharpe = (returns.mean() / returns.std()) * np.sqrt(252)
@@ -411,7 +427,14 @@ def train_stage(stage_num, prev_model_path=None, auto_optimize=False):
     
     # Évaluation
     print("\n📊 Évaluation du modèle...")
-    test_data = {ticker: df.iloc[-1000:] for ticker, df in data.items()}
+    
+    # ✅ FIX : Utiliser 20% des données pour test (au lieu de 1000 lignes fixes)
+    data_length = min(len(df) for df in data.values())
+    test_size = max(200, int(data_length * 0.2))  # Min 200, max 20%
+    
+    print(f"  Taille données test : {test_size} lignes")
+    
+    test_data = {ticker: df.iloc[-test_size:] for ticker, df in data.items()}
     
     sharpe = calculate_sharpe(model, test_data, episodes=10)
     print(f"\n📈 Sharpe Ratio : {sharpe:.2f}")
