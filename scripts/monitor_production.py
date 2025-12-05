@@ -35,7 +35,17 @@ def load_baseline_data(cache_file='data_cache/baseline_stats.csv'):
     print("⚠️  Pas de baseline trouvée, utilisation données récentes")
     
     fetcher = UniversalDataFetcher()
-    data = fetcher.fetch('SPY', period='2y', interval='1h')
+    
+    # ✅ FIX : Utiliser start_date/end_date au lieu de period
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=730)  # 2 ans
+    
+    data = fetcher.fetch(
+        'SPY',
+        start_date=start_date.strftime('%Y-%m-%d'),
+        end_date=end_date.strftime('%Y-%m-%d'),
+        interval='1h'
+    )
     
     # Prendre 80% comme baseline
     baseline = data.iloc[:int(len(data)*0.8)]
@@ -44,17 +54,32 @@ def load_baseline_data(cache_file='data_cache/baseline_stats.csv'):
     os.makedirs(os.path.dirname(cache_file), exist_ok=True)
     baseline.to_csv(cache_file)
     
+    print(f"✅ Baseline créée : {len(baseline)} lignes sauvegardées")
+    
     return baseline
 
-def fetch_production_data(period='1mo'):
+def fetch_production_data(days=30):
     """
-    Récupère données production (dernier mois)
+    Récupère données production (derniers X jours)
+    
+    Args:
+        days: Nombre de jours à récupérer
     """
     
-    print(f"\n📥 Récupération données production ({period})...")
+    print(f"\n📥 Récupération données production ({days} derniers jours)...")
     
     fetcher = UniversalDataFetcher()
-    data = fetcher.fetch('SPY', period=period, interval='1h')
+    
+    # ✅ FIX : Utiliser start_date/end_date
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=days)
+    
+    data = fetcher.fetch(
+        'SPY',
+        start_date=start_date.strftime('%Y-%m-%d'),
+        end_date=end_date.strftime('%Y-%m-%d'),
+        interval='1h'
+    )
     
     print(f"✅ {len(data)} bougies récupérées")
     
@@ -122,7 +147,7 @@ def calculate_current_performance(model, data, episodes=5):
     
     return performance
 
-def monitor(model_path, auto_retrain=False, sensitivity='medium'):
+def monitor(model_path, auto_retrain=False, sensitivity='medium', production_days=30):
     """
     Lance monitoring complet
     
@@ -130,6 +155,7 @@ def monitor(model_path, auto_retrain=False, sensitivity='medium'):
         model_path: Chemin vers modèle .zip
         auto_retrain: Si True, retraîne automatiquement si drift
         sensitivity: 'low'|'medium'|'high'
+        production_days: Nombre de jours de données production à analyser
     """
     
     print("\n" + "="*80)
@@ -165,7 +191,7 @@ def monitor(model_path, auto_retrain=False, sensitivity='medium'):
     )
     
     # 4. Récupérer données production
-    production_data = fetch_production_data(period='1mo')
+    production_data = fetch_production_data(days=production_days)
     
     # 5. Évaluer performance actuelle
     current_performance = calculate_current_performance(model, production_data)
@@ -248,6 +274,9 @@ Exemples:
   
   # Haute sensibilité
   python3 scripts/monitor_production.py --model models/stage1_final.zip --sensitivity high
+  
+  # Analyser 60 derniers jours
+  python3 scripts/monitor_production.py --model models/stage1_final.zip --days 60
         """
     )
     
@@ -258,11 +287,14 @@ Exemples:
     parser.add_argument('--sensitivity', type=str, default='medium',
                         choices=['low', 'medium', 'high'],
                         help='Sensibilité détection drift')
+    parser.add_argument('--days', type=int, default=30,
+                        help='Nombre de jours de données production à analyser (défaut: 30)')
     
     args = parser.parse_args()
     
     monitor(
         model_path=args.model,
         auto_retrain=args.auto_retrain,
-        sensitivity=args.sensitivity
+        sensitivity=args.sensitivity,
+        production_days=args.days
     )
