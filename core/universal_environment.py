@@ -1,5 +1,6 @@
 """
 Environnement de trading universel pour multi-assets
+Avec coûts de transaction réalistes (slippage + impact marché)
 """
 
 import gymnasium as gym
@@ -7,18 +8,27 @@ import numpy as np
 import pandas as pd
 from gymnasium import spaces
 
+# Import du modèle de coûts réalistes
+try:
+    from core.transaction_costs import AdvancedTransactionModel
+    REALISTIC_COSTS = True
+except ImportError:
+    print("⚠️  transaction_costs.py non trouvé, utilisation coûts simplifiés")
+    REALISTIC_COSTS = False
+
 class UniversalTradingEnv(gym.Env):
     """Environnement générique pour trader un portfolio multi-assets"""
 
     metadata = {'render_modes': ['human']}
 
-    def __init__(self, data, initial_balance=100000, commission=0.001, max_steps=1000):
+    def __init__(self, data, initial_balance=100000, commission=0.001, max_steps=1000, realistic_costs=True):
         """
         Args:
             data (dict): {ticker: DataFrame} avec colonnes [Open, High, Low, Close, Volume]
             initial_balance (float): Capital initial
             commission (float): Commission par trade (0.001 = 0.1%)
             max_steps (int): Nombre max de steps par épisode
+            realistic_costs (bool): Utiliser modèle de coûts avancé (slippage + impact marché)
         """
         super().__init__()
         
@@ -28,6 +38,21 @@ class UniversalTradingEnv(gym.Env):
         self.initial_balance = initial_balance
         self.commission = commission
         self.max_steps = max_steps
+        self.realistic_costs = realistic_costs and REALISTIC_COSTS
+        
+        # ✅ NOUVEAU : Modèle de coûts réalistes
+        if self.realistic_costs:
+            self.transaction_model = AdvancedTransactionModel(
+                base_commission=commission,
+                min_slippage=0.0005,   # 0.05%
+                max_slippage=0.005,    # 0.5%
+                market_impact_coef=0.0001,
+                latency_std=0.0002
+            )
+            print("✅ Environnement avec coûts réalistes (slippage + impact marché)")
+        else:
+            self.transaction_model = None
+            print("⚠️  Environnement avec coûts simplifiés")
         
         # Vérifier que tous les DataFrames ont la même longueur
         self.data_length = min(len(df) for df in data.values())
@@ -56,10 +81,12 @@ class UniversalTradingEnv(gym.Env):
         
         # État interne
         self.current_step = 0
+        self.reset_step = 0
         self.balance = initial_balance
         self.positions = {ticker: 0 for ticker in self.tickers}  # Nombre d'actions
         self.portfolio_value = initial_balance
         self.trades_history = []
+        self.transaction_costs_history = []  # ✅ NOUVEAU : Historique coûts
         
     def reset(self, seed=None, options=None):
         """Reset environnement"""
@@ -67,11 +94,13 @@ class UniversalTradingEnv(gym.Env):
         
         # Choisir point de départ aléatoire (laisser 100 steps pour calcul features)
         self.current_step = np.random.randint(100, self.data_length - self.max_steps)
+        self.reset_step = self.current_step
         
         self.balance = self.initial_balance
         self.positions = {ticker: 0 for ticker in self.tickers}
         self.portfolio_value = self.initial_balance
         self.trades_history = []
+        self.transaction_costs_history = []
         
         return self._get_observation(), {}
     
@@ -107,31 +136,64 @@ class UniversalTradingEnv(gym.Env):
                 shares_to_trade = int(trade_value / current_prices[ticker])
                 
                 if shares_to_trade != 0:
-                    cost = abs(shares_to_trade * current_prices[ticker])
-                    commission_cost = cost * self.commission
+                    # ✅ NOUVEAU : Coûts réalistes avec slippage
+                    if self.realistic_costs:
+                        execution_price, costs = self.transaction_model.calculate_execution_price(
+                            ticker=ticker,
+                            intended_price=current_prices[ticker],
+                            order_size=abs(shares_to_trade),
+                            current_volume=float(self.data[ticker].iloc[self.current_step]['Volume']),
+                            side='buy' if shares_to_trade > 0 else 'sell',
+                            recent_prices=self.data[ticker]['Close'].iloc[max(0, self.current_step-20):self.current_step]
+                        )
+                        
+                        total_cost = costs['total_cost_dollars']
+                        
+                        # Logger coûts
+                        self.transaction_costs_history.append({
+                            'step': self.current_step,
+                            'ticker': ticker,
+                            'shares': abs(shares_to_trade),
+                            'intended_price': current_prices[ticker],
+                            'execution_price': execution_price,
+                            'slippage': costs['slippage'],
+                            'market_impact': costs['market_impact'],
+                            'total_cost': total_cost
+                        })
+                        
+                    else:
+                        # Coûts simplifiés (ancien système)
+                        execution_price = current_prices[ticker]
+                        cost = abs(shares_to_trade * current_prices[ticker])
+                        total_cost = cost * self.commission
                     
                     # Vérifier si assez de cash
                     if shares_to_trade > 0:  # Achat
-                        if self.balance >= cost + commission_cost:
+                        total_needed = abs(shares_to_trade * execution_price) + total_cost
+                        
+                        if self.balance >= total_needed:
                             self.positions[ticker] += shares_to_trade
-                            self.balance -= (cost + commission_cost)
+                            self.balance -= total_needed
                             self.trades_history.append({
                                 'step': self.current_step,
                                 'ticker': ticker,
                                 'action': 'BUY',
                                 'shares': shares_to_trade,
-                                'price': current_prices[ticker]
+                                'price': execution_price,
+                                'cost': total_cost
                             })
                     else:  # Vente
                         if self.positions[ticker] >= abs(shares_to_trade):
                             self.positions[ticker] += shares_to_trade  # shares_to_trade est négatif
-                            self.balance += (cost - commission_cost)
+                            proceeds = abs(shares_to_trade * execution_price) - total_cost
+                            self.balance += proceeds
                             self.trades_history.append({
                                 'step': self.current_step,
                                 'ticker': ticker,
                                 'action': 'SELL',
                                 'shares': abs(shares_to_trade),
-                                'price': current_prices[ticker]
+                                'price': execution_price,
+                                'cost': total_cost
                             })
         
         # Recalculer valeur finale
@@ -151,7 +213,7 @@ class UniversalTradingEnv(gym.Env):
             self.current_step >= self.data_length - 1 or
             self.portfolio_value <= self.initial_balance * 0.1
         )
-        truncated = self.current_step - self.reset_step >= self.max_steps if hasattr(self, 'reset_step') else False
+        truncated = (self.current_step - self.reset_step) >= self.max_steps
         
         info = {
             'portfolio_value': self.portfolio_value,
@@ -173,11 +235,11 @@ class UniversalTradingEnv(gym.Env):
             
             # Prix normalisé
             close = df.iloc[idx]['Close']
-            close_norm = (close - df['Close'].iloc[max(0, idx-20):idx].mean()) / df['Close'].iloc[max(0, idx-20):idx].std()
+            close_norm = (close - df['Close'].iloc[max(0, idx-20):idx].mean()) / (df['Close'].iloc[max(0, idx-20):idx].std() + 1e-8)
             
             # Volume normalisé
             volume = df.iloc[idx]['Volume']
-            volume_norm = (volume - df['Volume'].iloc[max(0, idx-20):idx].mean()) / df['Volume'].iloc[max(0, idx-20):idx].std()
+            volume_norm = (volume - df['Volume'].iloc[max(0, idx-20):idx].mean()) / (df['Volume'].iloc[max(0, idx-20):idx].std() + 1e-8)
             
             # Returns
             returns_1d = (df.iloc[idx]['Close'] - df.iloc[idx-1]['Close']) / df.iloc[idx-1]['Close'] if idx > 0 else 0
@@ -219,6 +281,26 @@ class UniversalTradingEnv(gym.Env):
         
         return np.array(obs, dtype=np.float32)
     
+    def get_transaction_costs_summary(self):
+        """
+        ✅ NOUVEAU : Récupère statistiques sur les coûts de transaction
+        
+        Returns:
+            dict avec métriques de coûts
+        """
+        if len(self.transaction_costs_history) == 0:
+            return {'avg_slippage': 0, 'avg_impact': 0, 'total_costs': 0}
+        
+        df = pd.DataFrame(self.transaction_costs_history)
+        
+        return {
+            'avg_slippage_pct': df['slippage'].mean() * 100,
+            'avg_market_impact_pct': df['market_impact'].mean() * 100,
+            'total_costs_dollars': df['total_cost'].sum(),
+            'n_trades': len(df),
+            'avg_cost_per_trade': df['total_cost'].mean()
+        }
+    
     def render(self, mode='human'):
         """Afficher état"""
         if mode == 'human':
@@ -228,4 +310,12 @@ class UniversalTradingEnv(gym.Env):
             print(f"Cash: ${self.balance:,.2f}")
             print(f"Positions: {self.positions}")
             print(f"Total Trades: {len(self.trades_history)}")
+            
+            if self.realistic_costs and len(self.transaction_costs_history) > 0:
+                costs = self.get_transaction_costs_summary()
+                print(f"\nTransaction Costs:")
+                print(f"  Avg Slippage: {costs['avg_slippage_pct']:.3f}%")
+                print(f"  Avg Impact: {costs['avg_market_impact_pct']:.3f}%")
+                print(f"  Total Costs: ${costs['total_costs_dollars']:.2f}")
+            
             print(f"{'='*60}")
