@@ -1,0 +1,147 @@
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+
+1 Failed download:
+['DIA']: YFPricesMissingError('possibly delisted; no price data found  (1h 2023-12-06 -> 2025-12-05) (Yahoo error = "1h data not available for startTime=1701838800 and endTime=1764910800. The requested range must be within the last 730 days.")')
+
+1 Failed download:
+['DIA']: YFPricesMissingError('possibly delisted; no price data found  (1h 2023-12-06 -> 2025-12-05) (Yahoo error = "1h data not available for startTime=1701838800 and endTime=1764910800. The requested range must be within the last 730 days.")')
+
+3 Failed downloads:
+['DIA', 'QQQ', 'SPY']: YFPricesMissingError('possibly delisted; no price data found  (1h 2023-12-06 -> 2025-12-05) (Yahoo error = "1h data not available for startTime=1701838800 and endTime=1764910800. The requested range must be within the last 730 days.")')
+
+3 Failed downloads:
+['DIA', 'QQQ', 'SPY']: YFPricesMissingError('possibly delisted; no price data found  (1h 2023-12-06 -> 2025-12-05) (Yahoo error = "1h data not available for startTime=1701838800 and endTime=1764910800. The requested range must be within the last 730 days.")')
+
+3 Failed downloads:
+['DIA', 'QQQ', 'SPY']: YFPricesMissingError('possibly delisted; no price data found  (1h 2023-12-06 -> 2025-12-05) (Yahoo error = "1h data not available for startTime=1701838800 and endTime=1764910800. The requested range must be within the last 730 days.")')
+
+1 Failed download:
+['QQQ']: YFPricesMissingError('possibly delisted; no price data found  (1h 2023-12-06 -> 2025-12-05) (Yahoo error = "1h data not available for startTime=1701838800 and endTime=1764910800. The requested range must be within the last 730 days.")')
+Traceback (most recent call last):
+  File "/mnt/c/Users/thoma/Desktop/project_ploutos/scripts/autonomous_system.py", line 345, in run_full_cycle
+    self.model = self._train_universal_model()
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/c/Users/thoma/Desktop/project_ploutos/scripts/autonomous_system.py", line 523, in _train_universal_model
+    raise ValueError("❌ Aucune donnée disponible pour entraînement")
+ValueError: ❌ Aucune donnée disponible pour entraînement
+✅ Config chargée : config/test_config.yaml
+
+================================================================================
+🤖 AUTONOMOUS TRADING SYSTEM - FULL CYCLE
+================================================================================
+⏰ Démarrage : 2025-12-05 21:21:24
+📊 Market Scan : DÉSACTIVÉ
+⚙️ Optimisation : SKIP
+
+
+────────────────────────────────────────────────────────────────────────────────
+📊 PHASE 1 : MARKET REGIME DETECTION
+────────────────────────────────────────────────────────────────────────────────
+📊 Analyse du régime de marché (SPY)...
+  🎯 Régime détecté : SIDEWAYS (confiance: 1.2%)
+  📈 Trend: +0.26% | Vol: 11.9% | DD: -0.2%
+
+✅ Régime : SIDEWAYS (confiance: 1.2%)
+
+────────────────────────────────────────────────────────────────────────────────
+🎯 PHASE 2 : ASSET SELECTION
+────────────────────────────────────────────────────────────────────────────────
+
+🎯 MODE : UNIVERS FIXE
+
+🎯 Sélection de 3 assets...
+📊 Analyse du régime de marché (SPY)...
+  🎯 Régime détecté : SIDEWAYS (confiance: 1.2%)
+  📈 Trend: +0.26% | Vol: 11.9% | DD: -0.2%
+  📊 Catégorie : range_bound (10 candidats)
+    📊 SPY: perf=1.39%, vol=0.16, sharpe=1.88
+    ✅ SPY: score final = 15.7
+    📊 QQQ: perf=1.31%, vol=0.12, sharpe=2.08
+    ✅ QQQ: score final = 16.7
+    📊 DIA: perf=0.75%, vol=0.20, sharpe=2.03
+    ✅ DIA: score final = 16.3
+    📊 IWM: perf=1.90%, vol=0.11, sharpe=2.38
+    ✅ IWM: score final = 14.0
+    📊 XLF: perf=1.90%, vol=0.11, sharpe=2.38
+    ✅ XLF: score final = 14.0
+    📊 XLE: perf=1.25%, vol=0.14, sharpe=0.69
+    ✅ XLE: score final = 9.7
+    📊 XLK: perf=1.25%, vol=0.14, sharpe=0.69
+    ✅ XLK: score final = 9.7
+    📊 XLV: perf=-50.05%, vol=0.86, sharpe=-1.27
+    ✅ XLV: score final = 12.8
+    📊 XLP: perf=-50.05%, vol=0.86, sharpe=-1.27
+    ✅ XLP: score final = 12.8
+    📊 XLU: perf=-47.43%, vol=0.86, sharpe=-1.42
+    ✅ XLU: score final = 14.0
+
+  🏆 TOP 3 ASSETS (SIDEWAYS):
+    QQQ    → Score:  16.7 | Perf:  +1.3% | Sharpe: 2.08
+    DIA    → Score:  16.3 | Perf:  +0.8% | Sharpe: 2.03
+    SPY    → Score:  15.7 | Perf:  +1.4% | Sharpe: 1.88
+
+✅ 3 assets sélectionnés
+
+📥 Vérification des données...
+  📥 Téléchargement de 3 tickers manquants...
+⚠️ Variables ALPACA_API_KEY/SECRET non définies
+📡 Data Fetcher initialisé : yfinance
+
+📦 Bulk fetch : 3 tickers
+📥 Fetch QQQ (2023-12-06 → 2025-12-05, 1h)
+📥 Fetch DIA (2023-12-06 → 2025-12-05, 1h)
+📥 Fetch SPY (2023-12-06 → 2025-12-05, 1h)
+  ❌ DIA : ❌ Impossible de récupérer DIA depuis aucune source
+  ❌ SPY : ❌ Impossible de récupérer SPY depuis aucune source
+  ❌ QQQ : ❌ Impossible de récupérer QQQ depuis aucune source
+
+✅ Succès: 0/3
+❌ Échecs: DIA, SPY, QQQ
+  ⚠️ Échec pour : SPY, DIA, QQQ
+
+⏩ PHASE 3 : SKIPPED (utilise params par défaut)
+
+────────────────────────────────────────────────────────────────────────────────
+🧠 PHASE 4 : UNIVERSAL MODEL TRAINING
+────────────────────────────────────────────────────────────────────────────────
+
+🏋️ Entraînement sur 3 assets...
+  ✅ Paramètres de Phase 3 (optimisation Optuna)
+    🔧 batch_size : 128 → 256 (ratio optimal avec n_steps)
+    🔧 n_epochs : 24 → 15 (réduction overfitting)
+    🔧 ent_coef : 1.15e-06 → 0.005 (plus d'exploration)
+    🔧 vf_coef : 0.872 → 0.5 (équilibre)
+    🔧 net_arch : 3 couches → 2 couches
+  💾 Version ajustée sauvegardée : models/autonomous/best_hyperparams_adjusted.json
+
+
+  📊 CONFIGURATION FINALE :
+  ──────────────────────────────────────────────────
+  Learning Rate    : 0.000135
+  N Steps          : 4096
+  Batch Size       : 256
+  N Epochs         : 15
+  Gamma            : 0.9778
+  GAE Lambda       : 0.9464
+  Clip Range       : 0.1506
+  Entropy Coef     : 0.005000
+  Value Coef       : 0.5000
+  Max Grad Norm    : 0.5
+  ──────────────────────────────────────────────────
+  Device           : cuda
+  Timesteps        : 50,000
+  Parallel Envs    : 1
+  ──────────────────────────────────────────────────
+
+  📥 Chargement données...
+
+❌ ERREUR CRITIQUE : ❌ Aucune donnée disponible pour entraînement
+
+📊 Rapport sauvegardé :
+  - reports/autonomous/report_20251205_212126.json
+  - reports/autonomous/report_20251205_212126.md
+
+❌ Erreur durant l'exécution

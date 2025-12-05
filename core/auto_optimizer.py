@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
-from core.environment import TradingEnv
+from core.universal_environment import UniversalTradingEnv
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -139,7 +139,7 @@ class AutoOptimizer:
         csv_path = f"{self.data_dir}/{ticker}.csv"
         
         # Créer env
-        env = DummyVecEnv([lambda: TradingEnv(csv_path=csv_path)])
+        env = DummyVecEnv([lambda: UniversalUniversalTradingEnv(csv_path=csv_path)])
         
         # Entraîner modèle
         model = PPO("MlpPolicy", env, verbose=0, device="cuda", **params)
@@ -155,7 +155,7 @@ class AutoOptimizer:
     def _quick_backtest(self, model, csv_path, steps=500):
         """Backtest rapide pour obtenir le Sharpe"""
         
-        env = TradingEnv(csv_path=csv_path)
+        env = UniversalUniversalTradingEnv(csv_path=csv_path)
         obs, _ = env.reset()
         values = []
         

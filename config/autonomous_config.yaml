@@ -1,36 +1,45 @@
-# Configuration du Système Autonome
-# Modifie ces valeurs selon tes besoins
-
 market:
-  reference_ticker: "SPY"        # Ticker de référence pour régime
-  lookback_days: 90              # Période d'analyse
+  reference_ticker: "SPY"
+  lookback_days: 90
 
 assets:
-  n_assets: 10                   # Nombre d'assets à trader
-  min_volume: 1000000            # Volume minimum
+  n_assets: 10
+  min_volume: 1000000
 
 optimization:
-  n_trials: 50                   # Nombre d'essais Optuna
-  n_jobs: 1                      # Parallélisation (-1 = tous CPUs)
-  timeout: null                  # Timeout en secondes (null = illimité)
+  n_trials: 50
+  n_jobs: 1
+  timeout: null
 
 training:
-  timesteps: 2000000             # Steps d'entraînement
-  n_envs: 16                     # Environnements parallèles
-  device: "cuda"                 # "cuda" ou "cpu"
+  timesteps: 2000000
+  n_envs: 1              # ← DummyVecEnv (stable sur WSL2)
+  device: "cuda"         # Ou "cpu" pour éviter warning
+  
+  # Hyperparams optimisés
+  learning_rate: 0.0001348446603871995
+  n_steps: 8192          # ← Gros batch GPU
+  batch_size: 512
+  n_epochs: 10
+  gamma: 0.9777938516012863
+  gae_lambda: 0.9464447027181514
+  clip_range: 0.15055301968865417
+  ent_coef: 0.02
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  
+  # Architecture
+  net_arch_pi: [512, 512]
+  net_arch_vf: [512, 512]
 
 validation:
-  min_sharpe: 1.5                # Sharpe minimum pour déploiement
-  test_days: 90                  # Période de backtest
-
-continuous_learning:
-  frequency: "weekly"            # "daily", "weekly", "monthly"
-  min_new_data: 50               # Minimum nouvelles bougies
-  fine_tune_steps: 500000        # Steps pour fine-tuning
+  min_sharpe: 1.5
+  test_days: 90
+  max_steps: 2000
 
 market_scan:
-  enabled: true              # ✅ ACTIVER ICI
-  min_market_cap: 1000000000  # 1 milliard
-  min_volume: 1000000         # 1 million
-  max_stocks: 500             # Top 500 pour vitesse
+  enabled: false
+  min_market_cap: 1000000000
+  min_volume: 1000000
+  max_stocks: 500
   cache_results: true
