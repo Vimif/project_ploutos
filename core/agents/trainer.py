@@ -1,12 +1,18 @@
 """
 Trainer - Responsable unique de l'entraînement
-Sépare logique métier de l'orchestration
 """
 
-from typing import Dict, Any, Callable
+import sys
 from pathlib import Path
-import json
+
+# Ajouter root au path
+root = Path(__file__).parent.parent.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+from typing import Dict, Any, Callable
 from datetime import datetime
+import json
 
 import pandas as pd
 import torch
