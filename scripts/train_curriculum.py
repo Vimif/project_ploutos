@@ -31,12 +31,12 @@ from core.feature_adapter import FeatureAdapter
 from core.trading_callback import TradingMetricsCallback
 from core.performance_monitor import PerformanceMonitor  # ✅ NOUVEAU
 
-# ✅ PARAMS OPTIMISÉS POUR GPU
+# ✅ PARAMS OPTIMISÉS AVEC TIMESTEPS AUGMENTÉS V3
 CALIBRATED_PARAMS = {
     'stage1': {
         'name': 'Mono-Asset (SPY)',
         'tickers': ['SPY'],
-        'timesteps': 3_000_000,
+        'timesteps': 5_000_000,      # ✅ 3M → 5M
         'n_envs': 4,
         'learning_rate': 1e-4,
         'n_steps': 2048,
@@ -54,7 +54,7 @@ CALIBRATED_PARAMS = {
     'stage2': {
         'name': 'Multi-Asset ETFs',
         'tickers': ['SPY', 'QQQ', 'IWM'],
-        'timesteps': 5_000_000,
+        'timesteps': 15_000_000,     # ✅ 5M → 15M
         'n_envs': 6,
         'learning_rate': 5e-5,
         'n_steps': 2048,
@@ -72,7 +72,7 @@ CALIBRATED_PARAMS = {
     'stage3': {
         'name': 'Actions Complexes',
         'tickers': ['NVDA', 'MSFT', 'AAPL', 'GOOGL', 'AMZN'],
-        'timesteps': 10_000_000,
+        'timesteps': 30_000_000,     # ✅ 10M → 30M
         'n_envs': 8,
         'learning_rate': 3e-5,
         'n_steps': 2048,
@@ -175,8 +175,9 @@ def train_stage(stage_num, use_transfer_learning=False, prev_stage=None, auto_op
     )
     
     wandb.config.update({
-        'optimization': 'GPU_optimized_v2',
+        'optimization': 'GPU_optimized_v3',
         'numpy_precompute': True,
+        'extended_timesteps': True,
         'expected_gpu_usage': '70-90%',
         'expected_fps': '30k-50k',
         'reduced_transaction_costs': True
@@ -185,7 +186,8 @@ def train_stage(stage_num, use_transfer_learning=False, prev_stage=None, auto_op
     print(f"\n🔗 W&B Run : {wandb.run.get_url()}")
     print(f"   Projet : Ploutos_Curriculum")
     print(f"   Run    : {run_name}")
-    print(f"\n⚡ OPTIMISATIONS V2 :")
+    print(f"\n⚡ OPTIMISATIONS V3 :")
+    print(f"   Timesteps       : {config['timesteps']:,} (3x augmenté)")
     print(f"   Batch Size      : {config['batch_size']} (4x)")
     print(f"   N Envs          : {config['n_envs']}")
     print(f"   Numpy Precompute: OUI (10x plus rapide)")
@@ -316,7 +318,7 @@ def train_stage(stage_num, use_transfer_learning=False, prev_stage=None, auto_op
     
     # Entraînement
     print(f"\n🚀 Entraînement : {config['timesteps']:,} timesteps...")
-    print(f"⏱️  Durée estimée : ~{config['timesteps'] // 1_500_000} heures (optimisé)")
+    print(f"⏱️  Durée estimée : ~{config['timesteps'] // 10_000_000 * 3} heures (optimisé)")
     print(f"🔗 Suivre : {wandb.run.get_url()}")
     print(f"📊 Monitoring : FPS, GPU, CPU toutes les 5k steps")
     print(f"💾 Checkpoints : Tous les 100k steps\n")
@@ -373,7 +375,7 @@ if __name__ == '__main__':
     import argparse
     
     parser = argparse.ArgumentParser(
-        description='Curriculum Learning pour Ploutos (GPU Optimized V2)',
+        description='Curriculum Learning pour Ploutos (GPU Optimized V3)',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Exemples:
@@ -381,16 +383,17 @@ Exemples:
   python3 scripts/train_curriculum.py --stage 2 --transfer
   python3 scripts/train_curriculum.py --stage 3 --transfer
 
-Optimisations V2:
+Optimisations V3:
+  ✅ Timesteps 3x augmentés (convergence meilleure)
   ✅ Numpy pre-compute (10x accélération)
   ✅ Batch size 4x augmenté
   ✅ Performance monitoring temps réel
   ✅ Auto-detection bottlenecks
   
-Performance attendue:
-  GPU Usage : 70-90%
-  FPS       : 30k-50k
-  Durée     : 4-6h (Stage 3)
+Durées attendues:
+  Stage 1: ~1.5h (5M timesteps)
+  Stage 2: ~4h (15M timesteps)
+  Stage 3: ~8h (30M timesteps)
         """
     )
     
@@ -402,12 +405,12 @@ Performance attendue:
     args = parser.parse_args()
     
     print("\n" + "="*80)
-    print("🎓 PLOUTOS CURRICULUM LEARNING (GPU OPTIMIZED V2)")
+    print("🎓 PLOUTOS CURRICULUM LEARNING (GPU OPTIMIZED V3)")
     print("="*80)
     print(f"\n⏰ Début : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"📊 Stage : {args.stage}")
     print(f"🔄 Transfer : {'OUI' if args.transfer else 'NON'}")
-    print(f"⚡ Optimizations : Numpy Precompute + GPU Tuning")
+    print(f"⚡ Optimizations : Extended Timesteps + Numpy + GPU Tuning")
     if args.transfer and args.from_stage:
         print(f"🎯 Source : Stage {args.from_stage}")
     print()
