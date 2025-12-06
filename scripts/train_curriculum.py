@@ -9,6 +9,7 @@ Usage:
     python3 scripts/train_curriculum.py --stage 1
     python3 scripts/train_curriculum.py --stage 2 --transfer
     python3 scripts/train_curriculum.py --stage 3 --transfer
+    python3 scripts/train_curriculum.py --auto-continue  # ✅ NOUVEAU : Lance tout
 """
 
 import sys
@@ -81,7 +82,7 @@ CALIBRATED_PARAMS = {
         'gamma': 0.99,
         'gae_lambda': 0.95,
         'clip_range': 0.2,
-        'ent_coef': 0.001,  # ✅ Réduit de 0.01 pour encourager HOLD
+        'ent_coef': 0.001,
         'vf_coef': 0.5,
         'max_grad_norm': 0.5,
         'policy_kwargs': {'net_arch': [512, 512, 512]},
@@ -101,7 +102,7 @@ def make_env(data_dict, initial_balance=10000, commission=0.0001, realistic_cost
             data=data_dict,
             initial_balance=initial_balance,
             commission=commission,
-            max_steps=2000,  # ✅ Augmenté de 1000 à 2000
+            max_steps=2000,
             realistic_costs=realistic_costs
         )
     return _init
@@ -114,13 +115,13 @@ def calculate_sharpe(model, data_dict, episodes=10):
         print(f"\n⚠️  Données trop courtes ({data_length}), skip Sharpe")
         return 0.0
     
-    adjusted_max_steps = min(1000, data_length - 110)  # ✅ Augmenté de 500 à 1000
+    adjusted_max_steps = min(1000, data_length - 110)
     
     for _ in range(episodes):
         env = UniversalTradingEnv(
             data=data_dict,
             initial_balance=10000,
-            commission=0.0001,  # ✅ 0.01%
+            commission=0.0001,
             max_steps=adjusted_max_steps,
             realistic_costs=False
         )
@@ -200,15 +201,15 @@ def train_stage(stage_num, use_transfer_learning=False, prev_stage=None, auto_op
     # Créer environnements
     print("🏭 Création environnements (avec pré-calcul)...")
     env = SubprocVecEnv([
-        make_env(data, commission=0.0001, realistic_costs=False)  # ✅ 0.01%
+        make_env(data, commission=0.0001, realistic_costs=False)
         for _ in range(config['n_envs'])
     ])
     
     eval_env = UniversalTradingEnv(
         data=data,
         initial_balance=10000,
-        commission=0.0001,  # ✅ 0.01%
-        max_steps=2000,     # ✅ Doublé
+        commission=0.0001,
+        max_steps=2000,
         realistic_costs=False
     )
     
@@ -383,6 +384,7 @@ Exemples:
   python3 scripts/train_curriculum.py --stage 1
   python3 scripts/train_curriculum.py --stage 2 --transfer
   python3 scripts/train_curriculum.py --stage 3 --transfer
+  python3 scripts/train_curriculum.py --auto-continue  # ✅ Lance tout automatiquement
 
 Optimisations V4 (FIXES SHARPE):
   ✅ Reward function fixed (normalisé + clippé)
@@ -396,38 +398,110 @@ Durées attendues:
   Stage 1: ~1.5h (5M timesteps)
   Stage 2: ~4h (15M timesteps)
   Stage 3: ~8h (30M timesteps)
+  --auto-continue: ~13.5h (stages 1+2+3)
         """
     )
     
-    parser.add_argument('--stage', type=int, required=True, choices=[1, 2, 3])
-    parser.add_argument('--transfer', action='store_true')
-    parser.add_argument('--from-stage', type=int, default=None, choices=[1, 2])
-    parser.add_argument('--auto-optimize', action='store_true')
+    parser.add_argument('--stage', type=int, default=None, choices=[1, 2, 3],
+                        help='Stage à entraîner (1, 2 ou 3)')
+    parser.add_argument('--transfer', action='store_true',
+                        help='Utiliser transfer learning du stage précédent')
+    parser.add_argument('--from-stage', type=int, default=None, choices=[1, 2],
+                        help='Stage source pour transfer learning')
+    parser.add_argument('--auto-continue', action='store_true',
+                        help='✅ Lance tous les stages automatiquement (1→2→3)')
+    parser.add_argument('--auto-optimize', action='store_true',
+                        help='Mode auto-optimisation (expérimental)')
     
     args = parser.parse_args()
+    
+    # Validation
+    if not args.auto_continue and args.stage is None:
+        parser.error("--stage requis (ou utiliser --auto-continue)")
     
     print("\n" + "="*80)
     print("🎓 PLOUTOS CURRICULUM LEARNING (V4 - FIXED SHARPE)")
     print("="*80)
     print(f"\n⏰ Début : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"📊 Stage : {args.stage}")
-    print(f"🔄 Transfer : {'OUI' if args.transfer else 'NON'}")
-    print(f"⚡ V4 : Reward Fix + Low Commission + Long Episodes")
-    if args.transfer and args.from_stage:
-        print(f"🎯 Source : Stage {args.from_stage}")
-    print()
     
-    model_path, sharpe = train_stage(
-        stage_num=args.stage,
-        use_transfer_learning=args.transfer,
-        prev_stage=args.from_stage,
-        auto_optimize=args.auto_optimize
-    )
-    
-    print(f"\n⏰ Fin : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"✅ Modèle : {model_path}.zip")
-    print(f"📊 Sharpe : {sharpe:.2f}")
-    
-    if args.stage < 3 and sharpe > 0:
-        print(f"\n💡 PROCHAINE ÉTAPE :")
-        print(f"   python3 scripts/train_curriculum.py --stage {args.stage + 1} --transfer")
+    # ✅ MODE AUTO-CONTINUE
+    if args.auto_continue:
+        print("🚀 MODE AUTO-CONTINUE : Stages 1 → 2 → 3")
+        print("⏱️  Durée totale : ~13.5 heures")
+        print("☕ Parfait pour la nuit ou le week-end !\n")
+        
+        results = {}
+        
+        # Stage 1
+        print("\n" + "#"*80)
+        print("# STAGE 1/3 : MONO-ASSET (SPY)")
+        print("#"*80)
+        model_path_1, sharpe_1 = train_stage(
+            stage_num=1,
+            use_transfer_learning=False,
+            prev_stage=None,
+            auto_optimize=args.auto_optimize
+        )
+        results['stage1'] = {'model': model_path_1, 'sharpe': sharpe_1}
+        
+        # Stage 2 avec transfer
+        print("\n" + "#"*80)
+        print("# STAGE 2/3 : MULTI-ASSET ETFs")
+        print("#"*80)
+        model_path_2, sharpe_2 = train_stage(
+            stage_num=2,
+            use_transfer_learning=True,
+            prev_stage=1,
+            auto_optimize=args.auto_optimize
+        )
+        results['stage2'] = {'model': model_path_2, 'sharpe': sharpe_2}
+        
+        # Stage 3 avec transfer
+        print("\n" + "#"*80)
+        print("# STAGE 3/3 : ACTIONS COMPLEXES")
+        print("#"*80)
+        model_path_3, sharpe_3 = train_stage(
+            stage_num=3,
+            use_transfer_learning=True,
+            prev_stage=2,
+            auto_optimize=args.auto_optimize
+        )
+        results['stage3'] = {'model': model_path_3, 'sharpe': sharpe_3}
+        
+        # Résumé final
+        print("\n" + "="*80)
+        print("🎆 CURRICULUM COMPLET TERMINÉ !")
+        print("="*80)
+        print(f"\n⏰ Fin : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"\n📈 RÉSULTATS FINAUX :\n")
+        for stage, data in results.items():
+            status = "✅" if data['sharpe'] >= CALIBRATED_PARAMS[stage]['target_sharpe'] else "⚠️"
+            print(f"  {status} {stage.upper()} : Sharpe = {data['sharpe']:.2f} (objectif: {CALIBRATED_PARAMS[stage]['target_sharpe']:.2f})")
+            print(f"      Modèle : {data['model']}.zip")
+        
+        print(f"\n🎯 MODÈLE FINAL : {results['stage3']['model']}.zip")
+        print(f"🚀 Prêt pour le déploiement !\n")
+        
+    else:
+        # ✅ MODE SINGLE STAGE
+        print(f"📊 Stage : {args.stage}")
+        print(f"🔄 Transfer : {'OUI' if args.transfer else 'NON'}")
+        print(f"⚡ V4 : Reward Fix + Low Commission + Long Episodes")
+        if args.transfer and args.from_stage:
+            print(f"🎯 Source : Stage {args.from_stage}")
+        print()
+        
+        model_path, sharpe = train_stage(
+            stage_num=args.stage,
+            use_transfer_learning=args.transfer,
+            prev_stage=args.from_stage,
+            auto_optimize=args.auto_optimize
+        )
+        
+        print(f"\n⏰ Fin : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"✅ Modèle : {model_path}.zip")
+        print(f"📊 Sharpe : {sharpe:.2f}")
+        
+        if args.stage < 3 and sharpe > 0:
+            print(f"\n💡 PROCHAINE ÉTAPE :")
+            print(f"   python3 scripts/train_curriculum.py --stage {args.stage + 1} --transfer")
