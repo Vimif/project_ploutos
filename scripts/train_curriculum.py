@@ -29,14 +29,14 @@ from core.data_fetcher import UniversalDataFetcher
 from core.universal_environment import UniversalTradingEnv
 from core.feature_adapter import FeatureAdapter
 from core.trading_callback import TradingMetricsCallback
-from core.performance_monitor import PerformanceMonitor  # ✅ NOUVEAU
+from core.performance_monitor import PerformanceMonitor
 
-# ✅ PARAMS OPTIMISÉS AVEC TIMESTEPS AUGMENTÉS V3
+# ✅ PARAMS OPTIMISÉS AVEC FIXES SHARPE V4
 CALIBRATED_PARAMS = {
     'stage1': {
         'name': 'Mono-Asset (SPY)',
         'tickers': ['SPY'],
-        'timesteps': 5_000_000,      # ✅ 3M → 5M
+        'timesteps': 5_000_000,
         'n_envs': 4,
         'learning_rate': 1e-4,
         'n_steps': 2048,
@@ -54,7 +54,7 @@ CALIBRATED_PARAMS = {
     'stage2': {
         'name': 'Multi-Asset ETFs',
         'tickers': ['SPY', 'QQQ', 'IWM'],
-        'timesteps': 15_000_000,     # ✅ 5M → 15M
+        'timesteps': 15_000_000,
         'n_envs': 6,
         'learning_rate': 5e-5,
         'n_steps': 2048,
@@ -72,7 +72,7 @@ CALIBRATED_PARAMS = {
     'stage3': {
         'name': 'Actions Complexes',
         'tickers': ['NVDA', 'MSFT', 'AAPL', 'GOOGL', 'AMZN'],
-        'timesteps': 30_000_000,     # ✅ 10M → 30M
+        'timesteps': 30_000_000,
         'n_envs': 8,
         'learning_rate': 3e-5,
         'n_steps': 2048,
@@ -81,7 +81,7 @@ CALIBRATED_PARAMS = {
         'gamma': 0.99,
         'gae_lambda': 0.95,
         'clip_range': 0.2,
-        'ent_coef': 0.01,
+        'ent_coef': 0.001,  # ✅ Réduit de 0.01 pour encourager HOLD
         'vf_coef': 0.5,
         'max_grad_norm': 0.5,
         'policy_kwargs': {'net_arch': [512, 512, 512]},
@@ -94,13 +94,14 @@ def print_banner(text):
     print(f"  {text}")
     print("="*80 + "\n")
 
-def make_env(data_dict, initial_balance=10000, commission=0.0005, realistic_costs=False):
+def make_env(data_dict, initial_balance=10000, commission=0.0001, realistic_costs=False):
+    """✅ Commission réduite à 0.01% (0.0001)"""
     def _init():
         return UniversalTradingEnv(
             data=data_dict,
             initial_balance=initial_balance,
             commission=commission,
-            max_steps=1000,
+            max_steps=2000,  # ✅ Augmenté de 1000 à 2000
             realistic_costs=realistic_costs
         )
     return _init
@@ -113,13 +114,13 @@ def calculate_sharpe(model, data_dict, episodes=10):
         print(f"\n⚠️  Données trop courtes ({data_length}), skip Sharpe")
         return 0.0
     
-    adjusted_max_steps = min(500, data_length - 110)
+    adjusted_max_steps = min(1000, data_length - 110)  # ✅ Augmenté de 500 à 1000
     
     for _ in range(episodes):
         env = UniversalTradingEnv(
             data=data_dict,
             initial_balance=10000,
-            commission=0.0005,
+            commission=0.0001,  # ✅ 0.01%
             max_steps=adjusted_max_steps,
             realistic_costs=False
         )
@@ -175,38 +176,39 @@ def train_stage(stage_num, use_transfer_learning=False, prev_stage=None, auto_op
     )
     
     wandb.config.update({
-        'optimization': 'GPU_optimized_v3',
+        'optimization': 'GPU_optimized_v4_fixed',
         'numpy_precompute': True,
         'extended_timesteps': True,
+        'reward_function': 'fixed_normalized',
+        'commission_reduced': '0.01%',
+        'max_steps_increased': 2000,
         'expected_gpu_usage': '70-90%',
-        'expected_fps': '30k-50k',
-        'reduced_transaction_costs': True
+        'expected_fps': '30k-50k'
     })
     
     print(f"\n🔗 W&B Run : {wandb.run.get_url()}")
     print(f"   Projet : Ploutos_Curriculum")
     print(f"   Run    : {run_name}")
-    print(f"\n⚡ OPTIMISATIONS V3 :")
-    print(f"   Timesteps       : {config['timesteps']:,} (3x augmenté)")
-    print(f"   Batch Size      : {config['batch_size']} (4x)")
-    print(f"   N Envs          : {config['n_envs']}")
-    print(f"   Numpy Precompute: OUI (10x plus rapide)")
-    print(f"   Commission      : 0.05%")
-    print(f"   Target GPU      : 70-90%")
-    print(f"   Target FPS      : 30k-50k\n")
+    print(f"\n⚡ OPTIMISATIONS V4 (FIXES SHARPE) :")
+    print(f"   Timesteps       : {config['timesteps']:,}")
+    print(f"   Batch Size      : {config['batch_size']}")
+    print(f"   Commission      : 0.01% (✅ réduit 5x)")
+    print(f"   Max Steps       : 2000 (✅ doublé)")
+    print(f"   Reward Function : ✅ Fixed (normalisé + clippé)")
+    print(f"   Entropy Coef    : {config['ent_coef']} (✅ réduit pour HOLD)\n")
     
     # Créer environnements
     print("🏭 Création environnements (avec pré-calcul)...")
     env = SubprocVecEnv([
-        make_env(data, commission=0.0005, realistic_costs=False) 
+        make_env(data, commission=0.0001, realistic_costs=False)  # ✅ 0.01%
         for _ in range(config['n_envs'])
     ])
     
     eval_env = UniversalTradingEnv(
         data=data,
         initial_balance=10000,
-        commission=0.0005,
-        max_steps=1000,
+        commission=0.0001,  # ✅ 0.01%
+        max_steps=2000,     # ✅ Doublé
         realistic_costs=False
     )
     
@@ -279,7 +281,7 @@ def train_stage(stage_num, use_transfer_learning=False, prev_stage=None, auto_op
         config['name'] = name
         config['tickers'] = tickers
     
-    # ✅ CALLBACKS (avec PerformanceMonitor)
+    # ✅ CALLBACKS
     os.makedirs(f'models/{stage_key}', exist_ok=True)
     
     checkpoint_callback = CheckpointCallback(
@@ -303,9 +305,8 @@ def train_stage(stage_num, use_transfer_learning=False, prev_stage=None, auto_op
         verbose=1
     )
     
-    # ✅ NOUVEAU : Performance Monitor
     perf_monitor = PerformanceMonitor(
-        log_freq=5000,  # Log toutes les 5k steps
+        log_freq=5000,
         verbose=1
     )
     
@@ -313,14 +314,14 @@ def train_stage(stage_num, use_transfer_learning=False, prev_stage=None, auto_op
         checkpoint_callback,
         wandb_callback,
         trading_callback,
-        perf_monitor  # ✅ Ajouté
+        perf_monitor
     ])
     
     # Entraînement
     print(f"\n🚀 Entraînement : {config['timesteps']:,} timesteps...")
-    print(f"⏱️  Durée estimée : ~{config['timesteps'] // 10_000_000 * 3} heures (optimisé)")
+    print(f"⏱️  Durée estimée : ~{config['timesteps'] // 10_000_000 * 3} heures")
     print(f"🔗 Suivre : {wandb.run.get_url()}")
-    print(f"📊 Monitoring : FPS, GPU, CPU toutes les 5k steps")
+    print(f"📊 Monitoring : Toutes les 5k steps")
     print(f"💾 Checkpoints : Tous les 100k steps\n")
     
     model.learn(
@@ -375,7 +376,7 @@ if __name__ == '__main__':
     import argparse
     
     parser = argparse.ArgumentParser(
-        description='Curriculum Learning pour Ploutos (GPU Optimized V3)',
+        description='Curriculum Learning pour Ploutos (GPU Optimized V4 - Fixed Sharpe)',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Exemples:
@@ -383,12 +384,13 @@ Exemples:
   python3 scripts/train_curriculum.py --stage 2 --transfer
   python3 scripts/train_curriculum.py --stage 3 --transfer
 
-Optimisations V3:
-  ✅ Timesteps 3x augmentés (convergence meilleure)
+Optimisations V4 (FIXES SHARPE):
+  ✅ Reward function fixed (normalisé + clippé)
+  ✅ Commission 5x réduite (0.05% → 0.01%)
+  ✅ max_steps doublé (1000 → 2000)
+  ✅ Entropy coef réduit (encourage HOLD)
+  ✅ Timesteps 3x augmentés
   ✅ Numpy pre-compute (10x accélération)
-  ✅ Batch size 4x augmenté
-  ✅ Performance monitoring temps réel
-  ✅ Auto-detection bottlenecks
   
 Durées attendues:
   Stage 1: ~1.5h (5M timesteps)
@@ -405,12 +407,12 @@ Durées attendues:
     args = parser.parse_args()
     
     print("\n" + "="*80)
-    print("🎓 PLOUTOS CURRICULUM LEARNING (GPU OPTIMIZED V3)")
+    print("🎓 PLOUTOS CURRICULUM LEARNING (V4 - FIXED SHARPE)")
     print("="*80)
     print(f"\n⏰ Début : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"📊 Stage : {args.stage}")
     print(f"🔄 Transfer : {'OUI' if args.transfer else 'NON'}")
-    print(f"⚡ Optimizations : Extended Timesteps + Numpy + GPU Tuning")
+    print(f"⚡ V4 : Reward Fix + Low Commission + Long Episodes")
     if args.transfer and args.from_stage:
         print(f"🎯 Source : Stage {args.from_stage}")
     print()
