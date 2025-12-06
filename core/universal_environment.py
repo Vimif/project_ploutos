@@ -1,6 +1,8 @@
 """
 Environnement de trading universel pour multi-assets
 Avec pré-calcul des features pour performance maximale
+
+⚠️ VERSION FIXED: Reward function corrigée + safety checks
 """
 
 import gymnasium as gym
@@ -20,12 +22,12 @@ class UniversalTradingEnv(gym.Env):
 
     metadata = {'render_modes': ['human']}
 
-    def __init__(self, data, initial_balance=100000, commission=0.001, max_steps=2000, realistic_costs=True):
+    def __init__(self, data, initial_balance=100000, commission=0.0001, max_steps=2000, realistic_costs=False):
         """
         Args:
             data (dict): {ticker: DataFrame} avec colonnes [Open, High, Low, Close, Volume]
             initial_balance (float): Capital initial
-            commission (float): Commission par trade
+            commission (float): Commission par trade (0.0001 = 0.01%)
             max_steps (int): Nombre max de steps par épisode (2000 = ~83 jours)
             realistic_costs (bool): Utiliser modèle de coûts avancé
         """
@@ -35,11 +37,11 @@ class UniversalTradingEnv(gym.Env):
         self.tickers = list(data.keys())
         self.n_assets = len(self.tickers)
         self.initial_balance = initial_balance
-        self.commission = commission
+        self.commission = commission  # ✅ Réduit à 0.01% par défaut
         self.max_steps = max_steps
         self.realistic_costs = realistic_costs and REALISTIC_COSTS
         
-        # ✅ Modèle de coûts
+        # ✅ Modèle de coûts (DÉSACTIVÉ par défaut maintenant)
         if self.realistic_costs:
             self.transaction_model = AdvancedTransactionModel(
                 base_commission=commission,
@@ -87,6 +89,10 @@ class UniversalTradingEnv(gym.Env):
         self.portfolio_value = initial_balance
         self.trades_history = []
         self.transaction_costs_history = []
+        
+        # ✅ NOUVEAU: Tracking pour reward shaping
+        self.portfolio_history = []
+        self.peak_portfolio_value = initial_balance
         
     def _precompute_features(self):
         """
@@ -177,6 +183,10 @@ class UniversalTradingEnv(gym.Env):
         self.portfolio_value = self.initial_balance
         self.trades_history = []
         self.transaction_costs_history = []
+        
+        # ✅ Reset tracking
+        self.portfolio_history = [self.initial_balance]
+        self.peak_portfolio_value = self.initial_balance
         
         return self._get_observation(), {}
     
@@ -272,24 +282,32 @@ class UniversalTradingEnv(gym.Env):
         )
         new_portfolio_value = self.balance + positions_value
         
-        # ✅ FIX REWARD FUNCTION (CRITIQUE)
-        # Normaliser par initial_balance, pas portfolio_value
-        reward = (new_portfolio_value - previous_portfolio_value) / self.initial_balance
+        # ✅★★★ FIX REWARD FUNCTION (CRITIQUE) ★★★
+        # Normaliser par previous_portfolio_value, pas initial_balance
+        # Cela rend le reward plus "sensible" aux changements
+        if previous_portfolio_value > 0:
+            reward = (new_portfolio_value - previous_portfolio_value) / previous_portfolio_value
+        else:
+            reward = -1.0
         
-        # ✅ SAFETY: Clip reward pour éviter divergence
+        # ✅ Clip reward pour éviter divergence
         reward = np.clip(reward, -0.1, 0.1)
         
+        # ✅ Update tracking
+        self.portfolio_history.append(new_portfolio_value)
+        self.peak_portfolio_value = max(self.peak_portfolio_value, new_portfolio_value)
         self.portfolio_value = new_portfolio_value
         
         # ✅ SAFETY: Terminer si portfolio détruit
         if new_portfolio_value <= 0:
-            reward = -1.0
+            reward = -1.0  # Pénalité massive
+            terminated = True
+        elif new_portfolio_value <= self.initial_balance * 0.1:
+            # Portfolio < 10% initial = échec
+            reward = -0.5
             terminated = True
         else:
-            terminated = (
-                self.current_step >= self.data_length - 1 or
-                new_portfolio_value <= self.initial_balance * 0.1
-            )
+            terminated = self.current_step >= self.data_length - 1
         
         truncated = (self.current_step - self.reset_step) >= self.max_steps
         
@@ -297,7 +315,8 @@ class UniversalTradingEnv(gym.Env):
             'portfolio_value': self.portfolio_value,
             'balance': self.balance,
             'positions': self.positions.copy(),
-            'n_trades': len(self.trades_history)
+            'n_trades': len(self.trades_history),
+            'peak_value': self.peak_portfolio_value  # ✅ Nouveau
         }
         
         return self._get_observation(), reward, terminated, truncated, info
@@ -361,6 +380,7 @@ class UniversalTradingEnv(gym.Env):
             print(f"\n{'='*60}")
             print(f"Step: {self.current_step}")
             print(f"Portfolio Value: ${self.portfolio_value:,.2f}")
+            print(f"Peak Value: ${self.peak_portfolio_value:,.2f}")
             print(f"Cash: ${self.balance:,.2f}")
             print(f"Positions: {self.positions}")
             print(f"Total Trades: {len(self.trades_history)}")
