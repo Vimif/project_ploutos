@@ -55,7 +55,12 @@ class SimpleDebugEnv(gym.Env):
     def __init__(self, prices, initial_balance=100000, commission=0.0001, max_steps=500):
         super().__init__()
         
-        self.prices = np.array(prices, dtype=np.float32)
+        # ✅ Assurer que prices est un array 1D
+        if isinstance(prices, pd.Series):
+            self.prices = prices.values.flatten()
+        else:
+            self.prices = np.array(prices, dtype=np.float32).flatten()
+        
         self.data_length = len(self.prices)
         self.initial_balance = initial_balance
         self.commission = commission
@@ -63,12 +68,12 @@ class SimpleDebugEnv(gym.Env):
         
         # Pré-calcul returns
         self.returns = np.zeros_like(self.prices)
-        self.returns[1:] = (self.prices[1:] - self.prices[:-1]) / self.prices[:-1]
+        self.returns[1:] = (self.prices[1:] - self.prices[:-1]) / (self.prices[:-1] + 1e-8)
         
         # Normalisation prix (z-score)
         self.prices_mean = np.mean(self.prices)
-        self.prices_std = np.std(self.prices)
-        self.prices_norm = (self.prices - self.prices_mean) / (self.prices_std + 1e-8)
+        self.prices_std = np.std(self.prices) + 1e-8
+        self.prices_norm = (self.prices - self.prices_mean) / self.prices_std
         
         # Spaces
         self.observation_space = spaces.Box(
@@ -79,7 +84,12 @@ class SimpleDebugEnv(gym.Env):
             low=-1, high=1, shape=(1,), dtype=np.float32
         )
         
-        self.reset()
+        # État initial (pour éviter erreur dans reset)
+        self.current_step = 50
+        self.start_step = 50
+        self.balance = initial_balance
+        self.shares = 0
+        self.portfolio_value = initial_balance
     
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
@@ -172,9 +182,10 @@ class SimpleDebugEnv(gym.Env):
         """Obs: [prix_norm, returns, cash_ratio]"""
         idx = self.current_step
         
-        price_norm = self.prices_norm[idx]
-        returns = self.returns[idx]
-        cash_ratio = self.balance / self.portfolio_value if self.portfolio_value > 0 else 1.0
+        # ✅ FIX: Extraire SCALAIRE depuis arrays numpy
+        price_norm = float(self.prices_norm[idx])
+        returns = float(self.returns[idx])
+        cash_ratio = float(self.balance / self.portfolio_value) if self.portfolio_value > 0 else 1.0
         
         obs = np.array([price_norm, returns, cash_ratio], dtype=np.float32)
         obs = np.nan_to_num(obs, nan=0.0, posinf=1.0, neginf=-1.0)
@@ -258,8 +269,8 @@ def main():
         print("❌ Erreur chargement données")
         return False
     
-    # Garder 500 derniers jours
-    df = df.tail(500)
+    # Garder 500 derniers jours (ou moins si pas assez)
+    df = df.tail(min(500, len(df)))
     prices = df['Close'].values
     
     print(f"   ✅ {len(prices)} jours chargés\n")
@@ -292,7 +303,7 @@ def main():
     
     # Entraînement
     print("🚀 4. Entraînement (200k steps, ~15min)...")
-    print("   Objectif: Overfit sur ces 500 jours\n")
+    print("   Objectif: Overfit sur ces jours\n")
     
     try:
         model.learn(total_timesteps=200_000, progress_bar=True)
