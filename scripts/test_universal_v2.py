@@ -129,7 +129,15 @@ def main():
         print("❌ Pas assez de données chargées")
         return False
     
-    print(f"\n   ✅ {len(data)} tickers chargés\n")
+    print(f"\n   ✅ {len(data)} tickers chargés")
+    
+    # ✅ Calculer taille min des données
+    min_length = min(len(df) for df in data.values())
+    print(f"   📊 Taille minimale: {min_length} jours")
+    
+    # ✅ Adapter max_steps (60% des données max)
+    max_steps = min(250, int(min_length * 0.6))
+    print(f"   ⏱️  Max steps: {max_steps} jours\n")
     
     # Créer env V2
     print("🏗️  2. Création UniversalTradingEnvV2...")
@@ -137,7 +145,7 @@ def main():
         data=data,
         initial_balance=100000,
         commission=0.0001,
-        max_steps=400,
+        max_steps=max_steps,  # ✅ Dynamique
         buy_pct=0.2
     )
     vec_env = DummyVecEnv([lambda: env])
@@ -150,15 +158,15 @@ def main():
         vec_env,
         learning_rate=3e-4,
         n_steps=2048,
-        batch_size=128,  # ✅ Augmenté pour multi-assets
+        batch_size=128,
         n_epochs=10,
         gamma=0.99,
         gae_lambda=0.95,
         clip_range=0.2,
-        ent_coef=0.05,  # Exploration
+        ent_coef=0.05,
         vf_coef=0.5,
         max_grad_norm=0.5,
-        policy_kwargs={'net_arch': [256, 256]},  # ✅ Plus gros pour multi-assets
+        policy_kwargs={'net_arch': [256, 256]},
         verbose=0
     )
     print("   ✅ Modèle initialisé\n")
