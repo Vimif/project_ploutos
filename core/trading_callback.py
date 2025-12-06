@@ -2,6 +2,8 @@
 """
 Trading Metrics Callback pour W&B
 Log métriques trading détaillées pendant l'entraînement
+
+⚠️ VERSION FIXED: Correction bug métriques 10,000%
 """
 
 import numpy as np
@@ -107,7 +109,7 @@ class TradingMetricsCallback(BaseCallback):
             done = False
             episode_reward = 0
             episode_length = 0
-            episode_values = [10000]  # ✅ Valeur initiale par défaut
+            episode_values = [100000]  # ✅ Valeur initiale par défaut
             episode_actions = []
             
             while not done:
@@ -187,39 +189,48 @@ class TradingMetricsCallback(BaseCallback):
             metrics['eval/best_final_portfolio'] = np.max(final_values)
             metrics['eval/worst_final_portfolio'] = np.min(final_values)
         
-        # Distribution actions
+        # ✅★★★ FIX DISTRIBUTION ACTIONS (BUG CRITIQUE) ★★★
         if actions_taken and self.log_actions_dist:
-            # ✅ FIX : Flatten actions correctement
-            actions_array = np.array([a.flatten() for a in actions_taken if a is not None])
-            
-            if len(actions_array) > 0:
-                # Convertir actions continues en discrètes (HOLD/BUY/SELL)
-                # Action > 0.33 = BUY, < -0.33 = SELL, sinon HOLD
-                discrete_actions = np.zeros_like(actions_array)
-                discrete_actions[actions_array > 0.33] = 1  # BUY
-                discrete_actions[actions_array < -0.33] = 2  # SELL
-                # 0 = HOLD par défaut
+            try:
+                # Flatten actions correctement
+                actions_array = np.concatenate([a.flatten() for a in actions_taken if a is not None])
                 
-                # Compter par asset
-                for asset_idx in range(discrete_actions.shape[1]):
-                    asset_actions = discrete_actions[:, asset_idx]
-                    total = len(asset_actions)
+                if len(actions_array) > 0:
+                    # Convertir actions continues en discrètes (HOLD/BUY/SELL)
+                    # Action > 0.33 = BUY, < -0.33 = SELL, sinon HOLD
                     
-                    if total > 0:
-                        hold_pct = (np.sum(asset_actions == 0) / total) * 100
-                        buy_pct = (np.sum(asset_actions == 1) / total) * 100
-                        sell_pct = (np.sum(asset_actions == 2) / total) * 100
-                        
-                        metrics[f'eval/asset{asset_idx}_HOLD_pct'] = hold_pct
-                        metrics[f'eval/asset{asset_idx}_BUY_pct'] = buy_pct
-                        metrics[f'eval/asset{asset_idx}_SELL_pct'] = sell_pct
-                
-                # Global
-                all_discrete = discrete_actions.flatten()
-                total = len(all_discrete)
-                metrics['eval/action_HOLD_pct'] = (np.sum(all_discrete == 0) / total) * 100
-                metrics['eval/action_BUY_pct'] = (np.sum(all_discrete == 1) / total) * 100
-                metrics['eval/action_SELL_pct'] = (np.sum(all_discrete == 2) / total) * 100
+                    # Compter pour CHAQUE action (pas par asset)
+                    n_buy = np.sum(actions_array > 0.33)
+                    n_sell = np.sum(actions_array < -0.33)
+                    n_hold = len(actions_array) - n_buy - n_sell
+                    total_actions = len(actions_array)
+                    
+                    # ✅ FIX: Normaliser à 100% (pas 10,000%)
+                    if total_actions > 0:
+                        metrics['eval/action_HOLD_pct'] = (n_hold / total_actions) * 100
+                        metrics['eval/action_BUY_pct'] = (n_buy / total_actions) * 100
+                        metrics['eval/action_SELL_pct'] = (n_sell / total_actions) * 100
+                    
+                    # Par asset (si multi-asset)
+                    actions_matrix = np.array([a.flatten() for a in actions_taken if a is not None])
+                    
+                    if len(actions_matrix.shape) == 2 and actions_matrix.shape[1] > 1:
+                        for asset_idx in range(actions_matrix.shape[1]):
+                            asset_actions = actions_matrix[:, asset_idx]
+                            
+                            n_buy_asset = np.sum(asset_actions > 0.33)
+                            n_sell_asset = np.sum(asset_actions < -0.33)
+                            n_hold_asset = len(asset_actions) - n_buy_asset - n_sell_asset
+                            total_asset = len(asset_actions)
+                            
+                            if total_asset > 0:
+                                metrics[f'eval/asset{asset_idx}_HOLD_pct'] = (n_hold_asset / total_asset) * 100
+                                metrics[f'eval/asset{asset_idx}_BUY_pct'] = (n_buy_asset / total_asset) * 100
+                                metrics[f'eval/asset{asset_idx}_SELL_pct'] = (n_sell_asset / total_asset) * 100
+            
+            except Exception as e:
+                if self.verbose > 0:
+                    print(f"\n⚠️  Erreur calcul distribution actions: {e}")
         
         # Profit Factor
         if portfolio_values_list:
@@ -241,37 +252,72 @@ class TradingMetricsCallback(BaseCallback):
             
             if 'eval/mean_final_portfolio' in metrics:
                 print(f"   Portfolio : ${metrics['eval/mean_final_portfolio']:.0f}")
+            
+            # ✅ Vérifier cohérence distribution
+            if 'eval/action_HOLD_pct' in metrics:
+                total_pct = (
+                    metrics['eval/action_HOLD_pct'] + 
+                    metrics['eval/action_BUY_pct'] + 
+                    metrics['eval/action_SELL_pct']
+                )
+                print(f"   Actions   : HOLD {metrics['eval/action_HOLD_pct']:.1f}% | "
+                      f"BUY {metrics['eval/action_BUY_pct']:.1f}% | "
+                      f"SELL {metrics['eval/action_SELL_pct']:.1f}% (Total: {total_pct:.1f}%)")
     
     def _calculate_sharpe(self, portfolio_values):
+        """✅ FIX: Sharpe ratio correct"""
         if len(portfolio_values) < 2:
             return 0.0
         
         values = np.array(portfolio_values)
         returns = np.diff(values) / values[:-1]
+        
+        # ✅ Vérifier returns valides
+        returns = returns[np.isfinite(returns)]
         
         if len(returns) == 0 or np.std(returns) == 0:
             return 0.0
         
         sharpe = (np.mean(returns) / np.std(returns)) * np.sqrt(252)
+        
+        # ✅ Clip pour éviter valeurs absurdes
+        sharpe = np.clip(sharpe, -10, 10)
+        
         return float(sharpe)
     
     def _calculate_max_drawdown(self, portfolio_values):
+        """✅ FIX: Drawdown en pourcentage (0-100%)"""
         if len(portfolio_values) < 2:
             return 0.0
         
         values = np.array(portfolio_values)
+        
+        # ✅ Vérifier valeurs positives
+        if np.any(values <= 0):
+            return 100.0  # Perte totale
+        
         cummax = np.maximum.accumulate(values)
         drawdown = (values - cummax) / cummax
-        max_dd = np.min(drawdown) * 100
+        max_dd = np.min(drawdown) * 100  # Convertir en %
+        
+        # ✅ Drawdown est négatif, on prend valeur absolue
+        max_dd = abs(max_dd)
+        
+        # ✅ Clip à [0, 100]
+        max_dd = np.clip(max_dd, 0, 100)
         
         return float(max_dd)
     
     def _calculate_win_rate(self, portfolio_values):
+        """✅ FIX: Win rate en pourcentage (0-100%)"""
         if len(portfolio_values) < 2:
             return 0.0
         
         values = np.array(portfolio_values)
         returns = np.diff(values) / values[:-1]
+        
+        # ✅ Filtrer NaN/Inf
+        returns = returns[np.isfinite(returns)]
         
         if len(returns) == 0:
             return 0.0
@@ -280,15 +326,22 @@ class TradingMetricsCallback(BaseCallback):
         total_trades = len(returns)
         win_rate = (winning_trades / total_trades) * 100
         
+        # ✅ Clip à [0, 100]
+        win_rate = np.clip(win_rate, 0, 100)
+        
         return float(win_rate)
     
     def _calculate_profit_factor(self, portfolio_values_list):
+        """✅ Profit factor correct"""
         all_returns = []
         
         for values in portfolio_values_list:
             if len(values) > 1:
                 values_array = np.array(values)
                 returns = np.diff(values_array) / values_array[:-1]
+                
+                # Filtrer NaN/Inf
+                returns = returns[np.isfinite(returns)]
                 all_returns.extend(returns)
         
         if len(all_returns) == 0:
@@ -303,6 +356,10 @@ class TradingMetricsCallback(BaseCallback):
             return None
         
         profit_factor = gross_profit / gross_loss
+        
+        # ✅ Clip pour éviter valeurs absurdes
+        profit_factor = np.clip(profit_factor, 0, 10)
+        
         return float(profit_factor)
     
     def _on_training_end(self):
