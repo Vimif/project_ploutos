@@ -151,11 +151,15 @@ class UniversalTradingEnvV2(gym.Env):
             returns_5d = np.zeros_like(close)
             returns_5d[5:] = (close[5:] - close[:-5]) / (close[:-5] + 1e-8)
             
-            # RSI
+            # ✅ RSI (fix numpy compatibility)
             rsi = np.zeros_like(close)
-            diff = np.diff(close, prepend=close[0])
-            gains = np.where(diff > 0, diff, 0)
-            losses = np.where(diff < 0, -diff, 0)
+            
+            # Calcul manuel de diff au lieu de prepend (plus compatible)
+            price_diffs = np.zeros(len(close))
+            price_diffs[1:] = close[1:] - close[:-1]
+            
+            gains = np.where(price_diffs > 0, price_diffs, 0)
+            losses = np.where(price_diffs < 0, -price_diffs, 0)
             
             for i in range(14, len(close)):
                 avg_gain = np.mean(gains[max(0, i-14):i])
