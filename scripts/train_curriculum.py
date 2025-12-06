@@ -23,11 +23,12 @@ from datetime import datetime
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.callbacks import CheckpointCallback, CallbackList
-from wandb.integration.sb3 import WandbCallback  # ✅ AJOUT
+from wandb.integration.sb3 import WandbCallback
 
 from core.data_fetcher import UniversalDataFetcher
 from core.universal_environment import UniversalTradingEnv
 from core.feature_adapter import FeatureAdapter
+from core.trading_callback import TradingMetricsCallback  # ✅ NOUVEAU
 
 # Params calibrés
 CALIBRATED_PARAMS = {
@@ -163,7 +164,7 @@ def train_stage(stage_num, use_transfer_learning=False, prev_stage=None, auto_op
     
     print(f"✅ {len(data)}/{len(config['tickers'])} tickers récupérés")
     
-    # ✅ INITIALISER W&B AVEC SYNC TENSORBOARD
+    # ✅ INITIALISER W&B
     transfer_suffix = "_Transfer" if use_transfer_learning else ""
     run_name = f"Stage{stage_num}_{config['name'].replace(' ', '_')}{transfer_suffix}_{datetime.now().strftime('%Y%m%d_%H%M')}"
     
@@ -171,9 +172,9 @@ def train_stage(stage_num, use_transfer_learning=False, prev_stage=None, auto_op
         project="Ploutos_Curriculum",
         name=run_name,
         config=config,
-        sync_tensorboard=True,  # ✅ Sync automatique TensorBoard
-        monitor_gym=True,       # ✅ Monitor gym environments
-        save_code=True          # ✅ Sauvegarder code source
+        sync_tensorboard=True,
+        monitor_gym=True,
+        save_code=True
     )
     
     print(f"\n🔗 W&B Run : {wandb.run.get_url()}")
@@ -183,6 +184,14 @@ def train_stage(stage_num, use_transfer_learning=False, prev_stage=None, auto_op
     # Créer environnements
     print("🏭 Création des environnements...")
     env = SubprocVecEnv([make_env(data) for _ in range(config['n_envs'])])
+    
+    # ✅ Créer environnement d'évaluation (single env)
+    eval_env = UniversalTradingEnv(
+        data=data,
+        initial_balance=10000,
+        commission=0.001,
+        max_steps=1000
+    )
     
     # Transfer Learning avec Feature Adapter
     if use_transfer_learning and stage_num > 1:
@@ -248,7 +257,7 @@ def train_stage(stage_num, use_transfer_learning=False, prev_stage=None, auto_op
             'MlpPolicy',
             env,
             verbose=1,
-            tensorboard_log=f'./logs/{stage_key}',  # ✅ TensorBoard logs
+            tensorboard_log=f'./logs/{stage_key}',
             device='cuda',
             policy_kwargs=policy_kwargs,
             **config
@@ -262,7 +271,7 @@ def train_stage(stage_num, use_transfer_learning=False, prev_stage=None, auto_op
         config['name'] = name
         config['tickers'] = tickers
     
-    # ✅ CALLBACKS : Checkpoint + WandbCallback
+    # ✅ CALLBACKS : Checkpoint + WandbCallback + TradingMetricsCallback
     os.makedirs(f'models/{stage_key}', exist_ok=True)
     
     checkpoint_callback = CheckpointCallback(
@@ -271,25 +280,38 @@ def train_stage(stage_num, use_transfer_learning=False, prev_stage=None, auto_op
         name_prefix=f'ploutos_{stage_key}'
     )
     
-    # ✅ WANDB CALLBACK pour monitoring temps réel
     wandb_callback = WandbCallback(
-        gradient_save_freq=1000,        # Sauvegarder gradients toutes les 1000 steps
+        gradient_save_freq=1000,
         model_save_path=f'models/{stage_key}',
-        model_save_freq=100000,         # Sauvegarder modèle tous les 100k steps
+        model_save_freq=100000,
         verbose=2
     )
     
+    # ✅ NOUVEAU : Trading Metrics Callback
+    trading_callback = TradingMetricsCallback(
+        eval_env=eval_env,
+        eval_freq=10000,          # Évaluer toutes les 10k steps
+        n_eval_episodes=5,        # 5 épisodes par évaluation
+        log_actions_dist=True,    # Logger distribution actions
+        verbose=1
+    )
+    
     # Combiner callbacks
-    callback = CallbackList([checkpoint_callback, wandb_callback])
+    callback = CallbackList([
+        checkpoint_callback,
+        wandb_callback,
+        trading_callback  # ✅ Ajouté
+    ])
     
     # Entraînement
     print(f"\n🚀 Entraînement : {config['timesteps']:,} timesteps...")
     print(f"⏱️  Durée estimée : ~{config['timesteps'] // 500_000} heures sur RTX 3080")
-    print(f"🔗 Suivre en temps réel : {wandb.run.get_url()}\n")
+    print(f"🔗 Suivre en temps réel : {wandb.run.get_url()}")
+    print(f"📊 Évaluations : Toutes les 10k steps (Sharpe, Max DD, Win Rate)\n")
     
     model.learn(
         total_timesteps=config['timesteps'],
-        callback=callback,  # ✅ Callbacks combinés
+        callback=callback,
         progress_bar=True
     )
     
@@ -298,11 +320,10 @@ def train_stage(stage_num, use_transfer_learning=False, prev_stage=None, auto_op
     model.save(model_path)
     print(f"\n✅ Modèle sauvegardé : {model_path}.zip")
     
-    # ✅ Upload modèle final vers W&B
     wandb.save(f'{model_path}.zip')
     
-    # Évaluation
-    print("\n📊 Évaluation du modèle...")
+    # Évaluation finale
+    print("\n📊 Évaluation finale du modèle...")
     
     data_length = min(len(df) for df in data.values())
     test_size = max(200, int(data_length * 0.2))
@@ -322,7 +343,7 @@ def train_stage(stage_num, use_transfer_learning=False, prev_stage=None, auto_op
     else:
         print(f"\n⚠️  Sharpe insuffisant, mais on continue...")
     
-    # ✅ Logger résultats finaux
+    # Logger résultats finaux
     wandb.log({
         'final/sharpe_ratio': sharpe,
         'final/target_sharpe': config['target_sharpe'],
@@ -330,13 +351,13 @@ def train_stage(stage_num, use_transfer_learning=False, prev_stage=None, auto_op
         'final/timesteps': config['timesteps']
     })
     
-    # ✅ Summary final
     wandb.run.summary['sharpe_ratio'] = sharpe
     wandb.run.summary['success'] = success
     wandb.run.summary['stage'] = stage_num
     
     wandb.finish()
     env.close()
+    eval_env.close()  # ✅ Fermer eval_env
     
     return model_path, sharpe
 
@@ -348,28 +369,24 @@ if __name__ == '__main__':
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Exemples:
-  # Stage 1 (toujours from scratch)
   python3 scripts/train_curriculum.py --stage 1
-  
-  # Stage 2 SANS transfer learning (recommandé si pas confiant)
-  python3 scripts/train_curriculum.py --stage 2
-  
-  # Stage 2 AVEC transfer learning (feature adapter)
   python3 scripts/train_curriculum.py --stage 2 --transfer
-  
-  # Stage 3 avec transfer depuis Stage 2
   python3 scripts/train_curriculum.py --stage 3 --transfer
+
+Métriques W&B loggées :
+  Standard (SB3):
+    - rollout/ep_rew_mean : Reward moyen
+    - train/policy_loss   : Loss policy
+    - train/value_loss    : Loss value function
+    - train/entropy       : Entropie
   
-  # Transfer depuis Stage 1 directement vers Stage 3 (risqué)
-  python3 scripts/train_curriculum.py --stage 3 --transfer --from-stage 1
-  
-Monitoring W&B:
-  Le lien W&B s'affiche au démarrage de l'entraînement.
-  Métriques loggées en temps réel :
-    - rollout/* : rewards, ep_len, ep_rew
-    - train/* : loss, entropy, value_loss
-    - time/* : fps, iterations
-    - final/* : sharpe, success
+  Trading (custom):
+    - eval/mean_sharpe       : Sharpe Ratio
+    - eval/mean_max_dd       : Max Drawdown
+    - eval/mean_win_rate     : Win Rate
+    - eval/profit_factor     : Profit Factor
+    - eval/action_*_pct      : Distribution actions
+    - eval/mean_final_portfolio : Portfolio final moyen
         """
     )
     
@@ -382,8 +399,7 @@ Monitoring W&B:
     parser.add_argument('--auto-optimize', action='store_true',
                         help='Active auto-optimisation hyperparamètres (pas encore implémenté)')
     
-    args = parser.parse_args()
-    
+    args = parser.parse_args()    
     print("\n" + "="*80)
     print("🎓 PLOUTOS CURRICULUM LEARNING")
     print("="*80)
@@ -406,7 +422,6 @@ Monitoring W&B:
     print(f"✅ Modèle final : {model_path}.zip")
     print(f"📊 Sharpe Ratio : {sharpe:.2f}")
     
-    # Suggérer prochaine étape
     if args.stage < 3 and sharpe > 0:
         print(f"\n💡 PROCHAINE ÉTAPE :")
         print(f"   Sans transfer : python3 scripts/train_curriculum.py --stage {args.stage + 1}")
