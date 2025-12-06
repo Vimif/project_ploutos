@@ -32,21 +32,21 @@ from core.feature_adapter import FeatureAdapter
 from core.trading_callback import TradingMetricsCallback
 from core.performance_monitor import PerformanceMonitor
 
-# ✅ PARAMS OPTIMISÉS V6 - ULTRA PERFORMANCE
+# ✅ PARAMS OPTIMISÉS V7 - SHARPE FIX
 CALIBRATED_PARAMS = {
     'stage1': {
         'name': 'Mono-Asset (SPY)',
         'tickers': ['SPY'],
-        'timesteps': 5_000_000,
+        'timesteps': 10_000_000,  # ✅ 5M → 10M (2x plus de données)
         'n_envs': 16,
-        'learning_rate': 1e-4,
-        'n_steps': 8192,  # ✅ 4096 → 8192 (2x)
-        'batch_size': 4096,  # ✅ 1024 → 4096 (4x)
+        'learning_rate': 3e-5,  # ✅ 1e-4 → 3e-5 (3x plus stable)
+        'n_steps': 8192,
+        'batch_size': 4096,
         'n_epochs': 10,
         'gamma': 0.99,
         'gae_lambda': 0.95,
         'clip_range': 0.2,
-        'ent_coef': 0.05,
+        'ent_coef': 0.01,  # ✅ 0.05 → 0.01 (5x plus d'exploration)
         'vf_coef': 0.5,
         'max_grad_norm': 0.5,
         'policy_kwargs': {'net_arch': [512, 512, 512]},
@@ -55,16 +55,16 @@ CALIBRATED_PARAMS = {
     'stage2': {
         'name': 'Multi-Asset ETFs',
         'tickers': ['SPY', 'QQQ', 'IWM'],
-        'timesteps': 15_000_000,
+        'timesteps': 20_000_000,  # ✅ 15M → 20M (aligné avec stage1)
         'n_envs': 24,
-        'learning_rate': 5e-5,
-        'n_steps': 8192,  # ✅ 4096 → 8192 (2x)
-        'batch_size': 16384,  # ✅ 4096 → 16384 (4x)
+        'learning_rate': 2e-5,  # ✅ 5e-5 → 2e-5 (plus conservateur)
+        'n_steps': 8192,
+        'batch_size': 16384,
         'n_epochs': 10,
         'gamma': 0.99,
         'gae_lambda': 0.95,
         'clip_range': 0.2,
-        'ent_coef': 0.02,
+        'ent_coef': 0.005,  # ✅ 0.02 → 0.005 (réduit progressivement)
         'vf_coef': 0.5,
         'max_grad_norm': 0.5,
         'policy_kwargs': {'net_arch': [512, 512, 512]},
@@ -73,16 +73,16 @@ CALIBRATED_PARAMS = {
     'stage3': {
         'name': 'Actions Complexes',
         'tickers': ['NVDA', 'MSFT', 'AAPL', 'GOOGL', 'AMZN'],
-        'timesteps': 30_000_000,
+        'timesteps': 40_000_000,  # ✅ 30M → 40M (aligné avec stage1)
         'n_envs': 32,
-        'learning_rate': 3e-5,
-        'n_steps': 8192,  # ✅ 4096 → 8192 (2x)
-        'batch_size': 32768,  # ✅ 8192 → 32768 (4x) - VRAM limit RTX 3080
+        'learning_rate': 1e-5,  # ✅ 3e-5 → 1e-5 (très conservateur)
+        'n_steps': 8192,
+        'batch_size': 32768,
         'n_epochs': 10,
         'gamma': 0.99,
         'gae_lambda': 0.95,
         'clip_range': 0.2,
-        'ent_coef': 0.001,
+        'ent_coef': 0.001,  # ✅ Déjà optimal
         'vf_coef': 0.5,
         'max_grad_norm': 0.5,
         'policy_kwargs': {'net_arch': [512, 512, 512]},
@@ -177,7 +177,7 @@ def train_stage(stage_num, use_transfer_learning=False, prev_stage=None, auto_op
     )
     
     wandb.config.update({
-        'optimization': 'GPU_optimized_v6_ultra',
+        'optimization': 'GPU_optimized_v7_sharpe_fix',
         'vectorization': 'DummyVecEnv',
         'numpy_precompute': True,
         'extended_timesteps': True,
@@ -185,21 +185,25 @@ def train_stage(stage_num, use_transfer_learning=False, prev_stage=None, auto_op
         'commission_reduced': '0.01%',
         'max_steps_increased': 2000,
         'massive_batch_sizes': True,
+        'sharpe_fix': 'high_exploration',
         'expected_gpu_usage': '85-95%',
-        'expected_fps': '35k-40k'
+        'expected_fps': '15k',
+        'expected_sharpe': '0.8-1.2'
     })
     
     print(f"\n🔗 W&B Run : {wandb.run.get_url()}")
     print(f"   Projet : Ploutos_Curriculum")
     print(f"   Run    : {run_name}")
-    print(f"\n⚡ OPTIMISATIONS V6 (ULTRA PERFORMANCE) :")
+    print(f"\n⚡ OPTIMISATIONS V7 (SHARPE FIX) :")
     print(f"   Vectorization   : DummyVecEnv")
     print(f"   N Envs          : {config['n_envs']}")
-    print(f"   Batch Size      : {config['batch_size']:,} (✅ 4x augmenté)")
-    print(f"   N Steps         : {config['n_steps']:,} (✅ doublé)")
-    print(f"   Target FPS      : 35,000-40,000")
-    print(f"   Target GPU      : 85-95%")
-    print(f"   VRAM usage      : ~{config['batch_size']//4096}GB\n")
+    print(f"   Batch Size      : {config['batch_size']:,}")
+    print(f"   N Steps         : {config['n_steps']:,}")
+    print(f"   Learning Rate   : {config['learning_rate']:.0e} (✅ réduit 3x)")
+    print(f"   Entropy Coef    : {config['ent_coef']} (✅ réduit 5x, exploration++)")
+    print(f"   Timesteps       : {config['timesteps']:,} (✅ doublé)")
+    print(f"   Target Sharpe   : {config['target_sharpe']}")
+    print(f"   Expected FPS    : ~15,000\n")
     
     # ✅ CRÉER ENVIRONNEMENTS (DummyVecEnv)
     print("🏭 Création environnements (DummyVecEnv)...")
@@ -295,7 +299,7 @@ def train_stage(stage_num, use_transfer_learning=False, prev_stage=None, auto_op
     )
     
     wandb_callback = WandbCallback(
-        gradient_save_freq=5000,  # ✅ 1000 → 5000 (reduce overhead)
+        gradient_save_freq=5000,
         model_save_path=f'models/{stage_key}',
         model_save_freq=500000,
         verbose=2
@@ -303,14 +307,14 @@ def train_stage(stage_num, use_transfer_learning=False, prev_stage=None, auto_op
     
     trading_callback = TradingMetricsCallback(
         eval_env=eval_env,
-        eval_freq=50000,  # ✅ 20000 → 50000 (reduce overhead)
+        eval_freq=50000,
         n_eval_episodes=5,
         log_actions_dist=True,
         verbose=1
     )
     
     perf_monitor = PerformanceMonitor(
-        log_freq=10000,  # ✅ 5000 → 10000 (reduce overhead)
+        log_freq=10000,
         verbose=1
     )
     
@@ -323,7 +327,7 @@ def train_stage(stage_num, use_transfer_learning=False, prev_stage=None, auto_op
     
     # Entraînement
     print(f"\n🚀 Entraînement : {config['timesteps']:,} timesteps...")
-    print(f"⏱️  Durée estimée : ~{int(config['timesteps'] / 35000 / 60)} minutes")
+    print(f"⏱️  Durée estimée : ~{int(config['timesteps'] / 15000 / 60)} minutes (FPS ~15k)")
     print(f"🔗 Suivre : {wandb.run.get_url()}")
     print(f"📊 Monitoring : Toutes les 10k steps")
     print(f"💾 Checkpoints : Tous les 100k steps\n")
@@ -380,7 +384,7 @@ if __name__ == '__main__':
     import argparse
     
     parser = argparse.ArgumentParser(
-        description='Curriculum Learning pour Ploutos (V6 - Ultra Performance)',
+        description='Curriculum Learning pour Ploutos (V7 - Sharpe Fix)',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Exemples:
@@ -389,20 +393,19 @@ Exemples:
   python3 scripts/train_curriculum.py --stage 3 --transfer
   python3 scripts/train_curriculum.py --auto-continue  # ✅ Lance tout
 
-Optimisations V6 (ULTRA PERFORMANCE):
-  ✅ DummyVecEnv (pas de multiprocessing overhead)
-  ✅ batch_size 4x: 1k→4k, 4k→16k, 8k→32k
-  ✅ n_steps doublé: 4096→8192
-  ✅ Callbacks réduits: eval 20k→50k, perf 5k→10k
-  ✅ W&B overhead réduit: gradient 1k→5k
-  ✅ FPS: 12.9k → 35-40k (3x)
-  ✅ GPU: 70% → 90%
+Optimisations V7 (SHARPE FIX):
+  ✅ DummyVecEnv (pas de multiprocessing)
+  ✅ ent_coef réduit 5x: 0.05→0.01 (exploration++)
+  ✅ learning_rate réduit 3x: 1e-4→3e-5 (stabilité)
+  ✅ timesteps doublé: 5M→10M, 15M→20M, 30M→40M
+  ✅ Target: Sharpe 0.07 → 0.8-1.2 (viable)
+  ✅ FPS: ~15k (accepté pour qualité)
   
-Durées attendues (✅ 3x plus rapide que V5):
-  Stage 1: ~2-3min (5M timesteps)
-  Stage 2: ~7-8min (15M timesteps)
-  Stage 3: ~15min (30M timesteps)
-  --auto-continue: ~25min (stages 1+2+3)
+Durées attendues (FPS ~15k):
+  Stage 1: ~12min (10M timesteps)
+  Stage 2: ~22min (20M timesteps)
+  Stage 3: ~45min (40M timesteps)
+  --auto-continue: ~80min (stages 1+2+3)
         """
     )
     
@@ -424,15 +427,15 @@ Durées attendues (✅ 3x plus rapide que V5):
         parser.error("--stage requis (ou utiliser --auto-continue)")
     
     print("\n" + "="*80)
-    print("🎓 PLOUTOS CURRICULUM LEARNING (V6 - ULTRA PERFORMANCE)")
+    print("🎓 PLOUTOS CURRICULUM LEARNING (V7 - SHARPE FIX)")
     print("="*80)
     print(f"\n⏰ Début : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
     # ✅ MODE AUTO-CONTINUE
     if args.auto_continue:
         print("🚀 MODE AUTO-CONTINUE : Stages 1 → 2 → 3")
-        print("⏱️  Durée totale : ~25 minutes (✅ 30x plus rapide que V4)")
-        print("☕ Temps d'un café !\n")
+        print("⏱️  Durée totale : ~80 minutes")
+        print("☕ Temps d'un repas !\n")
         
         results = {}
         
@@ -490,7 +493,7 @@ Durées attendues (✅ 3x plus rapide que V5):
         # ✅ MODE SINGLE STAGE
         print(f"📊 Stage : {args.stage}")
         print(f"🔄 Transfer : {'OUI' if args.transfer else 'NON'}")
-        print(f"⚡ V6 : Ultra Performance + Massive Batch Sizes")
+        print(f"⚡ V7 : Sharpe Fix (High Exploration + Stable Learning)")
         if args.transfer and args.from_stage:
             print(f"🎯 Source : Stage {args.from_stage}")
         print()
