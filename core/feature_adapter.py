@@ -48,7 +48,7 @@ class FeatureAdapter:
         """
         self.source_model = source_model
         self.target_env = target_env
-        self.device = device
+        self.device = torch.device(device if torch.cuda.is_available() else 'cpu')
         
         # Extraire observation spaces
         self.source_obs_dim = source_model.observation_space.shape[0]
@@ -57,7 +57,8 @@ class FeatureAdapter:
         print(f"\n🔧 Feature Adapter initialisé")
         print(f"   Source : {self.source_obs_dim} features")
         print(f"   Target : {self.target_obs_dim} features")
-        print(f"   Ratio  : {self.target_obs_dim / self.source_obs_dim:.2f}x\n")
+        print(f"   Ratio  : {self.target_obs_dim / self.source_obs_dim:.2f}x")
+        print(f"   Device : {self.device}\n")
     
     def adapt(self, method='projection', freeze_layers=None, learning_rate=None):
         """
@@ -130,6 +131,13 @@ class FeatureAdapter:
         source_state_dict = self.source_model.policy.state_dict()
         target_state_dict = target_model.policy.state_dict()
         
+        # ✅ Déplacer tous les tensors sur le device correct
+        for key in source_state_dict.keys():
+            source_state_dict[key] = source_state_dict[key].to(self.device)
+        
+        for key in target_state_dict.keys():
+            target_state_dict[key] = target_state_dict[key].to(self.device)
+        
         # Adapter SEULEMENT la première couche (features_extractor)
         for key in target_state_dict.keys():
             if 'features_extractor' in key or 'mlp_extractor.policy_net.0' in key:
@@ -138,6 +146,9 @@ class FeatureAdapter:
                 
                 if source_weight is None:
                     continue
+                
+                # ✅ Assurer que source_weight est sur le bon device
+                source_weight = source_weight.to(self.device)
                 
                 # Adapter dimensions
                 if len(source_weight.shape) == 2:  # Weight matrix
@@ -150,7 +161,7 @@ class FeatureAdapter:
                         
                         if scale > 1:  # Target plus grand
                             # Répéter + bruit
-                            adapted_weight = torch.zeros(source_out, target_in)
+                            adapted_weight = torch.zeros(source_out, target_in, device=self.device)  # ✅ Device
                             
                             # Répéter poids source
                             for i in range(int(scale)):
@@ -161,13 +172,15 @@ class FeatureAdapter:
                             # Remplir reste avec moyenne + bruit
                             if target_in % source_in != 0:
                                 remaining = target_in - (int(scale) * source_in)
-                                adapted_weight[:, -remaining:] = source_weight[:, :remaining] + torch.randn(source_out, remaining) * 0.01
+                                # ✅ Créer bruit sur même device
+                                noise = torch.randn(source_out, remaining, device=self.device) * 0.01
+                                adapted_weight[:, -remaining:] = source_weight[:, :remaining] + noise
                             
                             target_state_dict[key] = adapted_weight
                         
                         else:  # Target plus petit
                             # Moyenner features
-                            adapted_weight = torch.zeros(source_out, target_in)
+                            adapted_weight = torch.zeros(source_out, target_in, device=self.device)  # ✅ Device
                             chunk_size = source_in // target_in
                             
                             for i in range(target_in):
@@ -188,7 +201,7 @@ class FeatureAdapter:
                 source_weight = source_state_dict.get(key)
                 
                 if source_weight is not None and source_weight.shape == target_state_dict[key].shape:
-                    target_state_dict[key] = source_weight
+                    target_state_dict[key] = source_weight.to(self.device)  # ✅ Device
         
         # Charger poids adaptés
         target_model.policy.load_state_dict(target_state_dict)
@@ -207,19 +220,25 @@ class FeatureAdapter:
         source_state_dict = self.source_model.policy.state_dict()
         target_state_dict = target_model.policy.state_dict()
         
+        # ✅ Device sync
+        for key in source_state_dict.keys():
+            source_state_dict[key] = source_state_dict[key].to(self.device)
+        
+        for key in target_state_dict.keys():
+            target_state_dict[key] = target_state_dict[key].to(self.device)
+        
         for key in target_state_dict.keys():
             if 'mlp_extractor.policy_net.0' in key:
                 source_weight = source_state_dict.get(key)
                 
                 if source_weight is not None and len(source_weight.shape) == 2:
+                    source_weight = source_weight.to(self.device)
                     source_out, source_in = source_weight.shape
                     target_out, target_in = target_state_dict[key].shape
                     
                     if source_in != target_in:
                         # Grouper et moyenner
-                        group_size = target_in // source_in if target_in > source_in else 1
-                        
-                        adapted_weight = torch.zeros(source_out, target_in)
+                        adapted_weight = torch.zeros(source_out, target_in, device=self.device)
                         
                         for i in range(target_in):
                             adapted_weight[:, i] = source_weight.mean(dim=1)
@@ -229,7 +248,7 @@ class FeatureAdapter:
                         target_state_dict[key] = source_weight
             
             elif key in source_state_dict and source_state_dict[key].shape == target_state_dict[key].shape:
-                target_state_dict[key] = source_state_dict[key]
+                target_state_dict[key] = source_state_dict[key].to(self.device)
         
         target_model.policy.load_state_dict(target_state_dict)
         
@@ -246,11 +265,19 @@ class FeatureAdapter:
         source_state_dict = self.source_model.policy.state_dict()
         target_state_dict = target_model.policy.state_dict()
         
+        # ✅ Device sync
+        for key in source_state_dict.keys():
+            source_state_dict[key] = source_state_dict[key].to(self.device)
+        
+        for key in target_state_dict.keys():
+            target_state_dict[key] = target_state_dict[key].to(self.device)
+        
         for key in target_state_dict.keys():
             if 'mlp_extractor.policy_net.0' in key:
                 source_weight = source_state_dict.get(key)
                 
                 if source_weight is not None and len(source_weight.shape) == 2:
+                    source_weight = source_weight.to(self.device)
                     source_out, source_in = source_weight.shape
                     target_out, target_in = target_state_dict[key].shape
                     
@@ -262,7 +289,7 @@ class FeatureAdapter:
                         target_state_dict[key] = source_weight
             
             elif key in source_state_dict and source_state_dict[key].shape == target_state_dict[key].shape:
-                target_state_dict[key] = source_state_dict[key]
+                target_state_dict[key] = source_state_dict[key].to(self.device)
         
         target_model.policy.load_state_dict(target_state_dict)
         
