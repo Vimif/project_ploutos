@@ -32,22 +32,22 @@ from core.feature_adapter import FeatureAdapter
 from core.trading_callback import TradingMetricsCallback
 from core.performance_monitor import PerformanceMonitor
 
-# ✅ PARAMS OPTIMISÉS V7 - SHARPE FIX
+# ✅ PARAMS OPTIMISÉS V8 - RESEARCH-BASED (Reddit RL, ArXiv, Towards AI, SB3)
 CALIBRATED_PARAMS = {
     'stage1': {
         'name': 'Mono-Asset (SPY)',
         'tickers': ['SPY'],
-        'timesteps': 10_000_000,  # ✅ 5M → 10M (2x plus de données)
+        'timesteps': 10_000_000,
         'n_envs': 16,
-        'learning_rate': 3e-5,  # ✅ 1e-4 → 3e-5 (3x plus stable)
-        'n_steps': 8192,
-        'batch_size': 4096,
+        'learning_rate': 3e-5,
+        'n_steps': 4096,  # ✅ 8192 → 4096 (balance)
+        'batch_size': 2048,  # ✅ 4096 → 2048 (updates fréquents)
         'n_epochs': 10,
         'gamma': 0.99,
         'gae_lambda': 0.95,
-        'clip_range': 0.2,
-        'ent_coef': 0.01,  # ✅ 0.05 → 0.01 (5x plus d'exploration)
-        'vf_coef': 0.5,
+        'clip_range': 0.3,  # ✅ 0.2 → 0.3 (adaptabilité)
+        'ent_coef': 0.1,  # ✅ 0.01 → 0.1 (exploration active)
+        'vf_coef': 0.3,  # ✅ 0.5 → 0.3 (focus policy)
         'max_grad_norm': 0.5,
         'policy_kwargs': {'net_arch': [512, 512, 512]},
         'target_sharpe': 1.0
@@ -55,17 +55,17 @@ CALIBRATED_PARAMS = {
     'stage2': {
         'name': 'Multi-Asset ETFs',
         'tickers': ['SPY', 'QQQ', 'IWM'],
-        'timesteps': 20_000_000,  # ✅ 15M → 20M (aligné avec stage1)
+        'timesteps': 20_000_000,
         'n_envs': 24,
-        'learning_rate': 2e-5,  # ✅ 5e-5 → 2e-5 (plus conservateur)
-        'n_steps': 8192,
-        'batch_size': 16384,
+        'learning_rate': 2e-5,
+        'n_steps': 4096,
+        'batch_size': 4096,  # ✅ 16384 → 4096 (balance GPU/convergence)
         'n_epochs': 10,
         'gamma': 0.99,
         'gae_lambda': 0.95,
-        'clip_range': 0.2,
-        'ent_coef': 0.005,  # ✅ 0.02 → 0.005 (réduit progressivement)
-        'vf_coef': 0.5,
+        'clip_range': 0.3,
+        'ent_coef': 0.05,  # ✅ Réduit progressivement
+        'vf_coef': 0.3,
         'max_grad_norm': 0.5,
         'policy_kwargs': {'net_arch': [512, 512, 512]},
         'target_sharpe': 1.3
@@ -73,17 +73,17 @@ CALIBRATED_PARAMS = {
     'stage3': {
         'name': 'Actions Complexes',
         'tickers': ['NVDA', 'MSFT', 'AAPL', 'GOOGL', 'AMZN'],
-        'timesteps': 40_000_000,  # ✅ 30M → 40M (aligné avec stage1)
+        'timesteps': 30_000_000,
         'n_envs': 32,
-        'learning_rate': 1e-5,  # ✅ 3e-5 → 1e-5 (très conservateur)
-        'n_steps': 8192,
-        'batch_size': 32768,
+        'learning_rate': 1e-5,
+        'n_steps': 4096,
+        'batch_size': 8192,  # ✅ 32768 → 8192 (safe VRAM + convergence)
         'n_epochs': 10,
         'gamma': 0.99,
         'gae_lambda': 0.95,
-        'clip_range': 0.2,
-        'ent_coef': 0.001,  # ✅ Déjà optimal
-        'vf_coef': 0.5,
+        'clip_range': 0.3,
+        'ent_coef': 0.01,
+        'vf_coef': 0.3,
         'max_grad_norm': 0.5,
         'policy_kwargs': {'net_arch': [512, 512, 512]},
         'target_sharpe': 1.5
@@ -177,33 +177,32 @@ def train_stage(stage_num, use_transfer_learning=False, prev_stage=None, auto_op
     )
     
     wandb.config.update({
-        'optimization': 'GPU_optimized_v7_sharpe_fix',
+        'optimization': 'research_based_v8',
         'vectorization': 'DummyVecEnv',
+        'sources': 'Reddit_RL+ArXiv+TowardsAI+SB3',
         'numpy_precompute': True,
-        'extended_timesteps': True,
         'reward_function': 'fixed_normalized',
         'commission_reduced': '0.01%',
         'max_steps_increased': 2000,
-        'massive_batch_sizes': True,
-        'sharpe_fix': 'high_exploration',
-        'expected_gpu_usage': '85-95%',
-        'expected_fps': '15k',
-        'expected_sharpe': '0.8-1.2'
+        'expected_sharpe': '0.6-1.0',
+        'expected_fps': '15k'
     })
     
     print(f"\n🔗 W&B Run : {wandb.run.get_url()}")
     print(f"   Projet : Ploutos_Curriculum")
     print(f"   Run    : {run_name}")
-    print(f"\n⚡ OPTIMISATIONS V7 (SHARPE FIX) :")
+    print(f"\n⚡ OPTIMISATIONS V8 (RESEARCH-BASED) :")
+    print(f"   Sources         : Reddit RL, ArXiv, Towards AI, SB3")
     print(f"   Vectorization   : DummyVecEnv")
     print(f"   N Envs          : {config['n_envs']}")
-    print(f"   Batch Size      : {config['batch_size']:,}")
-    print(f"   N Steps         : {config['n_steps']:,}")
-    print(f"   Learning Rate   : {config['learning_rate']:.0e} (✅ réduit 3x)")
-    print(f"   Entropy Coef    : {config['ent_coef']} (✅ réduit 5x, exploration++)")
-    print(f"   Timesteps       : {config['timesteps']:,} (✅ doublé)")
-    print(f"   Target Sharpe   : {config['target_sharpe']}")
-    print(f"   Expected FPS    : ~15,000\n")
+    print(f"   Batch Size      : {config['batch_size']:,} (✅ updates fréquents)")
+    print(f"   N Steps         : {config['n_steps']:,} (✅ balance)")
+    print(f"   Learning Rate   : {config['learning_rate']:.0e}")
+    print(f"   Entropy Coef    : {config['ent_coef']} (✅ exploration active)")
+    print(f"   VF Coef         : {config['vf_coef']} (✅ focus policy)")
+    print(f"   Clip Range      : {config['clip_range']} (✅ adaptabilité)")
+    print(f"   Timesteps       : {config['timesteps']:,}")
+    print(f"   Target Sharpe   : {config['target_sharpe']}\n")
     
     # ✅ CRÉER ENVIRONNEMENTS (DummyVecEnv)
     print("🏭 Création environnements (DummyVecEnv)...")
@@ -384,7 +383,7 @@ if __name__ == '__main__':
     import argparse
     
     parser = argparse.ArgumentParser(
-        description='Curriculum Learning pour Ploutos (V7 - Sharpe Fix)',
+        description='Curriculum Learning pour Ploutos (V8 - Research-Based)',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Exemples:
@@ -393,19 +392,21 @@ Exemples:
   python3 scripts/train_curriculum.py --stage 3 --transfer
   python3 scripts/train_curriculum.py --auto-continue  # ✅ Lance tout
 
-Optimisations V7 (SHARPE FIX):
-  ✅ DummyVecEnv (pas de multiprocessing)
-  ✅ ent_coef réduit 5x: 0.05→0.01 (exploration++)
-  ✅ learning_rate réduit 3x: 1e-4→3e-5 (stabilité)
-  ✅ timesteps doublé: 5M→10M, 15M→20M, 30M→40M
-  ✅ Target: Sharpe 0.07 → 0.8-1.2 (viable)
-  ✅ FPS: ~15k (accepté pour qualité)
+Optimisations V8 (RESEARCH-BASED):
+  Sources: Reddit r/RL, ArXiv, Towards AI, SB3 docs
+  ✅ ent_coef: 0.01→0.1 (exploration active)
+  ✅ vf_coef: 0.5→0.3 (focus policy)
+  ✅ clip_range: 0.2→0.3 (adaptabilité)
+  ✅ batch_size: 4096→2048 (updates fréquents)
+  ✅ n_steps: 8192→4096 (balance)
+  ✅ Expected Sharpe: 0.6-1.0 (viable)
+  ✅ Expected Win Rate: 20-30%
   
 Durées attendues (FPS ~15k):
   Stage 1: ~12min (10M timesteps)
   Stage 2: ~22min (20M timesteps)
-  Stage 3: ~45min (40M timesteps)
-  --auto-continue: ~80min (stages 1+2+3)
+  Stage 3: ~33min (30M timesteps)
+  --auto-continue: ~70min (stages 1+2+3)
         """
     )
     
@@ -427,14 +428,14 @@ Durées attendues (FPS ~15k):
         parser.error("--stage requis (ou utiliser --auto-continue)")
     
     print("\n" + "="*80)
-    print("🎓 PLOUTOS CURRICULUM LEARNING (V7 - SHARPE FIX)")
+    print("🎓 PLOUTOS CURRICULUM LEARNING (V8 - RESEARCH-BASED)")
     print("="*80)
     print(f"\n⏰ Début : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
     # ✅ MODE AUTO-CONTINUE
     if args.auto_continue:
         print("🚀 MODE AUTO-CONTINUE : Stages 1 → 2 → 3")
-        print("⏱️  Durée totale : ~80 minutes")
+        print("⏱️  Durée totale : ~70 minutes")
         print("☕ Temps d'un repas !\n")
         
         results = {}
@@ -493,7 +494,7 @@ Durées attendues (FPS ~15k):
         # ✅ MODE SINGLE STAGE
         print(f"📊 Stage : {args.stage}")
         print(f"🔄 Transfer : {'OUI' if args.transfer else 'NON'}")
-        print(f"⚡ V7 : Sharpe Fix (High Exploration + Stable Learning)")
+        print(f"⚡ V8 : Research-Based (Reddit RL, ArXiv, Towards AI, SB3)")
         if args.transfer and args.from_stage:
             print(f"🎯 Source : Stage {args.from_stage}")
         print()
