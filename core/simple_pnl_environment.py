@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 """
-🎯 ENVIRONNEMENT AVEC REWARD SUR PNL RÉALISÉ
+🎯 ENVIRONNEMENT AVEC REWARD SUR PNL (VERSION FIXÉE)
 
-SOLUTION AU PROBLÈME FONDAMENTAL:
-L'ancien reward = (new_portfolio - prev_portfolio) / prev_portfolio
-→ Toujours négatif à cause des frais
-→ L'IA apprend à ne rien faire
+PROBLÈME PRÉCÉDENT:
+- Reward = PnL réalisé seulement au SELL
+- Résultat: L'IA achète et ne vend JAMAIS (Buy & Hold)
+- +27.6% mais 100% BUY, 0% SELL
 
-NOUVEAU REWARD = PnL du trade
-- BUY @ $530 puis SELL @ $550 → Reward = +0.0377 (+3.77%) ✅
-- BUY @ $550 puis SELL @ $530 → Reward = -0.0364 (-3.64%) ❌
-- HOLD (pas de trade) → Reward = 0
+SOLUTION:
+1. Reward sur PnL LATENT (unrealized) à chaque step
+2. VENTE FORCÉE à la fin de l'épisode (truncation)
+3. Pénalité pour holding trop longtemps
 
-Avantages:
-1. Signal CLAIR: Acheter bas, vendre haut = positif
-2. Les frais sont un coût réel mais n'impactent pas le reward
-3. L'IA comprend la QUALITÉ de ses décisions
+Résultats attendus:
+- L'IA tient des positions gagnantes
+- L'IA vend au bon moment
+- Actions équilibrées (BUY + SELL > 20%)
 """
 
 import gymnasium as gym
@@ -26,13 +26,7 @@ from collections import deque
 
 class SimplePnLTradingEnv(gym.Env):
     """
-    Environnement qui récompense le PnL réalisé
-    
-    Différences clés:
-    - Tracking des prix d'entrée pour chaque position
-    - Reward = 0 lors du BUY (on attend le résultat)
-    - Reward = PnL lors du SELL (performance du trade)
-    - Reward = 0 si HOLD (encourage sélectivité)
+    Environnement qui récompense le PnL (réalisé + latent)
     """
     
     metadata = {'render_modes': ['human']}
@@ -76,8 +70,9 @@ class SimplePnLTradingEnv(gym.Env):
         self.shares = 0
         self.portfolio_value = initial_balance
         
-        # ✅ NOUVEAU: Tracking pour PnL
-        self.entry_prices = deque()  # Prix d'entrée pour chaque share
+        # Tracking pour PnL
+        self.entry_prices = deque()
+        self.entry_step = None  # ✅ NOUVEAU: Pour tracking holding time
         self.total_pnl = 0.0
         self.n_trades = 0
     
@@ -96,6 +91,7 @@ class SimplePnLTradingEnv(gym.Env):
         
         # Reset tracking
         self.entry_prices.clear()
+        self.entry_step = None
         self.total_pnl = 0.0
         self.n_trades = 0
         
@@ -117,12 +113,12 @@ class SimplePnLTradingEnv(gym.Env):
         current_investment = self.shares * current_price
         trade_amount = target_investment - current_investment
         
-        # ✅ NOUVEAU: Reward par défaut = 0 (encourage sélectivité)
+        # Reward par défaut = 0
         reward = 0.0
         trade_executed = False
         
         # Exécuter trade si significatif
-        if abs(trade_amount) > prev_value * 0.02:  # ✅ Seuil augmenté à 2%
+        if abs(trade_amount) > prev_value * 0.02:
             shares_to_trade = int(trade_amount / current_price)
             
             if shares_to_trade > 0:  # BUY
@@ -135,11 +131,14 @@ class SimplePnLTradingEnv(gym.Env):
                     self.shares += shares_to_trade
                     self.balance -= total
                     
-                    # ✅ Enregistrer prix d'entrée pour chaque share
+                    # Enregistrer prix d'entrée
                     for _ in range(shares_to_trade):
                         self.entry_prices.append(current_price)
                     
-                    # ✅ Reward = 0 lors de l'achat (on attend le résultat)
+                    # ✅ Enregistrer step d'entrée si première position
+                    if self.entry_step is None:
+                        self.entry_step = self.current_step
+                    
                     reward = 0.0
                     trade_executed = True
                     self.n_trades += 1
@@ -151,7 +150,7 @@ class SimplePnLTradingEnv(gym.Env):
                     proceeds = shares_to_sell * current_price
                     fee = proceeds * self.commission
                     
-                    # ✅ CALCULER LE PNL RÉALISÉ
+                    # Calculer PnL réalisé
                     pnl_total = 0.0
                     for _ in range(shares_to_sell):
                         if len(self.entry_prices) > 0:
@@ -159,26 +158,42 @@ class SimplePnLTradingEnv(gym.Env):
                             pnl = (current_price - entry_price) / entry_price
                             pnl_total += pnl
                     
-                    # Moyenne du PnL sur les shares vendues
                     avg_pnl = pnl_total / shares_to_sell if shares_to_sell > 0 else 0
                     
-                    # ✅ REWARD = PNL MOYEN DU TRADE
+                    # ✅ REWARD = PNL RÉALISÉ
                     reward = avg_pnl
                     
                     # Exécuter vente
                     self.shares -= shares_to_sell
                     self.balance += (proceeds - fee)
                     
+                    # Reset entry_step si plus de shares
+                    if self.shares == 0:
+                        self.entry_step = None
+                    
                     trade_executed = True
                     self.total_pnl += avg_pnl
                     self.n_trades += 1
         
+        # ✅★★★ NOUVEAU: REWARD SUR PNL LATENT (UNREALIZED) ★★★
+        if self.shares > 0 and len(self.entry_prices) > 0:
+            # Calculer PnL moyen non réalisé
+            avg_entry = np.mean(list(self.entry_prices))
+            unrealized_pnl = (current_price - avg_entry) / avg_entry
+            
+            # ✅ Petit bonus/pénalité sur le PnL latent (0.5% du PnL)
+            reward += unrealized_pnl * 0.005
+            
+            # ✅ PÉNALITÉ si on tient trop longtemps (> 100 steps)
+            if self.entry_step is not None:
+                holding_time = self.current_step - self.entry_step
+                if holding_time > 100:
+                    # Coût d'opportunité: -0.01% par step au-delà de 100
+                    reward -= 0.0001 * (holding_time - 100)
+        
         # Portfolio après trade
         new_value = self.balance + self.shares * current_price
         self.portfolio_value = new_value
-        
-        # ✅ Clip reward pour stabilité
-        reward = np.clip(reward, -0.2, 0.2)
         
         # Termination
         terminated = (
@@ -187,6 +202,26 @@ class SimplePnLTradingEnv(gym.Env):
         )
         
         truncated = (self.current_step - self.start_step) >= self.max_steps
+        
+        # ✅★★★ VENTE FORCÉE À LA FIN ★★★
+        if truncated and self.shares > 0 and len(self.entry_prices) > 0:
+            # Forcer la clôture de toutes les positions
+            avg_entry = np.mean(list(self.entry_prices))
+            final_pnl = (current_price - avg_entry) / avg_entry
+            
+            # ✅ REWARD FINAL = PNL total de la position
+            reward += final_pnl  # Ajouté au reward du step
+            
+            # Vendre tout (simulation)
+            proceeds = self.shares * current_price
+            fee = proceeds * self.commission
+            self.balance += (proceeds - fee)
+            self.shares = 0
+            self.entry_prices.clear()
+            self.portfolio_value = self.balance
+        
+        # Clip reward
+        reward = np.clip(reward, -0.3, 0.3)
         
         info = {
             'portfolio_value': self.portfolio_value,
@@ -219,5 +254,10 @@ class SimplePnLTradingEnv(gym.Env):
             print(f"Portfolio: ${self.portfolio_value:,.2f}")
             print(f"Balance: ${self.balance:,.2f}")
             print(f"Shares: {self.shares}")
+            if self.shares > 0 and len(self.entry_prices) > 0:
+                avg_entry = np.mean(list(self.entry_prices))
+                current_price = self.prices[self.current_step]
+                unrealized = (current_price - avg_entry) / avg_entry * 100
+                print(f"Unrealized PnL: {unrealized:+.2f}%")
             print(f"Total PnL: {self.total_pnl:.4f}")
             print(f"Trades: {self.n_trades}")
