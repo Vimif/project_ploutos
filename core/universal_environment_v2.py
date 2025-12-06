@@ -125,8 +125,9 @@ class UniversalTradingEnvV2(gym.Env):
         for ticker in self.tickers:
             df = self.data[ticker]
             
-            close = df['Close'].values
-            volume = df['Volume'].values
+            # ✅ FIX: Force arrays 1D (yfinance peut retourner (n,1))
+            close = np.array(df['Close'].values).flatten()
+            volume = np.array(df['Volume'].values).flatten()
             
             # Close normalisé
             close_norm = np.zeros_like(close)
@@ -151,10 +152,10 @@ class UniversalTradingEnvV2(gym.Env):
             returns_5d = np.zeros_like(close)
             returns_5d[5:] = (close[5:] - close[:-5]) / (close[:-5] + 1e-8)
             
-            # ✅ RSI (fix numpy compatibility)
+            # ✅ RSI
             rsi = np.zeros_like(close)
             
-            # Calcul manuel de diff au lieu de prepend (plus compatible)
+            # Calcul des différences
             price_diffs = np.zeros(len(close))
             price_diffs[1:] = close[1:] - close[:-1]
             
