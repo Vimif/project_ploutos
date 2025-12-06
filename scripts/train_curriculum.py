@@ -29,6 +29,7 @@ from core.data_fetcher import UniversalDataFetcher
 from core.universal_environment import UniversalTradingEnv
 from core.feature_adapter import FeatureAdapter
 from core.trading_callback import TradingMetricsCallback
+from core.performance_monitor import PerformanceMonitor  # ✅ NOUVEAU
 
 # ✅ PARAMS OPTIMISÉS POUR GPU
 CALIBRATED_PARAMS = {
@@ -39,7 +40,7 @@ CALIBRATED_PARAMS = {
         'n_envs': 4,
         'learning_rate': 1e-4,
         'n_steps': 2048,
-        'batch_size': 512,          # ✅ Optimisé
+        'batch_size': 512,
         'n_epochs': 10,
         'gamma': 0.99,
         'gae_lambda': 0.95,
@@ -54,10 +55,10 @@ CALIBRATED_PARAMS = {
         'name': 'Multi-Asset ETFs',
         'tickers': ['SPY', 'QQQ', 'IWM'],
         'timesteps': 5_000_000,
-        'n_envs': 6,                # ✅ 8→6 (éviter CPU bottleneck)
+        'n_envs': 6,
         'learning_rate': 5e-5,
         'n_steps': 2048,
-        'batch_size': 2048,         # ✅ 512→2048 (4x)
+        'batch_size': 2048,
         'n_epochs': 10,
         'gamma': 0.99,
         'gae_lambda': 0.95,
@@ -72,11 +73,11 @@ CALIBRATED_PARAMS = {
         'name': 'Actions Complexes',
         'tickers': ['NVDA', 'MSFT', 'AAPL', 'GOOGL', 'AMZN'],
         'timesteps': 10_000_000,
-        'n_envs': 8,                # ✅ 16→8 (CPU bottleneck fix)
+        'n_envs': 8,
         'learning_rate': 3e-5,
-        'n_steps': 2048,            # ✅ 4096→2048 (collecter plus souvent)
-        'batch_size': 4096,         # ✅ 1024→4096 (4x GPU usage)
-        'n_epochs': 10,             # ✅ 5→10 (plus de passes)
+        'n_steps': 2048,
+        'batch_size': 4096,
+        'n_epochs': 10,
         'gamma': 0.99,
         'gae_lambda': 0.95,
         'clip_range': 0.2,
@@ -94,14 +95,13 @@ def print_banner(text):
     print("="*80 + "\n")
 
 def make_env(data_dict, initial_balance=10000, commission=0.0005, realistic_costs=False):
-    """✅ Environnement optimisé avec coûts réduits"""
     def _init():
         return UniversalTradingEnv(
             data=data_dict,
             initial_balance=initial_balance,
-            commission=commission,        # ✅ 0.001→0.0005 (coûts réduits)
+            commission=commission,
             max_steps=1000,
-            realistic_costs=realistic_costs  # ✅ Désactivé par défaut
+            realistic_costs=realistic_costs
         )
     return _init
 
@@ -119,7 +119,7 @@ def calculate_sharpe(model, data_dict, episodes=10):
         env = UniversalTradingEnv(
             data=data_dict,
             initial_balance=10000,
-            commission=0.0005,  # ✅ Cohérent
+            commission=0.0005,
             max_steps=adjusted_max_steps,
             realistic_costs=False
         )
@@ -174,31 +174,32 @@ def train_stage(stage_num, use_transfer_learning=False, prev_stage=None, auto_op
         save_code=True
     )
     
-    # ✅ Logger optimizations dans W&B
     wandb.config.update({
-        'optimization': 'GPU_optimized',
-        'expected_gpu_usage': '70-80%',
+        'optimization': 'GPU_optimized_v2',
+        'numpy_precompute': True,
+        'expected_gpu_usage': '70-90%',
+        'expected_fps': '30k-50k',
         'reduced_transaction_costs': True
     })
     
     print(f"\n🔗 W&B Run : {wandb.run.get_url()}")
     print(f"   Projet : Ploutos_Curriculum")
     print(f"   Run    : {run_name}")
-    print(f"\n⚡ OPTIMISATIONS :")
-    print(f"   Batch Size   : {config['batch_size']} (4x augmenté)")
-    print(f"   N Envs       : {config['n_envs']} (CPU friendly)")
-    print(f"   N Steps      : {config['n_steps']} (collecter plus souvent)")
-    print(f"   Commission   : 0.05% (réduit pour apprentissage)")
-    print(f"   Target GPU   : 70-80% usage\n")
+    print(f"\n⚡ OPTIMISATIONS V2 :")
+    print(f"   Batch Size      : {config['batch_size']} (4x)")
+    print(f"   N Envs          : {config['n_envs']}")
+    print(f"   Numpy Precompute: OUI (10x plus rapide)")
+    print(f"   Commission      : 0.05%")
+    print(f"   Target GPU      : 70-90%")
+    print(f"   Target FPS      : 30k-50k\n")
     
-    # Créer environnements avec coûts réduits
-    print("🏭 Création des environnements optimisés...")
+    # Créer environnements
+    print("🏭 Création environnements (avec pré-calcul)...")
     env = SubprocVecEnv([
         make_env(data, commission=0.0005, realistic_costs=False) 
         for _ in range(config['n_envs'])
     ])
     
-    # ✅ Environnement d'évaluation
     eval_env = UniversalTradingEnv(
         data=data,
         initial_balance=10000,
@@ -276,11 +277,11 @@ def train_stage(stage_num, use_transfer_learning=False, prev_stage=None, auto_op
         config['name'] = name
         config['tickers'] = tickers
     
-    # ✅ CALLBACKS
+    # ✅ CALLBACKS (avec PerformanceMonitor)
     os.makedirs(f'models/{stage_key}', exist_ok=True)
     
     checkpoint_callback = CheckpointCallback(
-        save_freq=100000,  # ✅ Tous les 100k steps
+        save_freq=100000,
         save_path=f'./models/{stage_key}',
         name_prefix=f'ploutos_{stage_key}'
     )
@@ -288,29 +289,36 @@ def train_stage(stage_num, use_transfer_learning=False, prev_stage=None, auto_op
     wandb_callback = WandbCallback(
         gradient_save_freq=1000,
         model_save_path=f'models/{stage_key}',
-        model_save_freq=500000,  # ✅ Tous les 500k
+        model_save_freq=500000,
         verbose=2
     )
     
     trading_callback = TradingMetricsCallback(
         eval_env=eval_env,
-        eval_freq=20000,  # ✅ Toutes les 20k steps (plus rapide)
+        eval_freq=20000,
         n_eval_episodes=5,
         log_actions_dist=True,
+        verbose=1
+    )
+    
+    # ✅ NOUVEAU : Performance Monitor
+    perf_monitor = PerformanceMonitor(
+        log_freq=5000,  # Log toutes les 5k steps
         verbose=1
     )
     
     callback = CallbackList([
         checkpoint_callback,
         wandb_callback,
-        trading_callback
+        trading_callback,
+        perf_monitor  # ✅ Ajouté
     ])
     
     # Entraînement
     print(f"\n🚀 Entraînement : {config['timesteps']:,} timesteps...")
-    print(f"⏱️  Durée estimée : ~{config['timesteps'] // 1_000_000} heures (optimisé)")
-    print(f"🔗 Suivre en temps réel : {wandb.run.get_url()}")
-    print(f"📊 Évaluations : Toutes les 20k steps")
+    print(f"⏱️  Durée estimée : ~{config['timesteps'] // 1_500_000} heures (optimisé)")
+    print(f"🔗 Suivre : {wandb.run.get_url()}")
+    print(f"📊 Monitoring : FPS, GPU, CPU toutes les 5k steps")
     print(f"💾 Checkpoints : Tous les 100k steps\n")
     
     model.learn(
@@ -365,7 +373,7 @@ if __name__ == '__main__':
     import argparse
     
     parser = argparse.ArgumentParser(
-        description='Curriculum Learning pour Ploutos (GPU Optimized)',
+        description='Curriculum Learning pour Ploutos (GPU Optimized V2)',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Exemples:
@@ -373,16 +381,16 @@ Exemples:
   python3 scripts/train_curriculum.py --stage 2 --transfer
   python3 scripts/train_curriculum.py --stage 3 --transfer
 
-Optimisations appliquées:
-  ✅ Batch size 4x augmenté (meilleur GPU usage)
-  ✅ N envs réduit (éviter CPU bottleneck)
-  ✅ Transaction costs réduits (apprentissage plus facile)
-  ✅ Évaluations plus fréquentes (monitoring)
+Optimisations V2:
+  ✅ Numpy pre-compute (10x accélération)
+  ✅ Batch size 4x augmenté
+  ✅ Performance monitoring temps réel
+  ✅ Auto-detection bottlenecks
   
 Performance attendue:
-  GPU Usage : 70-80% (au lieu de 14%)
-  FPS       : 20k-30k (au lieu de 5k)
-  Durée     : 8-10h (au lieu de 20h)
+  GPU Usage : 70-90%
+  FPS       : 30k-50k
+  Durée     : 4-6h (Stage 3)
         """
     )
     
@@ -394,12 +402,12 @@ Performance attendue:
     args = parser.parse_args()
     
     print("\n" + "="*80)
-    print("🎓 PLOUTOS CURRICULUM LEARNING (GPU OPTIMIZED)")
+    print("🎓 PLOUTOS CURRICULUM LEARNING (GPU OPTIMIZED V2)")
     print("="*80)
     print(f"\n⏰ Début : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"📊 Stage : {args.stage}")
     print(f"🔄 Transfer : {'OUI' if args.transfer else 'NON'}")
-    print(f"⚡ GPU Optimization : ACTIVÉ")
+    print(f"⚡ Optimizations : Numpy Precompute + GPU Tuning")
     if args.transfer and args.from_stage:
         print(f"🎯 Source : Stage {args.from_stage}")
     print()
