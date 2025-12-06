@@ -20,13 +20,13 @@ class UniversalTradingEnv(gym.Env):
 
     metadata = {'render_modes': ['human']}
 
-    def __init__(self, data, initial_balance=100000, commission=0.001, max_steps=1000, realistic_costs=True):
+    def __init__(self, data, initial_balance=100000, commission=0.001, max_steps=2000, realistic_costs=True):
         """
         Args:
             data (dict): {ticker: DataFrame} avec colonnes [Open, High, Low, Close, Volume]
             initial_balance (float): Capital initial
             commission (float): Commission par trade
-            max_steps (int): Nombre max de steps par épisode
+            max_steps (int): Nombre max de steps par épisode (2000 = ~83 jours)
             realistic_costs (bool): Utiliser modèle de coûts avancé
         """
         super().__init__()
@@ -190,22 +190,22 @@ class UniversalTradingEnv(gym.Env):
             for ticker in self.tickers
         }
         
-        # Valeur portfolio
+        # Valeur portfolio AVANT trade
         positions_value = sum(
             self.positions[ticker] * current_prices[ticker]
             for ticker in self.tickers
         )
-        self.portfolio_value = self.balance + positions_value
+        previous_portfolio_value = self.balance + positions_value
         
         # Exécuter actions
         for i, ticker in enumerate(self.tickers):
             target_position = action[i]
-            target_value = target_position * self.portfolio_value * 0.95 / self.n_assets
+            target_value = target_position * previous_portfolio_value * 0.95 / self.n_assets
             
             current_value = self.positions[ticker] * current_prices[ticker]
             trade_value = target_value - current_value
             
-            if abs(trade_value) > self.portfolio_value * 0.01:
+            if abs(trade_value) > previous_portfolio_value * 0.01:
                 shares_to_trade = int(trade_value / current_prices[ticker])
                 
                 if shares_to_trade != 0:
@@ -265,23 +265,32 @@ class UniversalTradingEnv(gym.Env):
                                 'cost': total_cost
                             })
         
-        # Recalculer valeur finale
+        # Recalculer valeur finale APRÈS trade
         positions_value = sum(
             self.positions[ticker] * current_prices[ticker]
             for ticker in self.tickers
         )
         new_portfolio_value = self.balance + positions_value
         
-        # Reward
-        reward = (new_portfolio_value - self.portfolio_value) / self.portfolio_value
+        # ✅ FIX REWARD FUNCTION (CRITIQUE)
+        # Normaliser par initial_balance, pas portfolio_value
+        reward = (new_portfolio_value - previous_portfolio_value) / self.initial_balance
+        
+        # ✅ SAFETY: Clip reward pour éviter divergence
+        reward = np.clip(reward, -0.1, 0.1)
         
         self.portfolio_value = new_portfolio_value
         
-        # Conditions de fin
-        terminated = (
-            self.current_step >= self.data_length - 1 or
-            self.portfolio_value <= self.initial_balance * 0.1
-        )
+        # ✅ SAFETY: Terminer si portfolio détruit
+        if new_portfolio_value <= 0:
+            reward = -1.0
+            terminated = True
+        else:
+            terminated = (
+                self.current_step >= self.data_length - 1 or
+                new_portfolio_value <= self.initial_balance * 0.1
+            )
+        
         truncated = (self.current_step - self.reset_step) >= self.max_steps
         
         info = {
@@ -315,7 +324,7 @@ class UniversalTradingEnv(gym.Env):
             ])
         
         # Portfolio features
-        cash_ratio = self.balance / self.portfolio_value
+        cash_ratio = self.balance / self.portfolio_value if self.portfolio_value > 0 else 0
         total_value_norm = (self.portfolio_value - self.initial_balance) / self.initial_balance
         n_positions = sum(1 for pos in self.positions.values() if pos > 0) / self.n_assets
         
