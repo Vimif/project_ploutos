@@ -145,20 +145,20 @@ def main():
         data=data,
         initial_balance=100000,
         commission=0.0001,
-        max_steps=max_steps,  # ✅ Dynamique
+        max_steps=max_steps,
         buy_pct=0.2
     )
     vec_env = DummyVecEnv([lambda: env])
     print("   ✅ Env créé\n")
     
-    # Modèle PPO
+    # ✅ Modèle PPO (mêmes hyperparamètres que test_discrete_env.py)
     print("🧠 3. Initialisation PPO...")
     model = PPO(
         'MlpPolicy',
         vec_env,
         learning_rate=3e-4,
         n_steps=2048,
-        batch_size=128,
+        batch_size=64,  # ✅ Aligné avec test validé
         n_epochs=10,
         gamma=0.99,
         gae_lambda=0.95,
@@ -166,16 +166,16 @@ def main():
         ent_coef=0.05,
         vf_coef=0.5,
         max_grad_norm=0.5,
-        policy_kwargs={'net_arch': [256, 256]},
+        policy_kwargs={'net_arch': [256, 256]},  # ✅ Plus gros pour multi-assets
         verbose=0
     )
     print("   ✅ Modèle initialisé\n")
     
-    # Entraînement
-    print("🚀 4. Entraînement (300k steps)...\n")
+    # ✅ Entraînement (200k comme test validé)
+    print("🚀 4. Entraînement (200k steps)...\n")
     
     try:
-        model.learn(total_timesteps=300_000, progress_bar=True)
+        model.learn(total_timesteps=200_000, progress_bar=True)
     except KeyboardInterrupt:
         print("\n⚠️  Interrompu")
     
@@ -246,7 +246,7 @@ def main():
     else:
         print("❌ TEST UNIVERSALENV V2 : ÉCHEC PARTIEL")
         print("\n🔧 Ajustements possibles:")
-        print("   1. Augmenter timesteps (300k → 500k)")
+        print("   1. Augmenter timesteps (200k → 500k)")
         print("   2. Ajuster buy_pct (20% → 15%)")
         print("   3. Augmenter ent_coef (exploration)")
     
