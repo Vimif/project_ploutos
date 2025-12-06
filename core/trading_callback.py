@@ -2,14 +2,6 @@
 """
 Trading Metrics Callback pour W&B
 Log métriques trading détaillées pendant l'entraînement
-
-Métriques loggées :
-- Sharpe Ratio en temps réel
-- Max Drawdown
-- Win Rate
-- Profit Factor
-- Actions distribution (Long/Short/Hold)
-- Portfolio value progression
 """
 
 import numpy as np
@@ -23,18 +15,6 @@ warnings.filterwarnings('ignore')
 class TradingMetricsCallback(BaseCallback):
     """
     Callback pour logger métriques trading dans W&B
-    
-    Usage:
-        callback = TradingMetricsCallback(
-            eval_env=eval_env,
-            eval_freq=10000,
-            n_eval_episodes=5
-        )
-        
-        model.learn(
-            total_timesteps=1_000_000,
-            callback=callback
-        )
     """
     
     def __init__(
@@ -45,14 +25,6 @@ class TradingMetricsCallback(BaseCallback):
         log_actions_dist=True,
         verbose=1
     ):
-        """
-        Args:
-            eval_env: Environnement pour évaluation (si None, utilise training env)
-            eval_freq: Fréquence d'évaluation (en steps)
-            n_eval_episodes: Nombre d'épisodes d'évaluation
-            log_actions_dist: Logger distribution des actions
-            verbose: Niveau de verbosité (0=silent, 1=info, 2=debug)
-        """
         super().__init__(verbose)
         
         self.eval_env = eval_env
@@ -60,7 +32,7 @@ class TradingMetricsCallback(BaseCallback):
         self.n_eval_episodes = n_eval_episodes
         self.log_actions_dist = log_actions_dist
         
-        # Buffers pour métriques en temps réel
+        # Buffers
         self.episode_returns = deque(maxlen=100)
         self.episode_lengths = deque(maxlen=100)
         self.portfolio_values = deque(maxlen=100)
@@ -72,7 +44,6 @@ class TradingMetricsCallback(BaseCallback):
         self.last_eval_step = 0
         
     def _on_training_start(self):
-        """Appelé au début de l'entraînement"""
         if self.verbose > 0:
             print("\n📊 Trading Metrics Callback activé")
             print(f"   Eval freq      : {self.eval_freq:,} steps")
@@ -80,14 +51,7 @@ class TradingMetricsCallback(BaseCallback):
             print(f"   Actions logged : {self.log_actions_dist}\n")
     
     def _on_step(self) -> bool:
-        """
-        Appelé à chaque step
-        
-        Returns:
-            bool: True pour continuer l'entraînement
-        """
-        
-        # Logger actions si demandé
+        # Logger actions
         if self.log_actions_dist and hasattr(self.locals, 'actions'):
             actions = self.locals.get('actions')
             if actions is not None:
@@ -97,11 +61,9 @@ class TradingMetricsCallback(BaseCallback):
         infos = self.locals.get('infos', [])
         
         for info in infos:
-            # Portfolio value
             if 'portfolio_value' in info:
                 self.portfolio_values.append(info['portfolio_value'])
             
-            # Episode terminé
             if 'episode' in info:
                 ep_info = info['episode']
                 self.episode_returns.append(ep_info['r'])
@@ -135,47 +97,61 @@ class TradingMetricsCallback(BaseCallback):
         
         # Lancer épisodes d'évaluation
         for ep in range(self.n_eval_episodes):
-            obs = env.reset()
-            if isinstance(obs, tuple):
-                obs = obs[0]  # Unpack si nouveau format Gym
+            # ✅ FIX : Reset et extraire obs correctement
+            reset_result = env.reset()
+            if isinstance(reset_result, tuple):
+                obs = reset_result[0]
+            else:
+                obs = reset_result
             
             done = False
             episode_reward = 0
             episode_length = 0
-            episode_values = []
+            episode_values = [10000]  # ✅ Valeur initiale par défaut
             episode_actions = []
             
             while not done:
                 # Prédiction
                 action, _ = self.model.predict(obs, deterministic=True)
-                episode_actions.append(action)
+                
+                # ✅ FIX : Assurer que action est array
+                if not isinstance(action, np.ndarray):
+                    action = np.array([action])
+                
+                episode_actions.append(action.copy())
                 
                 # Step
                 step_result = env.step(action)
                 
-                if len(step_result) == 5:  # Nouveau format (obs, reward, terminated, truncated, info)
+                # ✅ FIX : Parser résultat step correctement
+                if len(step_result) == 5:  # Nouveau format
                     obs, reward, terminated, truncated, info = step_result
                     done = terminated or truncated
-                else:  # Ancien format (obs, reward, done, info)
+                else:  # Ancien format
                     obs, reward, done, info = step_result
                 
                 episode_reward += reward
                 episode_length += 1
                 
-                # Extraire info
+                # ✅ FIX : Extraire portfolio_value correctement
+                portfolio_value = None
+                
                 if isinstance(info, dict):
-                    if 'portfolio_value' in info:
-                        episode_values.append(info['portfolio_value'])
-                elif isinstance(info, (list, tuple)) and len(info) > 0:
-                    if isinstance(info[0], dict) and 'portfolio_value' in info[0]:
-                        episode_values.append(info[0]['portfolio_value'])
+                    portfolio_value = info.get('portfolio_value')
+                elif isinstance(info, (list, tuple)):
+                    if len(info) > 0 and isinstance(info[0], dict):
+                        portfolio_value = info[0].get('portfolio_value')
+                
+                if portfolio_value is not None:
+                    episode_values.append(float(portfolio_value))
             
             # Stocker résultats
             episode_rewards.append(episode_reward)
             episode_lengths.append(episode_length)
             actions_taken.extend(episode_actions)
             
-            if len(episode_values) > 10:
+            # ✅ FIX : Vérifier qu'on a des valeurs
+            if len(episode_values) > 2:
                 portfolio_values_list.append(episode_values)
                 
                 # Calculer métriques
@@ -213,26 +189,37 @@ class TradingMetricsCallback(BaseCallback):
         
         # Distribution actions
         if actions_taken and self.log_actions_dist:
-            actions_array = np.array(actions_taken).flatten()
+            # ✅ FIX : Flatten actions correctement
+            actions_array = np.array([a.flatten() for a in actions_taken if a is not None])
             
-            # Compter actions (supposant action space discret avec 3 actions)
             if len(actions_array) > 0:
-                unique, counts = np.unique(actions_array, return_counts=True)
-                total = len(actions_array)
+                # Convertir actions continues en discrètes (HOLD/BUY/SELL)
+                # Action > 0.33 = BUY, < -0.33 = SELL, sinon HOLD
+                discrete_actions = np.zeros_like(actions_array)
+                discrete_actions[actions_array > 0.33] = 1  # BUY
+                discrete_actions[actions_array < -0.33] = 2  # SELL
+                # 0 = HOLD par défaut
                 
-                for action_id, count in zip(unique, counts):
-                    action_name = self._get_action_name(int(action_id))
-                    metrics[f'eval/action_{action_name}_pct'] = (count / total) * 100
-        
-        # Distribution actions buffer (training)
-        if len(self.actions_buffer) > 0 and self.log_actions_dist:
-            actions_array = np.array(list(self.actions_buffer))
-            unique, counts = np.unique(actions_array, return_counts=True)
-            total = len(actions_array)
-            
-            for action_id, count in zip(unique, counts):
-                action_name = self._get_action_name(int(action_id))
-                metrics[f'train/action_{action_name}_pct'] = (count / total) * 100
+                # Compter par asset
+                for asset_idx in range(discrete_actions.shape[1]):
+                    asset_actions = discrete_actions[:, asset_idx]
+                    total = len(asset_actions)
+                    
+                    if total > 0:
+                        hold_pct = (np.sum(asset_actions == 0) / total) * 100
+                        buy_pct = (np.sum(asset_actions == 1) / total) * 100
+                        sell_pct = (np.sum(asset_actions == 2) / total) * 100
+                        
+                        metrics[f'eval/asset{asset_idx}_HOLD_pct'] = hold_pct
+                        metrics[f'eval/asset{asset_idx}_BUY_pct'] = buy_pct
+                        metrics[f'eval/asset{asset_idx}_SELL_pct'] = sell_pct
+                
+                # Global
+                all_discrete = discrete_actions.flatten()
+                total = len(all_discrete)
+                metrics['eval/action_HOLD_pct'] = (np.sum(all_discrete == 0) / total) * 100
+                metrics['eval/action_BUY_pct'] = (np.sum(all_discrete == 1) / total) * 100
+                metrics['eval/action_SELL_pct'] = (np.sum(all_discrete == 2) / total) * 100
         
         # Profit Factor
         if portfolio_values_list:
@@ -256,61 +243,30 @@ class TradingMetricsCallback(BaseCallback):
                 print(f"   Portfolio : ${metrics['eval/mean_final_portfolio']:.0f}")
     
     def _calculate_sharpe(self, portfolio_values):
-        """
-        Calcule Sharpe Ratio depuis portfolio values
-        
-        Args:
-            portfolio_values: Liste des valeurs du portfolio
-            
-        Returns:
-            float: Sharpe Ratio annualisé
-        """
         if len(portfolio_values) < 2:
             return 0.0
         
-        # Calculer returns
         values = np.array(portfolio_values)
         returns = np.diff(values) / values[:-1]
         
         if len(returns) == 0 or np.std(returns) == 0:
             return 0.0
         
-        # Sharpe annualisé (252 jours de trading)
         sharpe = (np.mean(returns) / np.std(returns)) * np.sqrt(252)
-        
         return float(sharpe)
     
     def _calculate_max_drawdown(self, portfolio_values):
-        """
-        Calcule Maximum Drawdown
-        
-        Args:
-            portfolio_values: Liste des valeurs du portfolio
-            
-        Returns:
-            float: Max Drawdown en %
-        """
         if len(portfolio_values) < 2:
             return 0.0
         
         values = np.array(portfolio_values)
         cummax = np.maximum.accumulate(values)
         drawdown = (values - cummax) / cummax
-        
-        max_dd = np.min(drawdown) * 100  # En pourcentage
+        max_dd = np.min(drawdown) * 100
         
         return float(max_dd)
     
     def _calculate_win_rate(self, portfolio_values):
-        """
-        Calcule Win Rate (% de trades gagnants)
-        
-        Args:
-            portfolio_values: Liste des valeurs du portfolio
-            
-        Returns:
-            float: Win rate en %
-        """
         if len(portfolio_values) < 2:
             return 0.0
         
@@ -322,21 +278,11 @@ class TradingMetricsCallback(BaseCallback):
         
         winning_trades = np.sum(returns > 0)
         total_trades = len(returns)
-        
         win_rate = (winning_trades / total_trades) * 100
         
         return float(win_rate)
     
     def _calculate_profit_factor(self, portfolio_values_list):
-        """
-        Calcule Profit Factor (gains / pertes)
-        
-        Args:
-            portfolio_values_list: Liste de listes de portfolio values
-            
-        Returns:
-            float: Profit Factor
-        """
         all_returns = []
         
         for values in portfolio_values_list:
@@ -357,77 +303,9 @@ class TradingMetricsCallback(BaseCallback):
             return None
         
         profit_factor = gross_profit / gross_loss
-        
         return float(profit_factor)
     
-    def _get_action_name(self, action_id):
-        """
-        Convertit action ID en nom lisible
-        
-        Args:
-            action_id: ID de l'action (0, 1, 2)
-            
-        Returns:
-            str: Nom de l'action
-        """
-        action_names = {
-            0: 'HOLD',
-            1: 'BUY',
-            2: 'SELL'
-        }
-        return action_names.get(action_id, f'ACTION_{action_id}')
-    
     def _on_training_end(self):
-        """
-        Appelé à la fin de l'entraînement
-        """
         if self.verbose > 0:
             print(f"\n✅ Trading Metrics Callback terminé")
             print(f"   Total évaluations : {self.n_evaluations}")
-
-# ============================================================================
-# EXEMPLE D'UTILISATION
-# ============================================================================
-
-if __name__ == '__main__':
-    print("\n" + "="*80)
-    print("📊 TRADING METRICS CALLBACK")
-    print("="*80 + "\n")
-    
-    print("📝 Usage dans train_curriculum.py :\n")
-    print("""from core.trading_callback import TradingMetricsCallback
-
-# Créer callback
-trading_callback = TradingMetricsCallback(
-    eval_env=env,              # Environnement d'évaluation
-    eval_freq=10000,           # Évaluer toutes les 10k steps
-    n_eval_episodes=5,         # 5 épisodes par évaluation
-    log_actions_dist=True,     # Logger distribution actions
-    verbose=1
-)
-
-# Combiner avec autres callbacks
-callback = CallbackList([
-    checkpoint_callback,
-    wandb_callback,
-    trading_callback  # ✅ Ajouté
-])
-
-# Entraîner
-model.learn(
-    total_timesteps=1_000_000,
-    callback=callback
-)
-""")
-    
-    print("\n📊 Métriques loggées dans W&B :")
-    print("   eval/mean_reward")
-    print("   eval/mean_sharpe")
-    print("   eval/mean_max_dd")
-    print("   eval/mean_win_rate")
-    print("   eval/mean_final_portfolio")
-    print("   eval/profit_factor")
-    print("   eval/action_HOLD_pct")
-    print("   eval/action_BUY_pct")
-    print("   eval/action_SELL_pct")
-    print("\n")
