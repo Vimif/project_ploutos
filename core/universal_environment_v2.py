@@ -9,6 +9,7 @@ VERSION FIXÉE avec les découvertes du debug (6 déc 2025)
 2. Reward: Portfolio variation → PnL réalisé + PnL latent
 3. Tracking entry prices par ticker (FIFO avec deque)
 4. Vente forcée à la fin (truncation)
+5. ★ Gérer données courtes (<100 jours)
 
 Résultats attendus:
 - L'IA trade activement (BUY + SELL > 10%)
@@ -196,8 +197,20 @@ class UniversalTradingEnvV2(gym.Env):
         """Reset environnement"""
         super().reset(seed=seed)
         
-        # Point de départ aléatoire
-        self.current_step = np.random.randint(100, self.data_length - self.max_steps)
+        # ★ FIX: Gérer données courtes
+        min_start = 100
+        max_end = self.data_length - self.max_steps
+        
+        if max_end <= min_start:
+            # Données trop courtes pour random start
+            # Démarrer au début des données valides (après warmup)
+            self.current_step = min(20, self.data_length - self.max_steps - 1)
+            if self.current_step < 0:
+                self.current_step = 0
+        else:
+            # Assez de données pour random start
+            self.current_step = np.random.randint(min_start, max_end)
+        
         self.reset_step = self.current_step
         
         self.balance = self.initial_balance
