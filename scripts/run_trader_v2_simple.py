@@ -242,12 +242,20 @@ class SimpleTradingBot:
         logger.info("🔮 Génération prédictions...")
         
         try:
+            # ✅ FIX: Calculer max_steps adapté aux données
+            min_data_length = min(len(df) for df in data.values())
+            
+            # Pour trading live, on n'a besoin que de quelques steps
+            max_steps = min(10, max(1, min_data_length - 105))  # Laisse marge pour random start
+            
+            logger.debug(f"  Data length: {min_data_length}, max_steps: {max_steps}")
+            
             # Créer env temporaire
             env = UniversalTradingEnvV2(
                 data=data,
                 initial_balance=self.cash,
                 commission=0.0001,
-                max_steps=50,
+                max_steps=max_steps,  # ✅ Adapté aux données
                 buy_pct=0.2
             )
             
