@@ -103,18 +103,34 @@ class SimpleTradingBot:
             except Exception as e:
                 logger.warning(f"⚠️  Alpaca Data non disponible: {e}")
         
-        # Client Alpaca Trading
+        # ✅ FIX: Client Alpaca Trading avec bon paramètre
         self.client = None
         if ALPACA_TRADING_AVAILABLE:
             try:
-                self.client = AlpacaClient(paper=paper_trading)
+                self.client = AlpacaClient(paper_trading=paper_trading)  # ★ FIX ICI
                 logger.info(f"✅ Alpaca Trading connecté (Paper: {paper_trading})")
+                
+                # Afficher infos compte
+                account = self.client.get_account()
+                if account:
+                    logger.info(f"💰 Compte Alpaca:")
+                    logger.info(f"  Cash: ${account['cash']:,.2f}")
+                    logger.info(f"  Portfolio: ${account['portfolio_value']:,.2f}")
+                    logger.info(f"  Buying Power: ${account['buying_power']:,.2f}")
             except Exception as e:
                 logger.warning(f"⚠️  Alpaca Trading non disponible: {e}")
+                import traceback
+                traceback.print_exc()
         
         # Positions actuelles
         self.positions = {}
-        self.cash = 100000  # Capital initial
+        self.cash = 100000  # Capital initial (sera mis à jour avec Alpaca)
+        
+        # Si client connecté, récupérer le vrai solde
+        if self.client:
+            account = self.client.get_account()
+            if account:
+                self.cash = account['cash']
         
     def get_market_data(self, days=30):
         """
@@ -143,6 +159,11 @@ class SimpleTradingBot:
                     # Vérifier fraîcheur (pas plus de 7 jours)
                     if not df.empty:
                         last_date = pd.to_datetime(df.index[-1])
+                        
+                        # ✅ FIX: Forcer timezone-naive
+                        if last_date.tzinfo:
+                            last_date = last_date.tz_localize(None)
+                        
                         age_days = (datetime.now() - last_date).days
                         
                         if age_days <= 7 and len(df) >= days:
@@ -294,6 +315,12 @@ class SimpleTradingBot:
         
         trades_executed = {'buy': 0, 'sell': 0, 'hold': 0}
         
+        # ✅ Si client Alpaca, récupérer positions réelles
+        if self.client:
+            alpaca_positions = self.client.get_positions()
+            self.positions = {pos['symbol']: pos['qty'] for pos in alpaca_positions}
+            logger.info(f"  Positions Alpaca: {len(self.positions)} actives")
+        
         for ticker, action in predictions.items():
             price = current_prices.get(ticker)
             
@@ -304,36 +331,72 @@ class SimpleTradingBot:
             try:
                 if action == 'BUY':
                     # Acheter si on n'a pas de position
-                    if ticker not in self.positions or self.positions[ticker] == 0:
+                    current_position = self.positions.get(ticker, 0)
+                    
+                    if current_position == 0:
                         qty = int((self.cash * 0.1) / price)  # 10% du capital
                         
                         if qty > 0:
-                            if self.client and not self.paper_trading:
-                                # Trade réel
-                                self.client.buy(ticker, qty)
-                            
-                            self.positions[ticker] = qty
-                            self.cash -= qty * price
-                            trades_executed['buy'] += 1
-                            logger.info(f"✅ {ticker}: BUY {qty} @ ${price:.2f}")
+                            # ★ TRADE RÉEL AVEC ALPACA
+                            if self.client:
+                                try:
+                                    order = self.client.place_market_order(
+                                        symbol=ticker,
+                                        qty=qty,
+                                        side='buy',
+                                        reason='Prédiction modèle IA'
+                                    )
+                                    
+                                    if order:
+                                        self.positions[ticker] = qty
+                                        self.cash -= qty * price
+                                        trades_executed['buy'] += 1
+                                        logger.info(f"✅ {ticker}: BUY {qty} @ ${price:.2f} [ALPACA]")
+                                    else:
+                                        logger.error(f"❌ {ticker}: Échec ordre BUY")
+                                except Exception as e:
+                                    logger.error(f"❌ {ticker}: Erreur BUY - {e}")
+                            else:
+                                # Simulation seulement
+                                self.positions[ticker] = qty
+                                self.cash -= qty * price
+                                trades_executed['buy'] += 1
+                                logger.info(f"✅ {ticker}: BUY {qty} @ ${price:.2f} [SIMULATION]")
                     else:
                         trades_executed['hold'] += 1
+                        logger.debug(f"  {ticker}: Déjà en position ({current_position} shares)")
                 
                 elif action == 'SELL':
                     # Vendre si on a une position
-                    if ticker in self.positions and self.positions[ticker] > 0:
-                        qty = self.positions[ticker]
-                        
-                        if self.client and not self.paper_trading:
-                            # Trade réel
-                            self.client.sell(ticker, qty)
-                        
-                        self.cash += qty * price
-                        self.positions[ticker] = 0
-                        trades_executed['sell'] += 1
-                        logger.info(f"✅ {ticker}: SELL {qty} @ ${price:.2f}")
+                    current_position = self.positions.get(ticker, 0)
+                    
+                    if current_position > 0:
+                        # ★ TRADE RÉEL AVEC ALPACA
+                        if self.client:
+                            try:
+                                success = self.client.close_position(
+                                    symbol=ticker,
+                                    reason='Prédiction modèle IA'
+                                )
+                                
+                                if success:
+                                    self.cash += current_position * price
+                                    self.positions[ticker] = 0
+                                    trades_executed['sell'] += 1
+                                    logger.info(f"✅ {ticker}: SELL {current_position} @ ${price:.2f} [ALPACA]")
+                                else:
+                                    logger.error(f"❌ {ticker}: Échec SELL")
+                            except Exception as e:
+                                logger.error(f"❌ {ticker}: Erreur SELL - {e}")
+                        else:
+                            # Simulation seulement
+                            self.cash += current_position * price
+                            self.positions[ticker] = 0
+                            trades_executed['sell'] += 1
+                            logger.info(f"✅ {ticker}: SELL {current_position} @ ${price:.2f} [SIMULATION]")
                     else:
                         trades_executed['hold'] += 1
+                        logger.debug(f"  {ticker}: Pas de position à vendre")
                 
                 else:  # HOLD
                     trades_executed['hold'] += 1
@@ -344,12 +407,19 @@ class SimpleTradingBot:
         logger.info(f"✅ Trades: {trades_executed['buy']} BUY | {trades_executed['sell']} SELL | {trades_executed['hold']} HOLD")
         
         # Portfolio summary
-        total_value = self.cash + sum(
-            self.positions.get(t, 0) * current_prices.get(t, 0)
-            for t in self.tickers
-        )
-        
-        logger.info(f"💰 Portfolio: ${total_value:,.2f} (Cash: ${self.cash:,.2f})")
+        if self.client:
+            # Utiliser valeurs Alpaca réelles
+            account = self.client.get_account()
+            if account:
+                logger.info(f"💰 Portfolio Alpaca: ${account['portfolio_value']:,.2f} (Cash: ${account['cash']:,.2f})")
+                self.cash = account['cash']
+        else:
+            # Simulation
+            total_value = self.cash + sum(
+                self.positions.get(t, 0) * current_prices.get(t, 0)
+                for t in self.tickers
+            )
+            logger.info(f"💰 Portfolio Simulation: ${total_value:,.2f} (Cash: ${self.cash:,.2f})")
     
     def run_cycle(self):
         """
