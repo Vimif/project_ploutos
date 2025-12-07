@@ -1,5 +1,5 @@
 # trading/alpaca_client.py
-"""Client pour l'API Alpaca avec intégration BDD"""
+"""Client pour l'API Alpaca avec logging JSON"""
 
 # === FIX PATH ===
 import sys
@@ -17,7 +17,7 @@ from alpaca.data.timeframe import TimeFrame
 
 from datetime import datetime, timedelta
 import os
-import threading
+import json
 from dotenv import load_dotenv
 from core.utils import setup_logging
 
@@ -26,31 +26,58 @@ logger = setup_logging(__name__, 'alpaca.log')
 # Charger variables d'environnement
 load_dotenv()
 
-# ========== INTÉGRATION BASE DE DONNÉES ==========
-try:
-    from database.db import log_trade, log_all_positions
-    DB_AVAILABLE = True
-    logger.info("✅ Module database disponible")
-except ImportError:
-    DB_AVAILABLE = False
-    logger.warning("⚠️  Module database non disponible")
+# ★ CRÉER DOSSIER LOGS TRADES
+TRADES_LOG_DIR = 'logs/trades'
+os.makedirs(TRADES_LOG_DIR, exist_ok=True)
 
-# ★ LOGGER ASYNCHRONE POUR ÉVITER CRASH
-def async_log_trade(*args, **kwargs):
+def log_trade_to_json(symbol, action, quantity, price, amount, reason='', portfolio_value=None, order_id=None):
     """
-    Logger un trade dans un thread séparé
-    Si ça crash, le bot continue
-    """
-    def _log():
-        try:
-            log_trade(*args, **kwargs)
-            logger.debug(f"✅ Trade loggé en BDD: {kwargs.get('symbol', '?')}")
-        except Exception as e:
-            logger.warning(f"⚠️  Échec log BDD (non-bloquant): {e}")
+    Logger un trade en JSON au lieu de PostgreSQL
     
-    # Lancer dans un thread détaché
-    thread = threading.Thread(target=_log, daemon=True)
-    thread.start()
+    Args:
+        symbol: Ticker
+        action: 'BUY' ou 'SELL'
+        quantity: Nombre d'actions
+        price: Prix unitaire
+        amount: Montant total
+        reason: Raison du trade
+        portfolio_value: Valeur du portfolio
+        order_id: ID de l'ordre Alpaca
+    """
+    try:
+        trade_data = {
+            'timestamp': datetime.now().isoformat(),
+            'symbol': symbol,
+            'action': action,
+            'quantity': quantity,
+            'price': price,
+            'amount': amount,
+            'reason': reason,
+            'portfolio_value': portfolio_value,
+            'order_id': order_id
+        }
+        
+        # Nom fichier: trades_2025-12-07.json
+        filename = f"{TRADES_LOG_DIR}/trades_{datetime.now().strftime('%Y-%m-%d')}.json"
+        
+        # Lire trades existants
+        if os.path.exists(filename):
+            with open(filename, 'r') as f:
+                trades = json.load(f)
+        else:
+            trades = []
+        
+        # Ajouter nouveau trade
+        trades.append(trade_data)
+        
+        # Sauvegarder
+        with open(filename, 'w') as f:
+            json.dump(trades, f, indent=2)
+        
+        logger.debug(f"✅ Trade loggé en JSON: {symbol} {action}")
+        
+    except Exception as e:
+        logger.warning(f"⚠️  Échec log JSON: {e}")
 
 class AlpacaClient:
     """Client Alpaca pour le trading"""
@@ -89,6 +116,7 @@ class AlpacaClient:
         )
         
         logger.info(f"✅ Client Alpaca initialisé ({'Paper' if paper_trading else 'LIVE'})")
+        logger.info(f"📝 Trades loggés dans: {TRADES_LOG_DIR}/")
     
     def get_account(self):
         """Obtenir les infos du compte"""
@@ -160,7 +188,6 @@ class AlpacaClient:
     def cancel_orders_for_symbol(self, symbol):
         """
         Annuler tous les ordres en cours pour un ticker
-        Utile pour éviter les wash trades
         
         Args:
             symbol: Ticker
@@ -187,7 +214,7 @@ class AlpacaClient:
     
     def place_market_order(self, symbol, qty, side='buy', reason=''):
         """
-        Passer un ordre au marché AVEC LOGGING BDD ASYNCHRONE
+        Passer un ordre au marché avec logging JSON
         
         Args:
             symbol: Ticker (ex: 'AAPL')
@@ -221,22 +248,21 @@ class AlpacaClient:
                 'filled_avg_price': float(order.filled_avg_price) if order.filled_avg_price else None
             }
             
-            # ★ LOGGER DE MANIÈRE ASYNCHRONE
-            if DB_AVAILABLE:
-                account = self.get_account()
-                price = float(order.filled_avg_price) if order.filled_avg_price else self.get_current_price(symbol)
-                
-                if price and price > 0:
-                    async_log_trade(
-                        symbol=symbol,
-                        action=side.upper(),
-                        quantity=qty,
-                        price=price,
-                        amount=qty * price,
-                        reason=reason,
-                        portfolio_value=account['portfolio_value'] if account else None,
-                        order_id=order.id
-                    )
+            # ★ LOGGER EN JSON (SAFE)
+            account = self.get_account()
+            price = float(order.filled_avg_price) if order.filled_avg_price else self.get_current_price(symbol)
+            
+            if price and price > 0:
+                log_trade_to_json(
+                    symbol=symbol,
+                    action=side.upper(),
+                    quantity=qty,
+                    price=price,
+                    amount=qty * price,
+                    reason=reason,
+                    portfolio_value=account['portfolio_value'] if account else None,
+                    order_id=order.id
+                )
             
             return order_dict
         
@@ -298,7 +324,7 @@ class AlpacaClient:
             # 2. Annuler tous les ordres en cours pour éviter wash trade
             self.cancel_orders_for_symbol(symbol)
             
-            # 3. Attendre 1 seconde pour que les annulations soient prises en compte
+            # 3. Attendre 1 seconde
             import time
             time.sleep(1)
             
@@ -306,18 +332,17 @@ class AlpacaClient:
             self.trading_client.close_position(symbol)
             logger.info(f"✅ Position fermée: {symbol}")
             
-            # ★ 5. Logger le SELL de manière ASYNCHRONE
-            if DB_AVAILABLE:
-                account = self.get_account()
-                async_log_trade(
-                    symbol=symbol,
-                    action='SELL',
-                    quantity=qty,
-                    price=current_price,
-                    amount=qty * current_price,
-                    reason=reason or 'Fermeture position',
-                    portfolio_value=account['portfolio_value'] if account else None
-                )
+            # ★ 5. Logger en JSON (SAFE - pas de PostgreSQL)
+            account = self.get_account()
+            log_trade_to_json(
+                symbol=symbol,
+                action='SELL',
+                quantity=qty,
+                price=current_price,
+                amount=qty * current_price,
+                reason=reason or 'Fermeture position',
+                portfolio_value=account['portfolio_value'] if account else None
+            )
             
             return True
                 
@@ -380,19 +405,13 @@ class AlpacaClient:
             return False
     
     def log_current_positions(self):
-        """Logger toutes les positions actuelles dans la BDD (ASYNCHRONE)"""
-        if not DB_AVAILABLE:
-            return
-        
-        def _log():
-            try:
-                positions = self.get_positions()
-                if positions:
-                    log_all_positions(positions)
-                    logger.info(f"✅ {len(positions)} positions loggées dans BDD")
-            except Exception as e:
-                logger.warning(f"⚠️  Échec log positions (non-bloquant): {e}")
-        
-        # Lancer dans un thread
-        thread = threading.Thread(target=_log, daemon=True)
-        thread.start()
+        """Logger les positions (JSON)"""
+        try:
+            positions = self.get_positions()
+            if positions:
+                filename = f"{TRADES_LOG_DIR}/positions_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.json"
+                with open(filename, 'w') as f:
+                    json.dump(positions, f, indent=2)
+                logger.info(f"✅ {len(positions)} positions loggées: {filename}")
+        except Exception as e:
+            logger.warning(f"⚠️  Échec log positions: {e}")
