@@ -14,8 +14,9 @@ import os
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# ✅ CRÉER DOSSIER LOGS AVANT LOGGING
+# ✅ CRÉER DOSSIERS NÉCESSAIRES
 os.makedirs('logs', exist_ok=True)
+os.makedirs('data_cache', exist_ok=True)
 
 import time
 import logging
@@ -101,7 +102,7 @@ class SimpleTradingBot:
         
     def get_market_data(self, days=30):
         """
-        Télécharge données récentes
+        Télécharge données récentes (essaye cache d'abord)
         
         Args:
             days: Nombre de jours à charger
@@ -109,33 +110,81 @@ class SimpleTradingBot:
         Returns:
             dict: Données par ticker
         """
-        import yfinance as yf
-        
-        logger.info(f"📡 Téléchargement données ({days} jours)...")
+        logger.info(f"📡 Chargement données ({days} jours)...")
         
         data = {}
-        end = datetime.now()
-        start = end - timedelta(days=days)
         
+        # ESSAYER CACHE D'ABORD
         for ticker in self.tickers:
-            try:
-                df = yf.download(ticker, start=start, end=end, interval='1d', progress=False)
+            cache_file = f'data_cache/{ticker}.csv'
+            
+            if os.path.exists(cache_file):
+                try:
+                    df = pd.read_csv(cache_file, index_col=0, parse_dates=True)
+                    
+                    # Vérifier fraîcheur (pas plus de 7 jours)
+                    if not df.empty:
+                        last_date = pd.to_datetime(df.index[-1])
+                        age_days = (datetime.now() - last_date).days
+                        
+                        if age_days <= 7 and len(df) >= days:
+                            # Garder seulement les derniers jours demandés
+                            data[ticker] = df.tail(days)
+                            logger.info(f"  ✅ {ticker}: Cache ({len(data[ticker])} jours, age: {age_days}j)")
+                            continue
                 
-                if df.empty or len(df) < 10:
-                    logger.warning(f"⚠️  {ticker}: Données insuffisantes")
-                    continue
-                
-                if isinstance(df.columns, pd.MultiIndex):
-                    df.columns = df.columns.get_level_values(0)
-                
+                except Exception as e:
+                    logger.warning(f"  ⚠️  {ticker}: Erreur lecture cache - {e}")
+            
+            # SI PAS EN CACHE OU TROP VIEUX, TÉLÉCHARGER
+            df = self._download_ticker(ticker, days)
+            if df is not None and not df.empty:
                 data[ticker] = df
-                logger.debug(f"  ✅ {ticker}: {len(df)} jours")
-                
-            except Exception as e:
-                logger.warning(f"⚠️  {ticker}: {e}")
+                # Sauvegarder en cache
+                try:
+                    df.to_csv(cache_file)
+                    logger.debug(f"  💾 {ticker}: Sauvegardé en cache")
+                except Exception as e:
+                    logger.warning(f"  ⚠️  {ticker}: Erreur sauvegarde cache - {e}")
         
         logger.info(f"✅ {len(data)}/{len(self.tickers)} tickers chargés")
         return data
+    
+    def _download_ticker(self, ticker, days):
+        """
+        Télécharge un ticker avec yfinance (avec user_agent)
+        
+        Args:
+            ticker: Symbole ticker
+            days: Nombre de jours
+        
+        Returns:
+            DataFrame ou None
+        """
+        try:
+            import yfinance as yf
+            
+            end = datetime.now()
+            start = end - timedelta(days=days)
+            
+            # 🔧 FIX: Utiliser Ticker() au lieu de download() pour contourner bug
+            stock = yf.Ticker(ticker)
+            df = stock.history(start=start, end=end, interval='1d')
+            
+            if df.empty or len(df) < 10:
+                logger.warning(f"  ⚠️  {ticker}: Données insuffisantes")
+                return None
+            
+            # Renommer colonnes si nécessaire
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = df.columns.get_level_values(0)
+            
+            logger.info(f"  ✅ {ticker}: Téléchargé ({len(df)} jours)")
+            return df
+            
+        except Exception as e:
+            logger.error(f"  ❌ {ticker}: Erreur téléchargement - {e}")
+            return None
     
     def get_predictions(self, data):
         """
