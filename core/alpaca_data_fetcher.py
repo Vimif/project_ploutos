@@ -13,6 +13,8 @@ import os
 import pandas as pd
 from datetime import datetime, timedelta
 import logging
+import signal
+from contextlib import contextmanager
 
 try:
     from alpaca.data.historical import StockHistoricalDataClient
@@ -24,6 +26,25 @@ except ImportError:
     ALPACA_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
+
+# ★ TIMEOUT HANDLER
+class TimeoutException(Exception):
+    pass
+
+@contextmanager
+def time_limit(seconds):
+    """
+    Context manager pour timeout
+    """
+    def signal_handler(signum, frame):
+        raise TimeoutException("Timeout!")
+    
+    signal.signal(signal.SIGALRM, signal_handler)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
 
 class AlpacaDataFetcher:
     """
@@ -63,7 +84,7 @@ class AlpacaDataFetcher:
             logger.error(f"❌ Erreur init Alpaca: {e}")
             raise
     
-    def fetch_historical(self, ticker, days=30, timeframe='1Day'):
+    def fetch_historical(self, ticker, days=30, timeframe='1Day', timeout=10):
         """
         Récupère données historiques pour un ticker
         
@@ -71,68 +92,77 @@ class AlpacaDataFetcher:
             ticker: Symbole ticker (ex: 'NVDA')
             days: Nombre de jours à charger
             timeframe: '1Day', '1Hour', '5Min', etc.
+            timeout: Timeout en secondes
         
         Returns:
             DataFrame avec colonnes OHLCV
         """
         try:
-            # Calculer dates
-            end = datetime.now()
-            start = end - timedelta(days=days + 5)  # +5 jours marge pour week-ends
+            logger.debug(f"  🔄 {ticker}: Début fetch...")
             
-            # Mapper timeframe
-            tf_map = {
-                '1Day': TimeFrame.Day,
-                '1Hour': TimeFrame.Hour,
-                '5Min': TimeFrame.Minute,
-                '15Min': TimeFrame(15, 'Min'),
-            }
-            
-            tf = tf_map.get(timeframe, TimeFrame.Day)
-            
-            # Requête avec feed IEX
-            request = StockBarsRequest(
-                symbol_or_symbols=ticker,
-                timeframe=tf,
-                start=start,
-                end=end,
-                feed='iex'  # 🔑 CLEF: Utiliser IEX gratuit au lieu de SIP
-            )
-            
-            bars = self.client.get_stock_bars(request)
-            
-            # Convertir en DataFrame
-            if ticker not in bars.data or not bars.data[ticker]:
-                logger.warning(f"⚠️  {ticker}: Aucune donnée retournée")
-                return pd.DataFrame()
-            
-            df = bars.df
-            
-            # Si MultiIndex (symbol, timestamp), simplifier
-            if isinstance(df.index, pd.MultiIndex):
-                df = df.xs(ticker, level='symbol')
-            
-            # Renommer colonnes pour compatibilité yfinance
-            df = df.rename(columns={
-                'open': 'Open',
-                'high': 'High',
-                'low': 'Low',
-                'close': 'Close',
-                'volume': 'Volume',
-                'trade_count': 'Trade_Count',
-                'vwap': 'VWAP'
-            })
-            
-            # Garder seulement OHLCV
-            available_cols = [col for col in ['Open', 'High', 'Low', 'Close', 'Volume'] if col in df.columns]
-            df = df[available_cols]
-            
-            # Limiter au nombre de jours demandés
-            if len(df) > days:
-                df = df.tail(days)
-            
-            logger.info(f"✅ {ticker}: {len(df)} barres chargées (IEX)")
-            return df
+            # ★ AVEC TIMEOUT
+            with time_limit(timeout):
+                # Calculer dates
+                end = datetime.now()
+                start = end - timedelta(days=days + 5)  # +5 jours marge pour week-ends
+                
+                # Mapper timeframe
+                tf_map = {
+                    '1Day': TimeFrame.Day,
+                    '1Hour': TimeFrame.Hour,
+                    '5Min': TimeFrame.Minute,
+                    '15Min': TimeFrame(15, 'Min'),
+                }
+                
+                tf = tf_map.get(timeframe, TimeFrame.Day)
+                
+                # Requête avec feed IEX
+                request = StockBarsRequest(
+                    symbol_or_symbols=ticker,
+                    timeframe=tf,
+                    start=start,
+                    end=end,
+                    feed='iex'  # 🔑 CLEF: Utiliser IEX gratuit au lieu de SIP
+                )
+                
+                bars = self.client.get_stock_bars(request)
+                
+                # Convertir en DataFrame
+                if ticker not in bars.data or not bars.data[ticker]:
+                    logger.warning(f"⚠️  {ticker}: Aucune donnée retournée")
+                    return pd.DataFrame()
+                
+                df = bars.df
+                
+                # Si MultiIndex (symbol, timestamp), simplifier
+                if isinstance(df.index, pd.MultiIndex):
+                    df = df.xs(ticker, level='symbol')
+                
+                # Renommer colonnes pour compatibilité yfinance
+                df = df.rename(columns={
+                    'open': 'Open',
+                    'high': 'High',
+                    'low': 'Low',
+                    'close': 'Close',
+                    'volume': 'Volume',
+                    'trade_count': 'Trade_Count',
+                    'vwap': 'VWAP'
+                })
+                
+                # Garder seulement OHLCV
+                available_cols = [col for col in ['Open', 'High', 'Low', 'Close', 'Volume'] if col in df.columns]
+                df = df[available_cols]
+                
+                # Limiter au nombre de jours demandés
+                if len(df) > days:
+                    df = df.tail(days)
+                
+                logger.info(f"✅ {ticker}: {len(df)} barres chargées (IEX)")
+                return df
+        
+        except TimeoutException:
+            logger.error(f"❌ {ticker}: TIMEOUT ({timeout}s) - API trop lente")
+            return pd.DataFrame()
             
         except Exception as e:
             logger.error(f"❌ {ticker}: Erreur fetch - {e}")
@@ -155,17 +185,32 @@ class AlpacaDataFetcher:
             os.makedirs(cache_dir, exist_ok=True)
         
         data = {}
+        failed = []
         
-        for ticker in tickers:
-            df = self.fetch_historical(ticker, days=days)
+        for i, ticker in enumerate(tickers, 1):
+            logger.debug(f"  [{i}/{len(tickers)}] {ticker}...")
             
-            if not df.empty:
-                data[ticker] = df
+            try:
+                df = self.fetch_historical(ticker, days=days, timeout=10)
                 
-                if save_cache:
-                    cache_file = f"{cache_dir}/{ticker}.csv"
-                    df.to_csv(cache_file)
-                    logger.debug(f"💾 {ticker}: Sauvegardé en {cache_file}")
+                if not df.empty:
+                    data[ticker] = df
+                    
+                    if save_cache:
+                        cache_file = f"{cache_dir}/{ticker}.csv"
+                        df.to_csv(cache_file)
+                        logger.debug(f"💾 {ticker}: Sauvegardé en {cache_file}")
+                else:
+                    failed.append(ticker)
+                    logger.warning(f"⚠️  {ticker}: Pas de données")
+                    
+            except Exception as e:
+                failed.append(ticker)
+                logger.error(f"❌ {ticker}: Échec - {e}")
+                continue  # ★ NE PAS BLOQUER
+        
+        if failed:
+            logger.warning(f"⚠️  {len(failed)} tickers échoués: {', '.join(failed)}")
         
         logger.info(f"✅ {len(data)}/{len(tickers)} tickers chargés")
         return data
