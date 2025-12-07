@@ -14,6 +14,9 @@ import os
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# ✅ CRÉER DOSSIER LOGS AVANT LOGGING
+os.makedirs('logs', exist_ok=True)
+
 import time
 import logging
 from datetime import datetime, timedelta
@@ -294,9 +297,6 @@ def main():
     parser.add_argument('--cycles', type=int, default=None, help='Nombre de cycles (illimité par défaut)')
     
     args = parser.parse_args()
-    
-    # Créer dossier logs
-    os.makedirs('logs', exist_ok=True)
     
     logger.info("\n" + "="*70)
     logger.info("🚀 PLOUTOS TRADING BOT V2")
