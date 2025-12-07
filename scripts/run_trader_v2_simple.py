@@ -32,11 +32,18 @@ except ImportError:
     from core.universal_environment import UniversalTradingEnv as UniversalTradingEnvV2
 
 try:
+    from core.alpaca_data_fetcher import AlpacaDataFetcher
+    ALPACA_DATA_AVAILABLE = True
+except ImportError:
+    print("⚠️  AlpacaDataFetcher non disponible")
+    ALPACA_DATA_AVAILABLE = False
+
+try:
     from trading.alpaca_client import AlpacaClient
-    ALPACA_AVAILABLE = True
+    ALPACA_TRADING_AVAILABLE = True
 except ImportError:
     print("⚠️  AlpacaClient non disponible - Mode simulation seulement")
-    ALPACA_AVAILABLE = False
+    ALPACA_TRADING_AVAILABLE = False
 
 # Configuration logging
 logging.basicConfig(
@@ -87,14 +94,23 @@ class SimpleTradingBot:
         
         logger.info(f"🎯 Tickers: {', '.join(self.tickers)}")
         
-        # Client Alpaca
+        # Initialiser Alpaca Data Fetcher
+        self.data_fetcher = None
+        if ALPACA_DATA_AVAILABLE:
+            try:
+                self.data_fetcher = AlpacaDataFetcher()
+                logger.info("✅ Alpaca Data Fetcher initialisé")
+            except Exception as e:
+                logger.warning(f"⚠️  Alpaca Data non disponible: {e}")
+        
+        # Client Alpaca Trading
         self.client = None
-        if ALPACA_AVAILABLE:
+        if ALPACA_TRADING_AVAILABLE:
             try:
                 self.client = AlpacaClient(paper=paper_trading)
-                logger.info(f"✅ Alpaca connecté (Paper: {paper_trading})")
+                logger.info(f"✅ Alpaca Trading connecté (Paper: {paper_trading})")
             except Exception as e:
-                logger.warning(f"⚠️  Alpaca non disponible: {e}")
+                logger.warning(f"⚠️  Alpaca Trading non disponible: {e}")
         
         # Positions actuelles
         self.positions = {}
@@ -102,7 +118,8 @@ class SimpleTradingBot:
         
     def get_market_data(self, days=30):
         """
-        Télécharge données récentes (essaye cache d'abord)
+        Télécharge données récentes
+        Priorité: 1) Cache, 2) Alpaca, 3) yfinance
         
         Args:
             days: Nombre de jours à charger
@@ -113,6 +130,7 @@ class SimpleTradingBot:
         logger.info(f"📡 Chargement données ({days} jours)...")
         
         data = {}
+        tickers_to_fetch = []
         
         # ESSAYER CACHE D'ABORD
         for ticker in self.tickers:
@@ -136,23 +154,50 @@ class SimpleTradingBot:
                 except Exception as e:
                     logger.warning(f"  ⚠️  {ticker}: Erreur lecture cache - {e}")
             
-            # SI PAS EN CACHE OU TROP VIEUX, TÉLÉCHARGER
-            df = self._download_ticker(ticker, days)
-            if df is not None and not df.empty:
-                data[ticker] = df
-                # Sauvegarder en cache
+            # Pas en cache ou trop vieux
+            tickers_to_fetch.append(ticker)
+        
+        # TÉLÉCHARGER LES TICKERS MANQUANTS
+        if tickers_to_fetch:
+            logger.info(f"📡 Téléchargement de {len(tickers_to_fetch)} tickers...")
+            
+            # PRIORITÉ 1: ALPACA
+            if self.data_fetcher:
                 try:
-                    df.to_csv(cache_file)
-                    logger.debug(f"  💾 {ticker}: Sauvegardé en cache")
+                    alpaca_data = self.data_fetcher.fetch_multiple(
+                        tickers_to_fetch,
+                        days=days,
+                        save_cache=True
+                    )
+                    data.update(alpaca_data)
+                    logger.info(f"✅ Alpaca: {len(alpaca_data)} tickers téléchargés")
+                    
+                    # Mettre à jour liste des manquants
+                    tickers_to_fetch = [t for t in tickers_to_fetch if t not in alpaca_data]
+                    
                 except Exception as e:
-                    logger.warning(f"  ⚠️  {ticker}: Erreur sauvegarde cache - {e}")
+                    logger.warning(f"⚠️  Erreur Alpaca: {e}")
+            
+            # PRIORITÉ 2: YFINANCE (FALLBACK)
+            if tickers_to_fetch:
+                logger.info(f"📡 Fallback yfinance pour {len(tickers_to_fetch)} tickers...")
+                
+                for ticker in tickers_to_fetch:
+                    df = self._download_with_yfinance(ticker, days)
+                    if df is not None and not df.empty:
+                        data[ticker] = df
+                        # Sauvegarder en cache
+                        try:
+                            df.to_csv(f'data_cache/{ticker}.csv')
+                        except:
+                            pass
         
         logger.info(f"✅ {len(data)}/{len(self.tickers)} tickers chargés")
         return data
     
-    def _download_ticker(self, ticker, days):
+    def _download_with_yfinance(self, ticker, days):
         """
-        Télécharge un ticker avec yfinance (avec user_agent)
+        Télécharge avec yfinance (fallback)
         
         Args:
             ticker: Symbole ticker
@@ -167,23 +212,21 @@ class SimpleTradingBot:
             end = datetime.now()
             start = end - timedelta(days=days)
             
-            # 🔧 FIX: Utiliser Ticker() au lieu de download() pour contourner bug
             stock = yf.Ticker(ticker)
             df = stock.history(start=start, end=end, interval='1d')
             
             if df.empty or len(df) < 10:
-                logger.warning(f"  ⚠️  {ticker}: Données insuffisantes")
+                logger.warning(f"  ⚠️  {ticker}: Données insuffisantes (yfinance)")
                 return None
             
-            # Renommer colonnes si nécessaire
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = df.columns.get_level_values(0)
             
-            logger.info(f"  ✅ {ticker}: Téléchargé ({len(df)} jours)")
+            logger.info(f"  ✅ {ticker}: yfinance ({len(df)} jours)")
             return df
             
         except Exception as e:
-            logger.error(f"  ❌ {ticker}: Erreur téléchargement - {e}")
+            logger.error(f"  ❌ {ticker}: yfinance - {e}")
             return None
     
     def get_predictions(self, data):
@@ -264,7 +307,7 @@ class SimpleTradingBot:
                             self.positions[ticker] = qty
                             self.cash -= qty * price
                             trades_executed['buy'] += 1
-                            logger.info(f"🟫 {ticker}: BUY {qty} @ ${price:.2f}")
+                            logger.info(f"✅ {ticker}: BUY {qty} @ ${price:.2f}")
                     else:
                         trades_executed['hold'] += 1
                 
@@ -280,7 +323,7 @@ class SimpleTradingBot:
                         self.cash += qty * price
                         self.positions[ticker] = 0
                         trades_executed['sell'] += 1
-                        logger.info(f"🟥 {ticker}: SELL {qty} @ ${price:.2f}")
+                        logger.info(f"✅ {ticker}: SELL {qty} @ ${price:.2f}")
                     else:
                         trades_executed['hold'] += 1
                 
