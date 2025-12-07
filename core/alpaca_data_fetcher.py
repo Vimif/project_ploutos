@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 class AlpacaDataFetcher:
     """
     Fetcher de données historiques via Alpaca
+    Utilise le feed IEX gratuit
     """
     
     def __init__(self, api_key=None, secret_key=None):
@@ -50,10 +51,14 @@ class AlpacaDataFetcher:
                 "  export ALPACA_SECRET_KEY='your_secret'"
             )
         
-        # Initialiser client (pas besoin de paper=True pour les données)
+        # Initialiser client avec feed IEX (GRATUIT)
         try:
-            self.client = StockHistoricalDataClient(self.api_key, self.secret_key)
-            logger.info("✅ Alpaca Data Client initialisé")
+            self.client = StockHistoricalDataClient(
+                self.api_key, 
+                self.secret_key,
+                raw_data=False  # Retourne DataFrames directement
+            )
+            logger.info("✅ Alpaca Data Client initialisé (feed: IEX)")
         except Exception as e:
             logger.error(f"❌ Erreur init Alpaca: {e}")
             raise
@@ -73,7 +78,7 @@ class AlpacaDataFetcher:
         try:
             # Calculer dates
             end = datetime.now()
-            start = end - timedelta(days=days)
+            start = end - timedelta(days=days + 5)  # +5 jours marge pour week-ends
             
             # Mapper timeframe
             tf_map = {
@@ -85,18 +90,19 @@ class AlpacaDataFetcher:
             
             tf = tf_map.get(timeframe, TimeFrame.Day)
             
-            # Requête
+            # Requête avec feed IEX
             request = StockBarsRequest(
                 symbol_or_symbols=ticker,
                 timeframe=tf,
                 start=start,
-                end=end
+                end=end,
+                feed='iex'  # 🔑 CLEF: Utiliser IEX gratuit au lieu de SIP
             )
             
             bars = self.client.get_stock_bars(request)
             
             # Convertir en DataFrame
-            if ticker not in bars.data:
+            if ticker not in bars.data or not bars.data[ticker]:
                 logger.warning(f"⚠️  {ticker}: Aucune donnée retournée")
                 return pd.DataFrame()
             
@@ -118,9 +124,14 @@ class AlpacaDataFetcher:
             })
             
             # Garder seulement OHLCV
-            df = df[['Open', 'High', 'Low', 'Close', 'Volume']]
+            available_cols = [col for col in ['Open', 'High', 'Low', 'Close', 'Volume'] if col in df.columns]
+            df = df[available_cols]
             
-            logger.info(f"✅ {ticker}: {len(df)} barres chargées")
+            # Limiter au nombre de jours demandés
+            if len(df) > days:
+                df = df.tail(days)
+            
+            logger.info(f"✅ {ticker}: {len(df)} barres chargées (IEX)")
             return df
             
         except Exception as e:
