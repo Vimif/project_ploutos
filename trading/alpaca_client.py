@@ -18,6 +18,7 @@ from alpaca.data.timeframe import TimeFrame
 from datetime import datetime, timedelta
 import os
 import json
+import time
 from dotenv import load_dotenv
 from core.utils import setup_logging
 
@@ -188,6 +189,7 @@ class AlpacaClient:
     def cancel_orders_for_symbol(self, symbol):
         """
         Annuler tous les ordres en cours pour un ticker
+        Utile pour éviter les wash trades
         
         Args:
             symbol: Ticker
@@ -211,6 +213,42 @@ class AlpacaClient:
         except Exception as e:
             logger.error(f"❌ Erreur annulation ordres pour {symbol}: {e}")
             return 0
+    
+    def wait_for_order_fill(self, order_id, timeout=30):
+        """
+        ★ ATTENDRE QU'UN ORDRE SOIT EXÉCUTÉ
+        
+        Args:
+            order_id: ID de l'ordre
+            timeout: Timeout en secondes
+        
+        Returns:
+            bool: True si exécuté, False si timeout
+        """
+        start_time = time.time()
+        
+        while time.time() - start_time < timeout:
+            try:
+                order = self.trading_client.get_order_by_id(order_id)
+                status = str(order.status).lower()
+                
+                if 'filled' in status or 'completed' in status:
+                    logger.debug(f"  ✅ Ordre {order_id[:8]}... exécuté")
+                    return True
+                
+                elif 'canceled' in status or 'expired' in status or 'rejected' in status:
+                    logger.warning(f"  ⚠️  Ordre {order_id[:8]}... {status}")
+                    return False
+                
+                # Attendre 0.5s avant de revérifier
+                time.sleep(0.5)
+                
+            except Exception as e:
+                logger.error(f"  ❌ Erreur vérif ordre: {e}")
+                return False
+        
+        logger.warning(f"  ⏱️  Timeout ordre {order_id[:8]}...")
+        return False
     
     def place_market_order(self, symbol, qty, side='buy', reason=''):
         """
@@ -238,6 +276,14 @@ class AlpacaClient:
             order = self.trading_client.submit_order(order_data)
             
             logger.info(f"✅ Ordre {side.upper()} placé: {symbol} x{qty}")
+            
+            # ★ ATTENDRE EXÉCUTION
+            if not self.wait_for_order_fill(order.id, timeout=30):
+                logger.warning(f"⚠️  {symbol}: Ordre non exécuté dans les délais")
+                return None
+            
+            # Récupérer ordre mis à jour
+            order = self.trading_client.get_order_by_id(order.id)
             
             order_dict = {
                 'id': order.id,
@@ -302,6 +348,7 @@ class AlpacaClient:
     def close_position(self, symbol, reason=''):
         """
         Fermer complètement une position avec gestion wash trade
+        ★ ATTEND QUE L'ORDRE SOIT EXÉCUTÉ
         
         Args:
             symbol: Ticker
@@ -325,14 +372,28 @@ class AlpacaClient:
             self.cancel_orders_for_symbol(symbol)
             
             # 3. Attendre 1 seconde
-            import time
             time.sleep(1)
             
-            # 4. Fermer la position
-            self.trading_client.close_position(symbol)
-            logger.info(f"✅ Position fermée: {symbol}")
+            # 4. Fermer la position (crée un ordre SELL)
+            response = self.trading_client.close_position(symbol)
             
-            # ★ 5. Logger en JSON (SAFE - pas de PostgreSQL)
+            # Récupérer l'ID de l'ordre créé
+            order_id = response.id if hasattr(response, 'id') else None
+            
+            if order_id:
+                logger.info(f"✅ Ordre SELL créé: {symbol}")
+                
+                # ★ 5. ATTENDRE EXÉCUTION
+                if not self.wait_for_order_fill(order_id, timeout=30):
+                    logger.error(f"❌ {symbol}: Ordre SELL non exécuté")
+                    return False
+                
+                logger.info(f"✅ Position fermée: {symbol}")
+            else:
+                # API a directement fermé (cas rare)
+                logger.info(f"✅ Position fermée: {symbol}")
+            
+            # ★ 6. Logger le SELL
             account = self.get_account()
             log_trade_to_json(
                 symbol=symbol,
