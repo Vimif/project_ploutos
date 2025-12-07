@@ -1,5 +1,5 @@
 # dashboard/app.py
-"""Dashboard Flask pour le bot de trading - VERSION COMPLÈTE AVEC BDD"""
+"""Dashboard Flask pour le bot de trading - VERSION JSON (Sans PostgreSQL)"""
 
 import sys
 from pathlib import Path
@@ -9,6 +9,9 @@ from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 import traceback
+import json
+from datetime import datetime, timedelta
+from collections import defaultdict
 
 from trading.alpaca_client import AlpacaClient
 from core.utils import setup_logging
@@ -32,18 +35,8 @@ socketio = SocketIO(
 # Client Alpaca global
 alpaca_client = None
 
-# ========== INTÉGRATION BASE DE DONNÉES ==========
-try:
-    from database.db import (
-        get_trade_history, get_trade_statistics,
-        get_portfolio_evolution, get_daily_summary,
-        get_top_symbols, get_win_loss_ratio
-    )
-    DB_AVAILABLE = True
-    logger.info("✅ Module database disponible")
-except ImportError:
-    DB_AVAILABLE = False
-    logger.warning("⚠️  Module database non disponible")
+# Dossier logs trades
+TRADES_LOG_DIR = Path('logs/trades')
 
 def init_alpaca():
     """Initialiser le client Alpaca"""
@@ -57,6 +50,114 @@ def init_alpaca():
         logger.error(f"❌ Erreur init Alpaca: {e}")
         logger.error(traceback.format_exc())
         return False
+
+def load_trades_from_json(days=30):
+    """
+    Charger les trades depuis les fichiers JSON
+    
+    Args:
+        days: Nombre de jours à charger
+    
+    Returns:
+        list: Liste des trades
+    """
+    trades = []
+    
+    try:
+        if not TRADES_LOG_DIR.exists():
+            logger.warning(f"⚠️  Dossier {TRADES_LOG_DIR} n'existe pas")
+            return []
+        
+        # Charger tous les fichiers trades_*.json
+        for json_file in sorted(TRADES_LOG_DIR.glob('trades_*.json'), reverse=True):
+            try:
+                with open(json_file, 'r') as f:
+                    file_trades = json.load(f)
+                    trades.extend(file_trades)
+            except Exception as e:
+                logger.error(f"❌ Erreur lecture {json_file}: {e}")
+        
+        # Filtrer par date si nécessaire
+        if days and trades:
+            cutoff = datetime.now() - timedelta(days=days)
+            trades = [
+                t for t in trades 
+                if datetime.fromisoformat(t['timestamp']) > cutoff
+            ]
+        
+        # Trier par date décroissante
+        trades.sort(key=lambda t: t['timestamp'], reverse=True)
+        
+        logger.debug(f"✅ {len(trades)} trades chargés depuis JSON")
+        return trades
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur load_trades_from_json: {e}")
+        return []
+
+def calculate_statistics_from_trades(trades):
+    """
+    Calculer statistiques depuis les trades JSON
+    
+    Args:
+        trades: Liste des trades
+    
+    Returns:
+        dict: Statistiques
+    """
+    if not trades:
+        return {
+            'total_trades': 0,
+            'buy_count': 0,
+            'sell_count': 0,
+            'total_volume': 0,
+            'avg_trade_size': 0
+        }
+    
+    buy_trades = [t for t in trades if t['action'] == 'BUY']
+    sell_trades = [t for t in trades if t['action'] == 'SELL']
+    
+    total_volume = sum(t['amount'] for t in trades)
+    
+    return {
+        'total_trades': len(trades),
+        'buy_count': len(buy_trades),
+        'sell_count': len(sell_trades),
+        'total_volume': total_volume,
+        'avg_trade_size': total_volume / len(trades) if trades else 0
+    }
+
+def get_top_symbols_from_trades(trades, limit=10):
+    """
+    Obtenir les symboles les plus tradés
+    
+    Args:
+        trades: Liste des trades
+        limit: Nombre de symboles à retourner
+    
+    Returns:
+        list: Top symboles
+    """
+    symbol_stats = defaultdict(lambda: {'count': 0, 'volume': 0})
+    
+    for trade in trades:
+        symbol = trade['symbol']
+        symbol_stats[symbol]['count'] += 1
+        symbol_stats[symbol]['volume'] += trade['amount']
+    
+    # Convertir en liste et trier
+    top_symbols = [
+        {
+            'symbol': symbol,
+            'trade_count': stats['count'],
+            'total_volume': stats['volume']
+        }
+        for symbol, stats in symbol_stats.items()
+    ]
+    
+    top_symbols.sort(key=lambda x: x['trade_count'], reverse=True)
+    
+    return top_symbols[:limit]
 
 @app.route('/')
 def index():
@@ -188,29 +289,26 @@ def close_position(symbol):
         logger.error(f"❌ Erreur close_position: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-# ========== ROUTES AVEC BASE DE DONNÉES ==========
+# ========== ROUTES LECTURE JSON (REMPLACEMENT BDD) ==========
 
 @app.route('/api/db/trades')
 def api_db_trades():
-    """Historique trades depuis BDD"""
-    if not DB_AVAILABLE:
-        return jsonify({'success': False, 'error': 'BDD non configurée'}), 503
-    
+    """Historique trades depuis JSON"""
     try:
         days = int(request.args.get('days', 30))
         symbol = request.args.get('symbol', None)
         
-        trades = get_trade_history(days=days, symbol=symbol)
+        trades = load_trades_from_json(days=days)
         
-        # Convertir les dates en string pour JSON
-        for trade in trades:
-            if 'timestamp' in trade and trade['timestamp']:
-                trade['timestamp'] = str(trade['timestamp'])
+        # Filtrer par symbole si demandé
+        if symbol:
+            trades = [t for t in trades if t['symbol'] == symbol]
         
         return jsonify({
             'success': True,
             'data': trades,
-            'count': len(trades)
+            'count': len(trades),
+            'source': 'json'
         })
     except Exception as e:
         logger.error(f"❌ Erreur /api/db/trades: {e}")
@@ -218,34 +316,29 @@ def api_db_trades():
 
 @app.route('/api/db/statistics')
 def api_db_statistics():
-    """Statistiques depuis BDD"""
-    if not DB_AVAILABLE:
-        return jsonify({'success': False, 'error': 'BDD non configurée'}), 503
-    
+    """Statistiques depuis JSON"""
     try:
         days = int(request.args.get('days', 30))
         
-        stats = get_trade_statistics(days=days)
-        top_symbols = get_top_symbols(days=days, limit=10)
-        win_loss = get_win_loss_ratio(days=days)
+        trades = load_trades_from_json(days=days)
+        stats = calculate_statistics_from_trades(trades)
+        top_symbols = get_top_symbols_from_trades(trades, limit=10)
         
-        # Convertir Decimal en float
-        for key in stats:
-            if stats[key] is not None:
-                stats[key] = float(stats[key])
-        
-        for symbol_data in top_symbols:
-            for key in symbol_data:
-                if symbol_data[key] is not None and key != 'symbol':
-                    symbol_data[key] = float(symbol_data[key])
+        # Win/loss basique
+        buy_count = stats['buy_count']
+        sell_count = stats['sell_count']
         
         return jsonify({
             'success': True,
             'data': {
                 'statistics': stats,
                 'top_symbols': top_symbols,
-                'win_loss': win_loss
-            }
+                'win_loss': {
+                    'buy_count': buy_count,
+                    'sell_count': sell_count
+                }
+            },
+            'source': 'json'
         })
     except Exception as e:
         logger.error(f"❌ Erreur /api/db/statistics: {e}")
@@ -253,25 +346,36 @@ def api_db_statistics():
 
 @app.route('/api/db/evolution')
 def api_db_evolution():
-    """Évolution portfolio depuis BDD"""
-    if not DB_AVAILABLE:
-        return jsonify({'success': False, 'error': 'BDD non configurée'}), 503
-    
+    """Évolution portfolio depuis JSON"""
     try:
         days = int(request.args.get('days', 30))
-        evolution = get_portfolio_evolution(days=days)
+        trades = load_trades_from_json(days=days)
         
-        # Convertir dates et Decimal
-        for point in evolution:
-            if 'date' in point and point['date']:
-                point['date'] = str(point['date'])
-            for key in ['portfolio_value', 'total_pl', 'cash']:
-                if key in point and point[key] is not None:
-                    point[key] = float(point[key])
+        # Grouper par jour
+        daily_data = defaultdict(lambda: {'trades': 0, 'volume': 0, 'portfolio_value': None})
+        
+        for trade in trades:
+            date = trade['timestamp'][:10]  # YYYY-MM-DD
+            daily_data[date]['trades'] += 1
+            daily_data[date]['volume'] += trade['amount']
+            if trade.get('portfolio_value'):
+                daily_data[date]['portfolio_value'] = trade['portfolio_value']
+        
+        # Convertir en liste
+        evolution = [
+            {
+                'date': date,
+                'trades': data['trades'],
+                'volume': data['volume'],
+                'portfolio_value': data['portfolio_value']
+            }
+            for date, data in sorted(daily_data.items())
+        ]
         
         return jsonify({
             'success': True,
-            'data': evolution
+            'data': evolution,
+            'source': 'json'
         })
     except Exception as e:
         logger.error(f"❌ Erreur /api/db/evolution: {e}")
@@ -279,25 +383,42 @@ def api_db_evolution():
 
 @app.route('/api/db/summary')
 def api_db_summary():
-    """Résumés quotidiens depuis BDD"""
-    if not DB_AVAILABLE:
-        return jsonify({'success': False, 'error': 'BDD non configurée'}), 503
-    
+    """Résumés quotidiens depuis JSON"""
     try:
         days = int(request.args.get('days', 30))
-        summaries = get_daily_summary(days=days)
+        trades = load_trades_from_json(days=days)
         
-        # Convertir dates et Decimal
-        for summary in summaries:
-            if 'date' in summary and summary['date']:
-                summary['date'] = str(summary['date'])
-            for key in ['portfolio_value', 'cash', 'buying_power', 'total_pl']:
-                if key in summary and summary[key] is not None:
-                    summary[key] = float(summary[key])
+        # Grouper par jour
+        daily_summary = defaultdict(lambda: {
+            'date': None,
+            'trade_count': 0,
+            'buy_count': 0,
+            'sell_count': 0,
+            'total_volume': 0,
+            'portfolio_value': None
+        })
+        
+        for trade in trades:
+            date = trade['timestamp'][:10]
+            daily_summary[date]['date'] = date
+            daily_summary[date]['trade_count'] += 1
+            daily_summary[date]['total_volume'] += trade['amount']
+            
+            if trade['action'] == 'BUY':
+                daily_summary[date]['buy_count'] += 1
+            else:
+                daily_summary[date]['sell_count'] += 1
+            
+            if trade.get('portfolio_value'):
+                daily_summary[date]['portfolio_value'] = trade['portfolio_value']
+        
+        summaries = list(daily_summary.values())
+        summaries.sort(key=lambda x: x['date'], reverse=True)
         
         return jsonify({
             'success': True,
-            'data': summaries
+            'data': summaries,
+            'source': 'json'
         })
     except Exception as e:
         logger.error(f"❌ Erreur /api/db/summary: {e}")
@@ -316,12 +437,12 @@ def handle_disconnect():
 
 if __name__ == '__main__':
     logger.info("="*70)
-    logger.info("🚀 DÉMARRAGE DU DASHBOARD PLOUTOS")
+    logger.info("🚀 DÉMARRAGE DU DASHBOARD PLOUTOS (JSON MODE)")
     logger.info("="*70)
     
     if init_alpaca():
         logger.info("✅ Dashboard prêt sur http://0.0.0.0:5000")
-        logger.info(f"📊 Base de données: {'✅ Disponible' if DB_AVAILABLE else '❌ Non configurée'}")
+        logger.info("📝 Source données: Fichiers JSON (logs/trades/)")
         logger.info("="*70)
         socketio.run(app, host='0.0.0.0', port=5000, debug=False, use_reloader=False)
     else:
