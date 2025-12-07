@@ -107,7 +107,7 @@ class SimpleTradingBot:
         self.client = None
         if ALPACA_TRADING_AVAILABLE:
             try:
-                self.client = AlpacaClient(paper_trading=paper_trading)  # ★ FIX ICI
+                self.client = AlpacaClient(paper_trading=paper_trading)
                 logger.info(f"✅ Alpaca Trading connecté (Paper: {paper_trading})")
                 
                 # Afficher infos compte
@@ -131,7 +131,30 @@ class SimpleTradingBot:
             account = self.client.get_account()
             if account:
                 self.cash = account['cash']
+    
+    def sync_with_alpaca(self):
+        """
+        ★ SYNCHRONISER POSITIONS ET CASH AVEC ALPACA
+        À appeler AVANT les prédictions
+        """
+        if not self.client:
+            return
         
+        try:
+            # Récupérer compte
+            account = self.client.get_account()
+            if account:
+                self.cash = float(account['cash'])
+            
+            # Récupérer positions
+            alpaca_positions = self.client.get_positions()
+            self.positions = {pos['symbol']: float(pos['qty']) for pos in alpaca_positions}
+            
+            logger.info(f"🔄 Sync Alpaca: ${self.cash:,.2f} cash, {len(self.positions)} positions")
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur sync Alpaca: {e}")
+    
     def get_market_data(self, days=30):
         """
         Télécharge données récentes
@@ -263,6 +286,9 @@ class SimpleTradingBot:
         logger.info("🔮 Génération prédictions...")
         
         try:
+            # ★ SYNC AVEC ALPACA AVANT PRÉDICTIONS
+            self.sync_with_alpaca()
+            
             # ✅ FIX: Calculer max_steps adapté aux données
             min_data_length = min(len(df) for df in data.values())
             
@@ -276,7 +302,7 @@ class SimpleTradingBot:
                 data=data,
                 initial_balance=self.cash,
                 commission=0.0001,
-                max_steps=max_steps,  # ✅ Adapté aux données
+                max_steps=max_steps,
                 buy_pct=0.2
             )
             
@@ -289,7 +315,20 @@ class SimpleTradingBot:
             
             for i, ticker in enumerate(env.tickers):
                 action = int(actions[i])
-                predictions[ticker] = action_map[action]
+                predicted_action = action_map[action]
+                
+                # ★ FILTRER LES PRÉDICTIONS IMPOSSIBLES
+                current_position = self.positions.get(ticker, 0)
+                
+                if predicted_action == 'SELL' and current_position == 0:
+                    logger.debug(f"  ⚠️  {ticker}: SELL prédit mais pas de position → HOLD")
+                    predicted_action = 'HOLD'
+                
+                elif predicted_action == 'BUY' and current_position > 0:
+                    logger.debug(f"  ⚠️  {ticker}: BUY prédit mais déjà en position → HOLD")
+                    predicted_action = 'HOLD'
+                
+                predictions[ticker] = predicted_action
             
             # Stats
             stats = {a: sum(1 for v in predictions.values() if v == a) for a in ['BUY', 'SELL', 'HOLD']}
@@ -315,11 +354,9 @@ class SimpleTradingBot:
         
         trades_executed = {'buy': 0, 'sell': 0, 'hold': 0}
         
-        # ✅ Si client Alpaca, récupérer positions réelles
+        # ★ VÉRIFIER SYNC (normalement déjà fait dans get_predictions)
         if self.client:
-            alpaca_positions = self.client.get_positions()
-            self.positions = {pos['symbol']: pos['qty'] for pos in alpaca_positions}
-            logger.info(f"  Positions Alpaca: {len(self.positions)} actives")
+            logger.info(f"  Positions actuelles: {len(self.positions)} actives")
         
         for ticker, action in predictions.items():
             price = current_prices.get(ticker)
@@ -437,7 +474,7 @@ class SimpleTradingBot:
                 logger.warning("⚠️  Pas de données - cycle annulé")
                 return
             
-            # 2. Générer prédictions
+            # 2. Générer prédictions (avec sync Alpaca intégré)
             predictions = self.get_predictions(data)
             
             if not predictions:
