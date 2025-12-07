@@ -17,6 +17,7 @@ from alpaca.data.timeframe import TimeFrame
 
 from datetime import datetime, timedelta
 import os
+import threading
 from dotenv import load_dotenv
 from core.utils import setup_logging
 
@@ -33,6 +34,23 @@ try:
 except ImportError:
     DB_AVAILABLE = False
     logger.warning("⚠️  Module database non disponible")
+
+# ★ LOGGER ASYNCHRONE POUR ÉVITER CRASH
+def async_log_trade(*args, **kwargs):
+    """
+    Logger un trade dans un thread séparé
+    Si ça crash, le bot continue
+    """
+    def _log():
+        try:
+            log_trade(*args, **kwargs)
+            logger.debug(f"✅ Trade loggé en BDD: {kwargs.get('symbol', '?')}")
+        except Exception as e:
+            logger.warning(f"⚠️  Échec log BDD (non-bloquant): {e}")
+    
+    # Lancer dans un thread détaché
+    thread = threading.Thread(target=_log, daemon=True)
+    thread.start()
 
 class AlpacaClient:
     """Client Alpaca pour le trading"""
@@ -141,7 +159,7 @@ class AlpacaClient:
     
     def cancel_orders_for_symbol(self, symbol):
         """
-        ★ NOUVEAU: Annuler tous les ordres en cours pour un ticker
+        Annuler tous les ordres en cours pour un ticker
         Utile pour éviter les wash trades
         
         Args:
@@ -169,7 +187,7 @@ class AlpacaClient:
     
     def place_market_order(self, symbol, qty, side='buy', reason=''):
         """
-        Passer un ordre au marché AVEC LOGGING BDD
+        Passer un ordre au marché AVEC LOGGING BDD ASYNCHRONE
         
         Args:
             symbol: Ticker (ex: 'AAPL')
@@ -203,26 +221,22 @@ class AlpacaClient:
                 'filled_avg_price': float(order.filled_avg_price) if order.filled_avg_price else None
             }
             
-            # ========== LOGGER DANS LA BDD (SAFE) ==========
+            # ★ LOGGER DE MANIÈRE ASYNCHRONE
             if DB_AVAILABLE:
-                try:
-                    account = self.get_account()
-                    price = float(order.filled_avg_price) if order.filled_avg_price else self.get_current_price(symbol)
-                    
-                    if price and price > 0:
-                        log_trade(
-                            symbol=symbol,
-                            action=side.upper(),
-                            quantity=qty,
-                            price=price,
-                            amount=qty * price,
-                            reason=reason,
-                            portfolio_value=account['portfolio_value'] if account else None,
-                            order_id=order.id
-                        )
-                except Exception as db_error:
-                    # ★ NE PAS CRASH SI BDD FAIL
-                    logger.warning(f"⚠️  Log BDD échoué: {db_error}")
+                account = self.get_account()
+                price = float(order.filled_avg_price) if order.filled_avg_price else self.get_current_price(symbol)
+                
+                if price and price > 0:
+                    async_log_trade(
+                        symbol=symbol,
+                        action=side.upper(),
+                        quantity=qty,
+                        price=price,
+                        amount=qty * price,
+                        reason=reason,
+                        portfolio_value=account['portfolio_value'] if account else None,
+                        order_id=order.id
+                    )
             
             return order_dict
         
@@ -261,7 +275,7 @@ class AlpacaClient:
     
     def close_position(self, symbol, reason=''):
         """
-        ★ FIX: Fermer complètement une position AVEC GESTION WASH TRADE
+        Fermer complètement une position avec gestion wash trade
         
         Args:
             symbol: Ticker
@@ -271,7 +285,7 @@ class AlpacaClient:
             bool: Succès/échec
         """
         try:
-            # ★ 1. Vérifier que la position existe
+            # 1. Vérifier que la position existe
             position = self.get_position(symbol)
             
             if not position:
@@ -281,32 +295,29 @@ class AlpacaClient:
             qty = position['qty']
             current_price = position['current_price']
             
-            # ★ 2. Annuler tous les ordres en cours pour éviter wash trade
+            # 2. Annuler tous les ordres en cours pour éviter wash trade
             self.cancel_orders_for_symbol(symbol)
             
-            # ★ 3. Attendre 1 seconde pour que les annulations soient prises en compte
+            # 3. Attendre 1 seconde pour que les annulations soient prises en compte
             import time
             time.sleep(1)
             
-            # ★ 4. Fermer la position
+            # 4. Fermer la position
             self.trading_client.close_position(symbol)
             logger.info(f"✅ Position fermée: {symbol}")
             
-            # ★ 5. Logger le SELL (SAFE)
+            # ★ 5. Logger le SELL de manière ASYNCHRONE
             if DB_AVAILABLE:
-                try:
-                    account = self.get_account()
-                    log_trade(
-                        symbol=symbol,
-                        action='SELL',
-                        quantity=qty,
-                        price=current_price,
-                        amount=qty * current_price,
-                        reason=reason or 'Fermeture position',
-                        portfolio_value=account['portfolio_value'] if account else None
-                    )
-                except Exception as db_error:
-                    logger.warning(f"⚠️  Log BDD échoué: {db_error}")
+                account = self.get_account()
+                async_log_trade(
+                    symbol=symbol,
+                    action='SELL',
+                    quantity=qty,
+                    price=current_price,
+                    amount=qty * current_price,
+                    reason=reason or 'Fermeture position',
+                    portfolio_value=account['portfolio_value'] if account else None
+                )
             
             return True
                 
@@ -369,15 +380,19 @@ class AlpacaClient:
             return False
     
     def log_current_positions(self):
-        """Logger toutes les positions actuelles dans la BDD (SAFE)"""
+        """Logger toutes les positions actuelles dans la BDD (ASYNCHRONE)"""
         if not DB_AVAILABLE:
-            logger.warning("⚠️  BDD non disponible pour log positions")
             return
         
-        try:
-            positions = self.get_positions()
-            if positions:
-                log_all_positions(positions)
-                logger.info(f"✅ {len(positions)} positions loggées dans BDD")
-        except Exception as e:
-            logger.warning(f"⚠️  Erreur log_current_positions: {e}")
+        def _log():
+            try:
+                positions = self.get_positions()
+                if positions:
+                    log_all_positions(positions)
+                    logger.info(f"✅ {len(positions)} positions loggées dans BDD")
+            except Exception as e:
+                logger.warning(f"⚠️  Échec log positions (non-bloquant): {e}")
+        
+        # Lancer dans un thread
+        thread = threading.Thread(target=_log, daemon=True)
+        thread.start()
