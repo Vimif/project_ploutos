@@ -27,7 +27,7 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 
 # Import modules Ploutos
-from core.data_fetcher import UniversalDataFetcher  # FIX: Nom correct
+from core.data_fetcher import UniversalDataFetcher
 from core.universal_environment_v2 import UniversalTradingEnvV2
 from stable_baselines3 import PPO
 
@@ -37,16 +37,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Configuration
+# Configuration - MEMES 10 TICKERS QUE L'ENTRAINEMENT
 TICKERS = [
-    # Growth
-    "NVDA", "MSFT", "AAPL", "GOOGL", "AMZN",
-    # Defensive
-    "SPY", "QQQ", "VOO", "VTI",
-    # Energy
-    "XOM", "CVX", "COP",
-    # Finance
-    "JPM", "BAC", "WFC"
+    # Tech Growth
+    'NVDA', 'MSFT', 'AAPL', 'GOOGL', 'AMZN',
+    # Indices
+    'SPY', 'QQQ', 'VOO',
+    # Sectoriels
+    'XLE',  # Energy
+    'XLF'   # Finance
 ]
 
 INITIAL_BALANCE = 100000
@@ -84,7 +83,7 @@ class BacktestReliability:
         """Charger données historiques"""
         logger.info(f"📊 Chargement données {days} jours...")
         
-        fetcher = UniversalDataFetcher()  # FIX: Nom correct
+        fetcher = UniversalDataFetcher()
         end_date = datetime.now()
         start_date = end_date - timedelta(days=days + 100)  # +100 pour warmup
         
@@ -93,7 +92,7 @@ class BacktestReliability:
         
         for ticker in self.tickers:
             try:
-                df = fetcher.fetch(  # FIX: Méthode fetch() au lieu de fetch_stock_data()
+                df = fetcher.fetch(
                     ticker,
                     start_date.strftime('%Y-%m-%d'),
                     end_date.strftime('%Y-%m-%d'),
