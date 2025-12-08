@@ -48,6 +48,7 @@ htmlcov/
 .idea/
 *.swp
 *.swo
+.env
 
 # OS
 .DS_Store

@@ -1,320 +1,247 @@
-# 🔍 Guide de Monitoring Production
+# 📊 Monitoring Ploutos Trading
 
 ## 🎯 Vue d'ensemble
 
-Ce guide explique comment utiliser le système de monitoring de Ploutos pour détecter la **dérive de modèle** (model drift) en production.
+Système de monitoring complet avec Prometheus + Grafana pour surveillance en temps réel.
 
 ---
 
-## 📚 Types de Dérive
+## 🚀 Installation
 
-### **1. Data Drift (Dérive des Données)**
+### 1. Installer Prometheus + Grafana
 
-**Définition** : La distribution des features change (P(X) ≠ P'(X))
+cd /root/ploutos/project_ploutos
+bash scripts/setup_grafana.sh
 
-**Exemples** :
-- Volatilité moyenne passe de 15% à 40% (crise COVID)
-- Volume moyen double (nouveaux traders retail)
-- Corrélations sectorielles changent
+text
 
-**Détection** : PSI (Population Stability Index) + KS Test
+**Installation complète :**
+- ✅ Prometheus (collecte métriques)
+- ✅ Grafana (visualisation)
+- ✅ Configuration automatique
+- ✅ Démarrage automatique
 
----
+### 2. Importer le dashboard
 
-### **2. Concept Drift (Dérive du Concept)**
+python scripts/import_grafana_dashboard.py
 
-**Définition** : La relation X→Y change (P(Y|X) ≠ P'(Y|X))
+text
 
-**Exemples** :
-- RSI>70 ne signifie plus "surachété"
-- Breakout patterns ne fonctionnent plus
-- Mean-reversion disparaît (trending market)
+### 3. Accéder à Grafana
 
-**Détection** : ADDM (Autoregressive Drift Detection Method)
+URL: http://localhost:3000
+Username: admin
+Password: admin (à changer)
 
----
-
-### **3. Model Drift (Dérive du Modèle)**
-
-**Définition** : Performance du modèle se dégrade
-
-**Symptômes** :
-- Sharpe Ratio : 1.5 → 0.3
-- Max Drawdown : -15% → -35%
-- Win Rate : 55% → 45%
-
-**Détection** : Comparaison métriques baseline vs actuelles
+text
 
 ---
 
-## 🛠️ Utilisation
+## 📈 Métriques disponibles
 
-### **1. Test Local**
+### Portfolio
+- `ploutos_portfolio_value_usd` - Valeur totale
+- `ploutos_cash_available_usd` - Cash disponible
+- `ploutos_buying_power_usd` - Buying power
+- `ploutos_positions_count` - Nombre de positions
+- `ploutos_exposure_percent` - Exposition %
 
-```bash
-# Tester le drift detector
-python3 core/drift_detector.py
+### Performance
+- `ploutos_daily_pnl_usd` - P&L quotidien $
+- `ploutos_daily_pnl_percent` - P&L quotidien %
+- `ploutos_total_pnl_usd` - P&L total
+- `ploutos_unrealized_pnl_usd` - P&L non réalisé
+- `ploutos_win_rate_percent` - Taux de réussite
 
-# Output attendu :
-# ✅ Drift Detector initialisé
-# 🟢 Test 1 : Pas de dérive
-# 🔴 Test 2 : Dérive détectée
-```
+### Trading
+- `ploutos_trades_total` - Compteur trades
+- `ploutos_trade_amount_usd` - Distribution montants
+- `ploutos_trade_latency_seconds` - Latence exécution
+- `ploutos_predictions_total` - Compteur prédictions
 
----
+### Risk Management
+- `ploutos_circuit_breaker_active` - État circuit breaker
+- `ploutos_risky_positions_count` - Positions à risque
+- `ploutos_max_drawdown_percent` - Drawdown max
+- `ploutos_sharpe_ratio` - Sharpe ratio
 
-### **2. Monitoring Production**
-
-```bash
-# Monitoring simple
-python3 scripts/monitor_production.py --model models/stage1_final.zip
-
-# Monitoring avec auto-retrain
-python3 scripts/monitor_production.py --model models/stage1_final.zip --auto-retrain
-
-# Haute sensibilité
-python3 scripts/monitor_production.py --model models/stage1_final.zip --sensitivity high
-```
-
----
-
-### **3. Intégration Cron (Monitoring Automatique)**
-
-```bash
-# Éditer crontab
-crontab -e
-
-# Ajouter monitoring quotidien à 8h
-0 8 * * * cd /root/ploutos/project_ploutos && /root/ai-factory/venv/bin/python3 scripts/monitor_production.py --model models/stage1_final.zip >> logs/monitor.log 2>&1
-
-# Monitoring toutes les 6h
-0 */6 * * * cd /root/ploutos/project_ploutos && /root/ai-factory/venv/bin/python3 scripts/monitor_production.py --model models/stage1_final.zip --sensitivity high >> logs/monitor.log 2>&1
-```
+### Système
+- `ploutos_errors_total` - Compteur erreurs
+- `ploutos_alerts_total` - Compteur alertes
+- `ploutos_api_request_duration_seconds` - Latence API
 
 ---
 
-## 📊 Métriques de Détection
+## 🎨 Dashboard Grafana
 
-### **PSI (Population Stability Index)**
+### Panneaux principaux
 
-```
-PSI = Σ (current% - baseline%) * ln(current%/baseline%)
-
-Interprétation :
-- PSI < 0.10  : Pas de dérive ✅
-- 0.10-0.25   : Dérive modérée ⚠️
-- PSI > 0.25  : Dérive critique ❌
-```
-
----
-
-### **KS Test (Kolmogorov-Smirnov)**
-
-```
-H0 : Les 2 distributions sont identiques
-
-Si p-value < 0.05 :
-  → Rejet H0 → Dérive détectée
-```
+1. **💰 Portfolio Value** - Évolution temps réel
+2. **📊 Daily P&L** - Profit/Loss quotidien
+3. **💼 Positions** - Nombre et exposition
+4. **🎯 Win Rate** - Gauge taux de réussite
+5. **🚨 Circuit Breaker** - État de sécurité
+6. **📈 Trades Timeline** - Historique trades
+7. **⚠️ Risk Metrics** - Positions à risque
+8. **📉 Performance** - Sharpe, Drawdown
 
 ---
 
-### **Seuils par Sensibilité**
+## 🔧 Configuration avancée
 
-| Métrique | Low | Medium | High |
-|----------|-----|--------|------|
-| **PSI** | 0.25 | 0.15 | 0.10 |
-| **KS** | 0.20 | 0.15 | 0.10 |
-| **Performance** | 0.30 | 0.20 | 0.15 |
+### Modifier la fréquence de rafraîchissement
 
----
+Dans Grafana, en haut à droite :
+- 5s, 10s, 30s, 1m, 5m, 15m, 30m
 
-## 🚨 Interprétation des Résultats
+### Ajouter des alertes Grafana
 
-### **Exemple 1 : Pas de Dérive**
+1. Ouvrir un panneau
+2. Alert tab
+3. Create Alert
+4. Définir conditions (ex: `portfolio_value < 95000`)
+5. Ajouter notification channel
 
-```
-✅ Aucune dérive détectée
-   Le modèle fonctionne correctement
+### Exporter les données
 
-📊 Métriques :
-   PSI max    : 0.08
-   Sharpe     : 1.48
-   Max DD     : -11.5%
-```
+Via Prometheus API
 
-**Action** : Continuer monitoring normal
+curl 'http://localhost:9090/api/v1/query?query=ploutos_portfolio_value_usd'
+CSV depuis Grafana
 
----
+Dashboard → Panel → More → Export CSV
 
-### **Exemple 2 : Data Drift Modéré**
-
-```
-🚨 DÉRIVE DÉTECTÉE
-  Type     : DATA
-  Sévérité : MEDIUM
-
-  Features dérivées (3) :
-    - close_norm (PSI: 0.18)
-    - volume_norm (PSI: 0.16)
-    - rsi (PSI: 0.14)
-
-📋 Recommandations :
-  ⚠️ Data Drift détecté (PSI=0.18)
-  Features impactées: close_norm, volume_norm, rsi
-```
-
-**Action** :
-1. Surveiller performance 7 prochains jours
-2. Si dégradation continue, retraîner
+text
 
 ---
 
-### **Exemple 3 : Model Drift Critique**
+## 📊 Requêtes Prometheus utiles
 
-```
-🚨 DÉRIVE DÉTECTÉE
-  Type     : MODEL
-  Sévérité : HIGH
+### Portfolio actuel
 
-📋 Recommandations :
-  📉 Model Drift détecté
-  Sharpe: 1.50 → 0.75
-```
+ploutos_portfolio_value_usd
 
-**Action Immédiate** :
-1. ⚠️ Arrêter trading live
-2. Lancer retraînement : `python3 scripts/train_curriculum.py --stage 1`
-3. Valider nouveau modèle (walk-forward)
-4. Déployer après tests
+text
 
----
+### P&L sur 24h
 
-## 🔄 Stratégies de Réaction
+ploutos_daily_pnl_usd
 
-### **1. Retraînement Manuel**
+text
 
-```bash
-# 1. Arrêter bot
-systemctl stop ploutos-trader-v2.service
+### Taux de trades par heure
 
-# 2. Retraîner
-cd /root/ai-factory/tmp/project_ploutos
-source /root/ai-factory/venv/bin/activate
-python3 scripts/train_curriculum.py --stage 1
+rate(ploutos_trades_total[1h]) * 3600
 
-# 3. Valider
-python3 scripts/monitor_production.py --model models/stage1_final.zip
+text
 
-# 4. Remplacer modèle
-cp models/stage1_final.zip /root/ploutos/project_ploutos/models/
+### Latence médiane trades
 
-# 5. Redémarrer bot
-systemctl start ploutos-trader-v2.service
-```
+histogram_quantile(0.5, rate(ploutos_trade_latency_seconds_bucket[5m]))
+
+text
+
+### Win rate glissant 7 jours
+
+avg_over_time(ploutos_win_rate_percent[7d])
+
+text
 
 ---
 
-### **2. Retraînement Automatique (Futur)**
+## 🚨 Alertes recommandées
 
-```bash
-# Activer auto-retrain
-python3 scripts/monitor_production.py \
-  --model models/stage1_final.zip \
-  --auto-retrain
+### Circuit Breaker
 
-# Retraîne automatiquement si dérive medium/high
-```
+ploutos_circuit_breaker_active == 1
 
----
+text
+→ Alerte critique immédiate
 
-### **3. Fallback Model**
+### Perte quotidienne > 2%
 
-```python
-# Dans bot/trading_bot.py
+ploutos_daily_pnl_percent < -2
 
-if drift_detector.detect_drift()['drift_detected']:
-    # Basculer vers modèle conservateur
-    model = load_fallback_model('models/conservative.zip')
-```
+text
+→ Alerte warning
 
----
+### Win rate < 50%
 
-## 📊 Visualisation
+ploutos_win_rate_percent < 50
 
-### **Graphiques Générés**
+text
+→ Alerte info
 
-```
-reports/
-├── drift_monitoring_latest.json  # Dernier rapport
-├── drift_report.json             # Historique complet
-└── drift_history.png             # Graphique évolution
-```
+### Positions à risque > 3
+
+ploutos_risky_positions_count > 3
+
+text
+→ Alerte warning
 
 ---
 
-### **Dashboard Grafana (Futur)**
+## 🔍 Troubleshooting
 
-**Métriques à tracker** :
-- PSI Score (Time Series)
-- Sharpe Ratio (Gauge)
-- Max Drawdown (Gauge)
-- Drift Events (Counter)
-- Features dérivées (Table)
+### Métriques non visibles
 
----
+Vérifier serveur Prometheus
 
-## ✅ Checklist Production
+curl http://localhost:9090/metrics
+Vérifier bot live_trader lancé
 
-- [ ] **Baseline établie** : `data_cache/baseline_stats.csv` existe
-- [ ] **Performance baseline enregistrée** : Sharpe, Max DD, Win Rate
-- [ ] **Monitoring cron activé** : Au moins 1x/jour
-- [ ] **Alertes configurées** : Email/Slack si drift > medium
-- [ ] **Procédure retraînement documentée** : Checklist claire
-- [ ] **Fallback model prêt** : Modèle conservateur en backup
-- [ ] **Tests réguliers** : Lancer `monitor_production.py` hebdomadaire
-- [ ] **Logs archivés** : `logs/drift_events.jsonl` rotate automatique
+ps aux | grep live_trader
+Vérifier logs
 
----
+tail -f logs/live_trader.log
 
-## 📚 Références
+text
 
-- **PSI** : [Yurdakul (2018) - Statistical Properties of Population Stability Index](https://www.lexjansen.com/wuss/2017/47_Final_Paper_PDF.pdf)
-- **KS Test** : [Kolmogorov-Smirnov Test](https://en.wikipedia.org/wiki/Kolmogorov%E2%80%93Smirnov_test)
-- **ADDM** : [Autoregressive Drift Detection Method](https://blog.quantinsti.com/autoregressive-drift-detection-method/)
-- **Concept Drift** : [Gama et al. (2014) - A Survey on Concept Drift Adaptation](https://dl.acm.org/doi/10.1145/2523813)
+### Grafana ne démarre pas
+
+sudo systemctl status grafana-server
+sudo journalctl -u grafana-server -f
+
+text
+
+### Dashboard vide
+
+1. Vérifier datasource : Grafana → Configuration → Data Sources
+2. Vérifier Prometheus : http://localhost:9090
+3. Vérifier bot actif avec métriques
 
 ---
 
-## ❓ FAQ
+## 📱 Accès distant
 
-### **Q: À quelle fréquence monitorer ?**
-**R** : Dépend du marché
-- **Marchés volatils** (crypto) : Toutes les 6h
-- **Actions US** : 1x/jour
-- **Forex** : 2x/semaine
+### Tunnel SSH
 
-### **Q: Que faire si dérive persistante ?**
-**R** : 3 options
-1. Retraîner modèle sur données récentes
-2. Changer stratégie (ex: mean-reversion → momentum)
-3. Arrêter trading jusqu'à stabilisation marché
+ssh -L 3000:localhost:3000 user@server
 
-### **Q: PSI élevé mais performance OK ?**
-**R** : Possible si :
-- Modèle robuste aux changements
-- Nouveaux patterns bénéfiques
+text
+→ Accès via http://localhost:3000
 
-Action : Surveiller, pas d'urgence
+### Reverse proxy Nginx
 
-### **Q: Comment établir baseline initiale ?**
-**R** : Utiliser données train/validation de l'entraînement
+server {
+listen 80;
+server_name monitoring.ploutos.com;
 
-```bash
-# Sauvegarder baseline après entraînement
-cp data_cache/SPY.csv data_cache/baseline_stats.csv
-```
+text
+location / {
+    proxy_pass http://localhost:3000;
+}
+
+}
+
+text
 
 ---
 
-**Dernière mise à jour** : 5 décembre 2025
+## 🎯 Best Practices
+
+1. **Rétention données** : Prometheus garde 15j par défaut
+2. **Refresh rate** : 30s recommandé (pas trop fréquent)
+3. **Alertes** : Configurer pour événements critiques
+4. **Snapshots** : Prendre régulièrement des snapshots dashboard
+5. **Backup** : Sauvegarder `/var/lib/grafana`
