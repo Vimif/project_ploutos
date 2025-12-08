@@ -27,7 +27,7 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 
 # Import modules Ploutos
-from core.data_fetcher import DataFetcher
+from core.data_fetcher import UniversalDataFetcher  # FIX: Nom correct
 from core.universal_environment_v2 import UniversalTradingEnvV2
 from stable_baselines3 import PPO
 
@@ -84,7 +84,7 @@ class BacktestReliability:
         """Charger données historiques"""
         logger.info(f"📊 Chargement données {days} jours...")
         
-        fetcher = DataFetcher()
+        fetcher = UniversalDataFetcher()  # FIX: Nom correct
         end_date = datetime.now()
         start_date = end_date - timedelta(days=days + 100)  # +100 pour warmup
         
@@ -93,7 +93,7 @@ class BacktestReliability:
         
         for ticker in self.tickers:
             try:
-                df = fetcher.fetch_stock_data(
+                df = fetcher.fetch(  # FIX: Méthode fetch() au lieu de fetch_stock_data()
                     ticker,
                     start_date.strftime('%Y-%m-%d'),
                     end_date.strftime('%Y-%m-%d'),
