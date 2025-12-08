@@ -1,28 +1,27 @@
 #!/usr/bin/env python3
 """
-📈 UNIVERSAL TRADING ENVIRONMENT V3 - TREND FOLLOWING
+🚀 UNIVERSAL TRADING ENVIRONMENT V3 ULTIMATE
 
-NOUVEAU: Features de TENDANCE pour anticiper les mouvements
+VERSION FINALE avec TOUTES les features critiques
 
-Améliorations vs V2:
-1. ✅ EMA 50/200 (tendance long terme)
-2. ✅ ADX (force tendance)
-3. ✅ Momentum ROC (vitesse mouvement)
-4. ✅ ATR (volatilité)
-5. ✅ Distance support/résistance
-6. ✅ Volume trend
-7. ✅ Reward avec lookahead (anticiper futur)
-8. ✅ Pénalité overtrading
-9. ✅ Bonus hold en tendance haussière
+Nouvelles capacités ULTIMATE:
+1. ✅ Stop-loss dynamique (-5% auto-sell)
+2. ✅ Trailing stop (protection gains)
+3. ✅ Take-profit automatique (+15%)
+4. ✅ Sentiment marché (SPY + VIX)
+5. ✅ Position sizing intelligent (ATR)
+6. ✅ Multi-timeframe (weekly)
+7. ✅ EMA 50/200 (tendance)
+8. ✅ ADX (force tendance)
+9. ✅ Momentum ROC
+10. ✅ Lookahead anticipation
+11. ✅ Limite overtrading
 
-Résultat attendu:
-- Moins de trades (~50-100/jour au lieu de 600)
-- Meilleur timing (acheter bas, vendre haut)
-- Score backtest 365j > 70/100
-- Return > 10%
+Observation: 107 features (vs 63 V2)
+Target 365j: Score >75, Return >15%, Drawdown <10%
 
 Auteur: Ploutos AI Team
-Date: Dec 2025
+Date: 8 Dec 2025
 """
 
 import gymnasium as gym
@@ -30,27 +29,32 @@ import numpy as np
 import pandas as pd
 from gymnasium import spaces
 from collections import deque
-import ta  # technical analysis library
+import ta
+import yfinance as yf
+import warnings
+warnings.filterwarnings('ignore')
 
 
 class UniversalTradingEnvV3Trend(gym.Env):
     """
-    Environnement multi-assets avec TREND FOLLOWING
+    Environnement ULTIMATE avec:
+    - Trend following (EMA, ADX, ROC)
+    - Risk management (stop-loss, take-profit)
+    - Market sentiment (SPY, VIX)
+    - Smart position sizing
     
-    Actions par ticker:
-    - 0 = HOLD  (attendre le bon moment)
-    - 1 = BUY   (acheter si tendance monte)
-    - 2 = SELL  (vendre si tendance baisse)
-    
-    Observation space: 103 features par environnement
-    - 10 features par ticker (au lieu de 6)
+    Observation: 107 features
+    - 11 features/ticker (au lieu de 10)
+    - 2 features marché (SPY, VIX)
     - 3 features portfolio
     """
 
     metadata = {'render_modes': ['human']}
 
     def __init__(self, data, initial_balance=100000, commission=0.0001, max_steps=2000, 
-                 buy_pct=0.2, max_trades_per_day=50, lookahead_steps=5):
+                 buy_pct=0.2, max_trades_per_day=50, lookahead_steps=5,
+                 stop_loss_pct=0.05, trailing_stop=True, take_profit_pct=0.15,
+                 use_smart_sizing=True):
         """
         Args:
             data (dict): {ticker: DataFrame}
@@ -58,8 +62,12 @@ class UniversalTradingEnvV3Trend(gym.Env):
             commission (float): Commission (0.0001 = 0.01%)
             max_steps (int): Steps max par épisode
             buy_pct (float): % portfolio par BUY (0.2 = 20%)
-            max_trades_per_day (int): Limite trades/jour (contre overtrading)
-            lookahead_steps (int): Steps futurs pour reward anticipation
+            max_trades_per_day (int): Limite trades/jour
+            lookahead_steps (int): Steps futurs pour anticipation
+            stop_loss_pct (float): Stop-loss en % (0.05 = -5%)
+            trailing_stop (bool): Activer trailing stop
+            take_profit_pct (float): Take-profit en % (0.15 = +15%)
+            use_smart_sizing (bool): Position sizing intelligent (ATR)
         """
         super().__init__()
         
@@ -73,17 +81,24 @@ class UniversalTradingEnvV3Trend(gym.Env):
         self.max_trades_per_day = max_trades_per_day
         self.lookahead_steps = lookahead_steps
         
+        # ✨ ULTIMATE: Risk management
+        self.stop_loss_pct = stop_loss_pct
+        self.trailing_stop = trailing_stop
+        self.take_profit_pct = take_profit_pct
+        self.use_smart_sizing = use_smart_sizing
+        
         self.data_length = min(len(df) for df in data.values())
         
-        # ✅ PRÉ-CALCUL DES FEATURES AVEC TENDANCE
-        print("\n⚡ Pré-calcul features V3 + TREND...")
-        self._precompute_features_with_trend()
-        print("✅ Features tendance pré-calculées !\n")
+        # ✅ PRÉ-CALCUL FEATURES ULTIMATE
+        print("\n⚡ Pré-calcul features V3 ULTIMATE...")
+        self._precompute_all_features()
+        print("✅ Features ULTIMATE pré-calculées !\n")
         
-        # Observation space: 10 features par ticker + 3 portfolio
-        n_features_per_asset = 10  # Au lieu de 6
+        # Observation: 11 features/ticker + 2 marché + 3 portfolio = 107
+        n_features_per_asset = 11
+        n_market_features = 2
         n_portfolio_features = 3
-        obs_size = self.n_assets * n_features_per_asset + n_portfolio_features
+        obs_size = self.n_assets * n_features_per_asset + n_market_features + n_portfolio_features
         
         self.observation_space = spaces.Box(
             low=-np.inf, 
@@ -92,7 +107,6 @@ class UniversalTradingEnvV3Trend(gym.Env):
             dtype=np.float32
         )
         
-        # Action space: discret 3 actions par ticker
         self.action_space = spaces.MultiDiscrete([3] * self.n_assets)
         
         # État interne
@@ -102,7 +116,7 @@ class UniversalTradingEnvV3Trend(gym.Env):
         self.positions = {ticker: 0 for ticker in self.tickers}
         self.portfolio_value = initial_balance
         self.trades_history = []
-        self.trades_today = 0  # Compteur trades quotidien
+        self.trades_today = 0
         self.last_day = 0
         
         # Tracking PnL
@@ -110,23 +124,64 @@ class UniversalTradingEnvV3Trend(gym.Env):
         self.entry_steps = {ticker: None for ticker in self.tickers}
         self.total_pnl = 0.0
         
+        # ✨ ULTIMATE: Tracking peaks pour trailing stop
+        self.peak_prices = {ticker: None for ticker in self.tickers}
+        
         self.portfolio_history = []
         self.peak_portfolio_value = initial_balance
     
-    def _precompute_features_with_trend(self):
-        """Pré-calcule features + indicateurs de TENDANCE"""
+    def _precompute_all_features(self):
+        """Pré-calcule TOUTES les features (trend + market + multi-TF)"""
         self.precomputed = {}
         
+        # ✨ 1. TÉLÉCHARGER SPY ET VIX (marché)
+        print("   📊 Téléchargement SPY et VIX...")
+        try:
+            # Déterminer période des données
+            first_ticker = self.tickers[0]
+            start_date = self.data[first_ticker].index[0]
+            end_date = self.data[first_ticker].index[-1]
+            
+            spy_data = yf.download('SPY', start=start_date, end=end_date, progress=False)
+            vix_data = yf.download('^VIX', start=start_date, end=end_date, progress=False)
+            
+            if not spy_data.empty and not vix_data.empty:
+                # SPY trend (bull/bear)
+                spy_close = spy_data['Close'].values.flatten()
+                spy_ma50 = pd.Series(spy_close).rolling(50).mean().values
+                spy_trend = np.where(spy_close > spy_ma50, 1.0, -1.0)
+                
+                # VIX level (fear/greed)
+                vix_close = vix_data['Close'].values.flatten()
+                vix_norm = (vix_close - 15) / 15  # Normalize (15 = normal)
+                
+                self.market_features = {
+                    'spy_trend': spy_trend,
+                    'vix_norm': vix_norm,
+                    'length': len(spy_trend)
+                }
+                print("      ✅ SPY + VIX chargés")
+            else:
+                raise Exception("Données vides")
+        except Exception as e:
+            print(f"      ⚠️  Erreur SPY/VIX: {e}, utilisation valeurs neutres")
+            default_len = self.data_length
+            self.market_features = {
+                'spy_trend': np.zeros(default_len),
+                'vix_norm': np.zeros(default_len),
+                'length': default_len
+            }
+        
+        # 2. FEATURES PAR TICKER
         for ticker in self.tickers:
             df = self.data[ticker].copy()
             
-            # Features de base (comme V2)
             close = np.array(df['Close'].values).flatten()
             high = np.array(df['High'].values).flatten()
             low = np.array(df['Low'].values).flatten()
             volume = np.array(df['Volume'].values).flatten()
             
-            # Close normalisé
+            # Close norm
             close_norm = np.zeros_like(close)
             for i in range(20, len(close)):
                 window = close[max(0, i-20):i]
@@ -134,7 +189,7 @@ class UniversalTradingEnvV3Trend(gym.Env):
                 std = np.std(window)
                 close_norm[i] = (close[i] - mean) / (std + 1e-8)
             
-            # Volume normalisé
+            # Volume norm
             volume_norm = np.zeros_like(volume, dtype=np.float32)
             for i in range(20, len(volume)):
                 window = volume[max(0, i-20):i]
@@ -164,72 +219,67 @@ class UniversalTradingEnvV3Trend(gym.Env):
             
             rsi_norm = (rsi - 50) / 50
             
-            # ========== NOUVELLES FEATURES TENDANCE ==========
-            
-            # 1. EMA 50/200 - Tendance long terme
+            # EMA 50/200 - Tendance daily
             ema_50 = pd.Series(close).ewm(span=50, adjust=False).mean().values
             ema_200 = pd.Series(close).ewm(span=200, adjust=False).mean().values
-            
-            # Tendance: 1 si EMA50 > EMA200 (bull), -1 sinon (bear)
             trend_signal = np.where(ema_50 > ema_200, 1.0, -1.0)
-            
-            # Distance entre EMAs (force tendance)
             ema_distance = (ema_50 - ema_200) / (close + 1e-8)
             
-            # 2. ADX - Force de la tendance (14 periods)
+            # ✨ ULTIMATE: Tendance WEEKLY (multi-timeframe)
+            try:
+                df_weekly = df.resample('W').agg({
+                    'Open': 'first',
+                    'High': 'max',
+                    'Low': 'min',
+                    'Close': 'last',
+                    'Volume': 'sum'
+                })
+                ema_10w = df_weekly['Close'].ewm(span=10).mean()
+                ema_40w = df_weekly['Close'].ewm(span=40).mean()
+                trend_weekly = (ema_10w > ema_40w).astype(float)
+                trend_weekly_daily = trend_weekly.reindex(df.index, method='ffill').values
+            except:
+                trend_weekly_daily = trend_signal  # Fallback
+            
+            # ADX
             try:
                 df_temp = pd.DataFrame({'High': high, 'Low': low, 'Close': close})
                 adx = ta.trend.adx(df_temp['High'], df_temp['Low'], df_temp['Close'], window=14).values
-                adx_norm = (adx - 25) / 25  # Normalize autour de 25
+                adx_norm = (adx - 25) / 25
             except:
                 adx_norm = np.zeros_like(close)
             
-            # 3. Momentum ROC (Rate of Change) - Vitesse mouvement
+            # Momentum ROC
             roc_20 = np.zeros_like(close)
             roc_20[20:] = (close[20:] - close[:-20]) / (close[:-20] + 1e-8)
             
-            # 4. ATR (Average True Range) - Volatilité
+            # ATR (pour position sizing)
             try:
                 df_temp = pd.DataFrame({'High': high, 'Low': low, 'Close': close})
                 atr = ta.volatility.average_true_range(df_temp['High'], df_temp['Low'], df_temp['Close'], window=14).values
-                atr_norm = atr / (close + 1e-8)  # Normalize par prix
+                atr_norm = atr / (close + 1e-8)
             except:
-                atr_norm = np.zeros_like(close)
+                atr_norm = np.ones_like(close) * 0.02  # Default 2%
             
-            # 5. Distance au plus haut/bas récent (support/résistance)
-            high_50 = pd.Series(high).rolling(50).max().values
-            low_50 = pd.Series(low).rolling(50).min().values
-            
-            dist_to_high = (high_50 - close) / (close + 1e-8)
-            dist_to_low = (close - low_50) / (close + 1e-8)
-            
-            # 6. Volume trend
-            volume_ma = pd.Series(volume).rolling(20).mean().values
-            volume_trend = volume / (volume_ma + 1e-8) - 1.0
-            
-            # Stocker tout
             self.precomputed[ticker] = {
-                # Features de base (V2)
                 'close': close,
                 'close_norm': close_norm.astype(np.float32),
                 'volume_norm': volume_norm.astype(np.float32),
                 'rsi_norm': rsi_norm.astype(np.float32),
                 'returns_1d': returns_1d.astype(np.float32),
-                
-                # Nouvelles features tendance (V3)
                 'trend_signal': trend_signal.astype(np.float32),
                 'ema_distance': ema_distance.astype(np.float32),
                 'adx_norm': adx_norm.astype(np.float32),
                 'roc_20': roc_20.astype(np.float32),
                 'atr_norm': atr_norm.astype(np.float32),
-                # Distance support/résistance stockée mais pas utilisée directement
+                'trend_weekly': trend_weekly_daily.astype(np.float32),  # ✨ NEW
             }
     
     def reset(self, seed=None, options=None):
         """Reset environnement"""
         super().reset(seed=seed)
         
-        min_start = 200  # Warmup plus long pour EMA200
+        min_start = 200
         max_end = self.data_length - self.max_steps - self.lookahead_steps
         
         if max_end <= min_start:
@@ -245,11 +295,12 @@ class UniversalTradingEnvV3Trend(gym.Env):
         self.portfolio_value = self.initial_balance
         self.trades_history = []
         self.trades_today = 0
-        self.last_day = self.current_step // 6  # Approx 6 steps/jour (hourly)
+        self.last_day = self.current_step // 6
         
         for ticker in self.tickers:
             self.entry_prices[ticker].clear()
             self.entry_steps[ticker] = None
+            self.peak_prices[ticker] = None  # ✨ Reset trailing
         self.total_pnl = 0.0
         
         self.portfolio_history = [self.initial_balance]
@@ -258,36 +309,69 @@ class UniversalTradingEnvV3Trend(gym.Env):
         return self._get_observation(), {}
     
     def step(self, actions):
-        """Exécute actions avec reward anticipé"""
+        """Exécute actions avec risk management ULTIMATE"""
         self.current_step += 1
         
-        # Reset compteur trades quotidien
         current_day = self.current_step // 6
         if current_day != self.last_day:
             self.trades_today = 0
             self.last_day = current_day
         
-        # Prix actuels
         current_prices = {
             ticker: float(self.precomputed[ticker]['close'][self.current_step])
             for ticker in self.tickers
         }
         
-        # Portfolio value avant trades
         positions_value = sum(
             self.positions[ticker] * current_prices[ticker]
             for ticker in self.tickers
         )
         previous_portfolio_value = self.balance + positions_value
         
-        # Exécuter actions
+        # ✨ ULTIMATE: VÉRIFIER STOP-LOSS / TAKE-PROFIT AVANT ACTIONS
         total_reward = 0.0
+        forced_actions = {}  # Actions forcées par risk management
         
+        for ticker in self.tickers:
+            if self.positions[ticker] > 0 and len(self.entry_prices[ticker]) > 0:
+                current_price = current_prices[ticker]
+                avg_entry = np.mean(list(self.entry_prices[ticker]))
+                pnl_pct = (current_price - avg_entry) / avg_entry
+                
+                # STOP-LOSS: Vente forcée si perte > seuil
+                if pnl_pct < -self.stop_loss_pct:
+                    forced_actions[ticker] = 2  # SELL
+                    total_reward -= 0.15  # Pénalité perte
+                    continue
+                
+                # TAKE-PROFIT: Vente forcée si gain > seuil
+                if pnl_pct > self.take_profit_pct:
+                    forced_actions[ticker] = 2  # SELL
+                    total_reward += 0.05  # Bonus prise bénéfice
+                    continue
+                
+                # TRAILING STOP
+                if self.trailing_stop:
+                    if self.peak_prices[ticker] is None:
+                        self.peak_prices[ticker] = current_price
+                    else:
+                        self.peak_prices[ticker] = max(self.peak_prices[ticker], current_price)
+                    
+                    drawdown_from_peak = (current_price - self.peak_prices[ticker]) / self.peak_prices[ticker]
+                    if drawdown_from_peak < -self.stop_loss_pct:
+                        forced_actions[ticker] = 2  # SELL
+                        total_reward += 0.02  # Petit bonus protection
+        
+        # Exécuter actions (forcées ou choisies)
         for i, ticker in enumerate(self.tickers):
-            action = int(actions[i])
+            if ticker in forced_actions:
+                action = forced_actions[ticker]
+            else:
+                action = int(actions[i])
+            
             current_price = current_prices[ticker]
             
-            reward_ticker = self._execute_action_with_lookahead(
+            reward_ticker = self._execute_action_ultimate(
                 ticker, action, current_price, previous_portfolio_value
             )
             total_reward += reward_ticker
@@ -303,10 +387,8 @@ class UniversalTradingEnvV3Trend(gym.Env):
         self.portfolio_history.append(new_portfolio_value)
         self.peak_portfolio_value = max(self.peak_portfolio_value, new_portfolio_value)
         
-        # Clip reward
         total_reward = np.clip(total_reward, -0.5, 0.5)
         
-        # Termination
         terminated = (
             new_portfolio_value <= 0 or
             new_portfolio_value <= self.initial_balance * 0.1 or
@@ -315,7 +397,6 @@ class UniversalTradingEnvV3Trend(gym.Env):
         
         truncated = (self.current_step - self.reset_step) >= self.max_steps
         
-        # Vente forcée à la fin
         if (terminated or truncated):
             for ticker in self.tickers:
                 if self.positions[ticker] > 0 and len(self.entry_prices[ticker]) > 0:
@@ -341,30 +422,38 @@ class UniversalTradingEnvV3Trend(gym.Env):
         
         return self._get_observation(), total_reward, terminated, truncated, info
     
-    def _execute_action_with_lookahead(self, ticker, action, current_price, portfolio_value):
-        """
-        Exécute action avec reward ANTICIPÉ (lookahead)
-        
-        Nouveautés V3:
-        - BONUS si BUY avant hausse
-        - BONUS si SELL avant baisse
-        - MALUS overtrading
-        - MALUS BUY en tendance baissiere
-        - BONUS HOLD en tendance haussiere
-        """
+    def _execute_action_ultimate(self, ticker, action, current_price, portfolio_value):
+        """Exécute action avec TOUTES les features ULTIMATE"""
         reward = 0.0
         idx = self.current_step
         
-        # Récupérer tendance actuelle
-        trend_signal = self.precomputed[ticker]['trend_signal'][idx]
+        trend_daily = self.precomputed[ticker]['trend_signal'][idx]
+        trend_weekly = self.precomputed[ticker]['trend_weekly'][idx]
+        atr = self.precomputed[ticker]['atr_norm'][idx]
+        adx = self.precomputed[ticker]['adx_norm'][idx]
+        
+        # Marché
+        spy_idx = min(idx, self.market_features['length'] - 1)
+        spy_trend = self.market_features['spy_trend'][spy_idx]
+        vix_level = self.market_features['vix_norm'][spy_idx]
         
         # BUY
         if action == 1:
-            # Limite overtrading
             if self.trades_today >= self.max_trades_per_day:
-                return -0.1  # Pénalité forte
+                return -0.1
             
-            investment = self.balance * self.buy_pct
+            # ✨ ULTIMATE: Position sizing intelligent
+            if self.use_smart_sizing:
+                # Volatility factor (ATR)
+                volatility_factor = 1.0 / (1.0 + atr * 5)
+                # Confidence factor (ADX)
+                confidence_factor = min((adx + 1.0) / 2.0, 1.0)
+                position_pct = self.buy_pct * volatility_factor * confidence_factor
+                position_pct = np.clip(position_pct, 0.05, 0.30)
+            else:
+                position_pct = self.buy_pct
+            
+            investment = self.balance * position_pct
             
             if investment > 0 and current_price > 0:
                 shares_to_buy = int(investment / current_price)
@@ -375,15 +464,23 @@ class UniversalTradingEnvV3Trend(gym.Env):
                     total = cost + fee
                     
                     if self.balance >= total:
-                        # Vérifier tendance
-                        if trend_signal < 0:
-                            # MALUS: acheter en tendance baissiere
+                        # MALUS: Acheter contre tendance
+                        if trend_daily < 0 or trend_weekly < 0:
                             reward -= 0.05
                         
-                        # Exécuter achat
+                        # ✨ ULTIMATE: MALUS marché baissier
+                        if spy_trend < 0:
+                            reward -= 0.03
+                        
+                        # ✨ ULTIMATE: MALUS VIX élevé (panique)
+                        if vix_level > 1.0:  # VIX > 30
+                            reward -= 0.02
+                        
+                        # Exécuter
                         self.positions[ticker] += shares_to_buy
                         self.balance -= total
                         self.trades_today += 1
+                        self.peak_prices[ticker] = current_price  # Init trailing
                         
                         for _ in range(shares_to_buy):
                             self.entry_prices[ticker].append(current_price)
@@ -391,13 +488,13 @@ class UniversalTradingEnvV3Trend(gym.Env):
                         if self.entry_steps[ticker] is None:
                             self.entry_steps[ticker] = self.current_step
                         
-                        # BONUS ANTICIPATION: Vérifier futur
+                        # Lookahead
                         if idx + self.lookahead_steps < len(self.precomputed[ticker]['close']):
                             future_price = self.precomputed[ticker]['close'][idx + self.lookahead_steps]
                             future_return = (future_price - current_price) / current_price
                             
-                            if future_return > 0.01:  # Futur hausse > 1%
-                                reward += 0.1  # BONUS bon timing !
+                            if future_return > 0.01:
+                                reward += 0.1  # BONUS anticipation
                         
                         self.trades_history.append({
                             'step': self.current_step,
@@ -406,7 +503,9 @@ class UniversalTradingEnvV3Trend(gym.Env):
                             'shares': shares_to_buy,
                             'price': current_price,
                             'cost': fee,
-                            'trend': trend_signal
+                            'trend_daily': trend_daily,
+                            'trend_weekly': trend_weekly,
+                            'spy_trend': spy_trend
                         })
         
         # SELL
@@ -419,7 +518,6 @@ class UniversalTradingEnvV3Trend(gym.Env):
                 proceeds = shares_to_sell * current_price
                 fee = proceeds * self.commission
                 
-                # Calculer PnL réalisé
                 pnl_total = 0.0
                 for _ in range(shares_to_sell):
                     if len(self.entry_prices[ticker]) > 0:
@@ -430,17 +528,18 @@ class UniversalTradingEnvV3Trend(gym.Env):
                 avg_pnl = pnl_total / shares_to_sell if shares_to_sell > 0 else 0
                 reward = avg_pnl
                 
-                # BONUS ANTICIPATION: Vérifier si futur baisse
+                # Lookahead
                 if idx + self.lookahead_steps < len(self.precomputed[ticker]['close']):
                     future_price = self.precomputed[ticker]['close'][idx + self.lookahead_steps]
                     future_return = (future_price - current_price) / current_price
                     
-                    if future_return < -0.01:  # Futur baisse > 1%
-                        reward += 0.1  # BONUS bonne sortie !
+                    if future_return < -0.01:
+                        reward += 0.1  # BONUS sortie avant baisse
                 
                 self.balance += (proceeds - fee)
                 self.positions[ticker] = 0
                 self.entry_steps[ticker] = None
+                self.peak_prices[ticker] = None  # Reset trailing
                 self.total_pnl += avg_pnl
                 self.trades_today += 1
                 
@@ -451,8 +550,7 @@ class UniversalTradingEnvV3Trend(gym.Env):
                     'shares': shares_to_sell,
                     'price': current_price,
                     'cost': fee,
-                    'pnl': avg_pnl,
-                    'trend': trend_signal
+                    'pnl': avg_pnl
                 })
         
         # HOLD
@@ -461,37 +559,51 @@ class UniversalTradingEnvV3Trend(gym.Env):
                 avg_entry = np.mean(list(self.entry_prices[ticker]))
                 unrealized_pnl = (current_price - avg_entry) / avg_entry
                 
-                # BONUS: Hold en tendance haussière
-                if trend_signal > 0 and unrealized_pnl > 0:
-                    reward = unrealized_pnl * 0.01  # Petit bonus
+                # BONUS: Hold en double tendance haussière
+                if trend_daily > 0 and trend_weekly > 0 and unrealized_pnl > 0:
+                    reward = unrealized_pnl * 0.015  # Bonus renforcé
+                elif trend_daily > 0 and unrealized_pnl > 0:
+                    reward = unrealized_pnl * 0.01
                 else:
                     reward = unrealized_pnl * 0.005
+            
+            # ✨ ULTIMATE: Bonus cash si marché en panique
+            elif vix_level > 1.5 and self.balance > self.initial_balance * 0.5:
+                reward += 0.01  # Bonus protection
         
         return np.clip(reward, -0.3, 0.3)
     
     def _get_observation(self):
-        """Observation avec features tendance (10 par ticker)"""
+        """Observation ULTIMATE: 107 features"""
         obs = []
         idx = self.current_step
         
+        # 11 features par ticker
         for ticker in self.tickers:
             precomp = self.precomputed[ticker]
             
-            # 10 features par ticker
             obs.extend([
-                precomp['close_norm'][idx],         # 1. Prix normalisé
-                precomp['volume_norm'][idx],        # 2. Volume normalisé
-                precomp['rsi_norm'][idx],           # 3. RSI
-                precomp['returns_1d'][idx],         # 4. Return 1 jour
-                precomp['trend_signal'][idx],       # 5. Tendance (EMA 50/200)
-                precomp['ema_distance'][idx],       # 6. Force tendance
-                precomp['adx_norm'][idx],           # 7. ADX (force)
-                precomp['roc_20'][idx],             # 8. Momentum
-                precomp['atr_norm'][idx],           # 9. Volatilité
-                float(self.positions[ticker] > 0)   # 10. A une position ?
+                precomp['close_norm'][idx],
+                precomp['volume_norm'][idx],
+                precomp['rsi_norm'][idx],
+                precomp['returns_1d'][idx],
+                precomp['trend_signal'][idx],      # Daily
+                precomp['trend_weekly'][idx],       # ✨ Weekly
+                precomp['ema_distance'][idx],
+                precomp['adx_norm'][idx],
+                precomp['roc_20'][idx],
+                precomp['atr_norm'][idx],
+                float(self.positions[ticker] > 0)
             ])
         
-        # Portfolio features (3)
+        # ✨ 2 features marché
+        spy_idx = min(idx, self.market_features['length'] - 1)
+        obs.extend([
+            float(self.market_features['spy_trend'][spy_idx]),
+            float(self.market_features['vix_norm'][spy_idx])
+        ])
+        
+        # 3 features portfolio
         cash_ratio = self.balance / self.portfolio_value if self.portfolio_value > 0 else 0
         total_value_norm = (self.portfolio_value - self.initial_balance) / self.initial_balance
         n_positions = sum(1 for pos in self.positions.values() if pos > 0) / self.n_assets
@@ -516,11 +628,20 @@ class UniversalTradingEnvV3Trend(gym.Env):
             print(f"Cash: ${self.balance:,.2f}")
             print(f"Trades today: {self.trades_today}/{self.max_trades_per_day}")
             print(f"Total PnL: {self.total_pnl:.4f}")
+            
+            idx = min(self.current_step, self.market_features['length'] - 1)
+            spy_trend = self.market_features['spy_trend'][idx]
+            vix = self.market_features['vix_norm'][idx]
+            print(f"Marché: SPY {'BULL 📈' if spy_trend > 0 else 'BEAR 📉'}, VIX {vix:.2f}")
+            
             print(f"Positions:")
             for ticker, shares in self.positions.items():
                 if shares > 0:
                     current_price = self.precomputed[ticker]['close'][self.current_step]
-                    trend = self.precomputed[ticker]['trend_signal'][self.current_step]
-                    trend_str = "📈" if trend > 0 else "📉"
-                    print(f"  {ticker} {trend_str}: {shares} @ ${current_price:.2f}")
+                    avg_entry = np.mean(list(self.entry_prices[ticker]))
+                    pnl = (current_price - avg_entry) / avg_entry * 100
+                    trend_d = self.precomputed[ticker]['trend_signal'][self.current_step]
+                    trend_w = self.precomputed[ticker]['trend_weekly'][self.current_step]
+                    trend_str = "📈📈" if (trend_d > 0 and trend_w > 0) else "📈" if trend_d > 0 else "📉"
+                    print(f"  {ticker} {trend_str}: {shares} @ ${current_price:.2f} (PnL: {pnl:+.1f}%)")
             print(f"={'='*60}")
