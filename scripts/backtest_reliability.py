@@ -5,7 +5,7 @@
 Teste la fiabilité du bot sur données historiques réelles
 
 Ce script:
-1. Charge le modèle entraîné
+1. Charge le modèle entraîné (V2 ou V3)
 2. Simule 90 jours de trading
 3. Calcule toutes les métriques
 4. Compare vs Buy & Hold
@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import logging
 import json
+import argparse
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
@@ -28,7 +29,6 @@ from collections import defaultdict
 
 # Import modules Ploutos
 from core.data_fetcher import UniversalDataFetcher
-from core.universal_environment_v2 import UniversalTradingEnvV2
 from stable_baselines3 import PPO
 
 logging.basicConfig(
@@ -50,20 +50,39 @@ TICKERS = [
 
 INITIAL_BALANCE = 100000
 BACKTEST_DAYS = 90
-MODEL_PATH = "models/ppo_trading_v2_latest.zip"
+
+# Paths par défaut
+MODEL_PATH_V2 = "models/ppo_trading_v2_latest.zip"
+MODEL_PATH_V3 = "models/ploutos_v3_trend.zip"
 
 
 class BacktestReliability:
-    """Teste la fiabilité du bot"""
+    """
+    Teste la fiabilité du bot
     
-    def __init__(self, model_path, tickers, initial_balance=100000):
+    Support V2 et V3 automatiquement
+    """
+    
+    def __init__(self, model_path, tickers, initial_balance=100000, use_v3=False):
         self.model_path = Path(model_path)
         self.tickers = tickers
         self.initial_balance = initial_balance
+        self.use_v3 = use_v3
         
         self.model = None
         self.env = None
+        self.env_class = None
         self.results = {}
+        
+        # Import environnement selon version
+        if use_v3:
+            from core.universal_environment_v3_trend import UniversalTradingEnvV3Trend
+            self.env_class = UniversalTradingEnvV3Trend
+            logger.info("✨ Mode V3 ULTIMATE activé")
+        else:
+            from core.universal_environment_v2 import UniversalTradingEnvV2
+            self.env_class = UniversalTradingEnvV2
+            logger.info("🔹 Mode V2 activé")
         
     def load_model(self):
         """Charger le modèle entraîné"""
@@ -74,6 +93,16 @@ class BacktestReliability:
         try:
             self.model = PPO.load(self.model_path)
             logger.info(f"✅ Modèle chargé: {self.model_path.name}")
+            
+            # Vérifier taille observation
+            obs_shape = self.model.observation_space.shape[0]
+            logger.info(f"  • Observation space: {obs_shape} features")
+            
+            if obs_shape == 63:
+                logger.info("  • Détection: Modèle V2")
+            elif obs_shape >= 103:
+                logger.info("  • Détection: Modèle V3")
+            
             return True
         except Exception as e:
             logger.error(f"❌ Erreur chargement modèle: {e}")
@@ -125,16 +154,34 @@ class BacktestReliability:
         logger.info(f"\n🎮 BACKTEST EN COURS...")
         logger.info(f"  • Capital initial: ${self.initial_balance:,.2f}")
         logger.info(f"  • Tickers: {len(data)}")
-        logger.info(f"  • Épisodes: {episodes}\n")
+        logger.info(f"  • Épisodes: {episodes}")
+        logger.info(f"  • Version: {'V3 ULTIMATE' if self.use_v3 else 'V2'}\n")
         
-        # Créer environnement
-        self.env = UniversalTradingEnvV2(
-            data=data,
-            initial_balance=self.initial_balance,
-            commission=0.0001,
-            max_steps=5000,
-            buy_pct=0.2
-        )
+        # Créer environnement selon version
+        if self.use_v3:
+            # V3 avec tous les paramètres
+            self.env = self.env_class(
+                data=data,
+                initial_balance=self.initial_balance,
+                commission=0.0001,
+                max_steps=5000,
+                buy_pct=0.2,
+                max_trades_per_day=50,
+                lookahead_steps=5,
+                stop_loss_pct=0.05,
+                trailing_stop=True,
+                take_profit_pct=0.15,
+                use_smart_sizing=True
+            )
+        else:
+            # V2 classique
+            self.env = self.env_class(
+                data=data,
+                initial_balance=self.initial_balance,
+                commission=0.0001,
+                max_steps=5000,
+                buy_pct=0.2
+            )
         
         all_results = []
         
@@ -286,6 +333,7 @@ class BacktestReliability:
         
         report = {
             'timestamp': datetime.now().isoformat(),
+            'version': 'V3_ULTIMATE' if self.use_v3 else 'V2',
             'config': {
                 'initial_balance': self.initial_balance,
                 'tickers': self.tickers,
@@ -309,7 +357,8 @@ class BacktestReliability:
         }
         
         # Sauvegarder
-        output_file = Path('logs/backtest_reliability.json')
+        version_tag = 'v3' if self.use_v3 else 'v2'
+        output_file = Path(f'logs/backtest_reliability_{version_tag}.json')
         output_file.parent.mkdir(parents=True, exist_ok=True)
         
         with open(output_file, 'w') as f:
@@ -340,7 +389,7 @@ class BacktestReliability:
     def print_report(self, report):
         """Afficher rapport"""
         print("\n" + "="*70)
-        print("📄 RAPPORT DE FIABILITÉ")
+        print(f"📄 RAPPORT DE FIABILITÉ - {report['version']}")
         print("="*70)
         
         bot = report['performance']['bot']
@@ -379,15 +428,32 @@ class BacktestReliability:
 
 
 def main():
+    # Parser arguments
+    parser = argparse.ArgumentParser(description='Backtest de fiabilité Ploutos')
+    parser.add_argument('--v3', action='store_true', help='Utiliser V3 ULTIMATE')
+    parser.add_argument('--model', type=str, help='Chemin custom du modèle')
+    parser.add_argument('--days', type=int, default=90, help='Nombre de jours à backtester')
+    parser.add_argument('--episodes', type=int, default=1, help='Nombre d\'\u00e9pisodes')
+    args = parser.parse_args()
+    
     print("\n" + "="*70)
     print("🧪 BACKTEST DE FIABILITÉ - PLOUTOS")
     print("="*70 + "\n")
     
+    # Déterminer modèle
+    if args.model:
+        model_path = args.model
+    elif args.v3:
+        model_path = MODEL_PATH_V3
+    else:
+        model_path = MODEL_PATH_V2
+    
     # Initialiser
     backtest = BacktestReliability(
-        model_path=MODEL_PATH,
+        model_path=model_path,
         tickers=TICKERS,
-        initial_balance=INITIAL_BALANCE
+        initial_balance=INITIAL_BALANCE,
+        use_v3=args.v3
     )
     
     # Charger modèle
@@ -396,12 +462,12 @@ def main():
         return
     
     # Charger données
-    data = backtest.fetch_data(days=BACKTEST_DAYS)
+    data = backtest.fetch_data(days=args.days)
     if data is None:
         return
     
     # Exécuter backtest
-    results = backtest.run_backtest(data, episodes=1)
+    results = backtest.run_backtest(data, episodes=args.episodes)
     
     # Calculer métriques
     metrics = backtest.calculate_metrics(results)
