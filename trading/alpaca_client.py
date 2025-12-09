@@ -94,11 +94,11 @@ class AlpacaClient:
         
         # Récupérer les clés API
         if paper_trading:
-            api_key = os.getenv('PKTEM6CRKRFNOE4HA7GU2IWFJ5') or os.getenv('PKTEM6CRKRFNOE4HA7GU2IWFJ5')
-            api_secret = os.getenv('DShnhnKy9pZabABkKE1rZX9yEtZpUeet1jFmLbWQGrCC') or os.getenv('DShnhnKy9pZabABkKE1rZX9yEtZpUeet1jFmLbWQGrCC')
+            api_key = os.getenv('ALPACA_PAPER_API_KEY') or os.getenv('ALPACA_API_KEY')
+            api_secret = os.getenv('ALPACA_PAPER_SECRET_KEY') or os.getenv('ALPACA_SECRET_KEY')
         else:
-            api_key = os.getenv('PKTEM6CRKRFNOE4HA7GU2IWFJ5')
-            api_secret = os.getenv('DShnhnKy9pZabABkKE1rZX9yEtZpUeet1jFmLbWQGrCC')
+            api_key = os.getenv('ALPACA_LIVE_API_KEY')
+            api_secret = os.getenv('ALPACA_LIVE_SECRET_KEY')
         
         if not api_key or not api_secret:
             raise ValueError("❌ Clés API Alpaca manquantes dans .env")
