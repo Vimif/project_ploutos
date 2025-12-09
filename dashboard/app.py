@@ -1,492 +1,449 @@
-#!/usr/bin/env python3
-"""
-🏛️ PLOUTOS DASHBOARD V4 – Version adaptée à la DB existante
+# dashboard/app.py
+"""Dashboard Flask pour le bot de trading - VERSION JSON (Sans PostgreSQL)"""
 
-Compatible avec le schéma PostgreSQL actuel :
-
-Tables :
-  - trades(id, timestamp, symbol, action, quantity, price, amount, reason, portfolio_value)
-  - daily_summary(id, date, portfolio_value, cash, total_pl, positions_count, trades_count)
-  - predictions(id, ticker, action, confidence, timestamp, features JSONB)
-  - positions (non utilisée pour l’instant car schéma non précisé)
-
-Endpoints principaux :
-  - /            : page d’accueil (HTML)
-  - /api/status  : statut portfolio + trades du jour + prédictions
-  - /api/trades  : historique des trades (adapté à ta table trades)
-  - /api/metrics : métriques calculées depuis daily_summary
-  - /api/health  : healthcheck DB
-"""
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS
-import psycopg2
-import psycopg2.extras
+from flask_socketio import SocketIO, emit
+import traceback
+import json
 from datetime import datetime, timedelta
-import os
-import numpy as np
+from collections import defaultdict
 
+from trading.alpaca_client import AlpacaClient
+from core.utils import setup_logging
+
+logger = setup_logging(__name__, 'dashboard.log')
+
+# Configuration Flask
 app = Flask(__name__)
+app.config['SECRET_KEY'] = 'ploutos-trading-bot-secret-2025'
 CORS(app)
 
-# =============================================================================
-# CONFIG
-# =============================================================================
+# SocketIO avec gevent
+socketio = SocketIO(
+    app, 
+    cors_allowed_origins="*",
+    async_mode='gevent',
+    logger=False,
+    engineio_logger=False
+)
 
-DB_CONFIG = {
-    "host": os.getenv("DB_HOST", "localhost"),
-    "port": int(os.getenv("DB_PORT", 5432)),
-    "database": os.getenv("DB_NAME", "ploutos"),
-    "user": os.getenv("DB_USER", "ploutos"),
-    "password": os.getenv("DB_PASSWORD", "changeme"),  # à surcharger en prod
-}
+# Client Alpaca global
+alpaca_client = None
 
-INITIAL_BALANCE = float(os.getenv("INITIAL_BALANCE", "100000"))
+# Dossier logs trades
+TRADES_LOG_DIR = Path('logs/trades')
 
-
-# =============================================================================
-# DB HELPERS
-# =============================================================================
-
-def get_db_connection():
-    """Ouvre une connexion PostgreSQL."""
+def init_alpaca():
+    """Initialiser le client Alpaca"""
+    global alpaca_client
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
-        return conn
+        logger.info("🔄 Initialisation du client Alpaca...")
+        alpaca_client = AlpacaClient(paper_trading=True)
+        logger.info("✅ Client Alpaca initialisé")
+        return True
     except Exception as e:
-        print(f"❌ Erreur connexion DB: {e}")
-        return None
+        logger.error(f"❌ Erreur init Alpaca: {e}")
+        logger.error(traceback.format_exc())
+        return False
 
-
-def execute_query(query, params=None, fetch=True):
-    """Exécute une requête SQL et renvoie les résultats sous forme de dict."""
-    conn = get_db_connection()
-    if not conn:
-        return None
-
-    try:
-        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute(query, params or [])
-        if fetch:
-            result = cur.fetchall()
-        else:
-            conn.commit()
-            result = True
-        cur.close()
-        conn.close()
-        return result
-    except Exception as e:
-        print(f"❌ Erreur query: {e}")
-        try:
-            conn.close()
-        except Exception:
-            pass
-        return None
-
-
-# =============================================================================
-# ROUTES HTML
-# =============================================================================
-
-@app.context_processor
-def inject_now():
-    """Injecte la date actuelle dans les templates."""
-    return {"now": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-
-
-@app.route("/")
-def index():
-    return render_template("index.html")
-
-
-# =============================================================================
-# API: STATUS
-# =============================================================================
-
-@app.route("/api/status")
-def api_status():
+def load_trades_from_json(days=30):
     """
-    Retourne :
-      - dernier daily_summary comme état du portfolio
-      - nb de trades du jour (table trades)
-      - dernières prédictions (table predictions)
+    Charger les trades depuis les fichiers JSON
+    
+    Args:
+        days: Nombre de jours à charger
+    
+    Returns:
+        list: Liste des trades
     """
-    # Dernier daily_summary
-    portfolio_query = """
-        SELECT
-            date,
-            portfolio_value,
-            cash,
-            total_pl,
-            positions_count,
-            trades_count
-        FROM daily_summary
-        ORDER BY date DESC
-        LIMIT 1
-    """
-    portfolio_rows = execute_query(portfolio_query) or []
-    portfolio = None
-
-    if portfolio_rows:
-        row = portfolio_rows[0]
-        pv = float(row.get("portfolio_value") or 0.0)
-        cash = float(row.get("cash") or 0.0)
-
-        # Return = (PV / INITIAL_BALANCE - 1) * 100
-        if INITIAL_BALANCE > 0:
-            return_pct = (pv - INITIAL_BALANCE) / INITIAL_BALANCE * 100.0
-        else:
-            return_pct = 0.0
-
-        portfolio = {
-            "date": row.get("date").isoformat() if row.get("date") else None,
-            "portfolio_value": pv,
-            "cash": cash,
-            "return_pct": return_pct,
-            "total_pl": float(row.get("total_pl") or 0.0),
-            "positions_count": int(row.get("positions_count") or 0),
-            "trades_count": int(row.get("trades_count") or 0),
-        }
-
-    # Trades du jour
-    trades_today_query = """
-        SELECT COUNT(*) AS count
-        FROM trades
-        WHERE DATE(timestamp) = CURRENT_DATE
-    """
-    trades_today_rows = execute_query(trades_today_query) or []
-    trades_today = (
-        int(trades_today_rows[0]["count"]) if trades_today_rows else 0
-    )
-
-    # Prédictions récentes
-    predictions_query = """
-        SELECT
-            action,
-            confidence,
-            timestamp
-        FROM predictions
-        ORDER BY timestamp DESC
-        LIMIT 10
-    """
-    predictions_rows = execute_query(predictions_query) or []
-
-    predictions = []
-    for row in predictions_rows:
-        predictions.append(
-            {
-                "action": row.get("action"),
-                "confidence": float(row.get("confidence") or 0.0),
-                "timestamp": (
-                    row.get("timestamp").isoformat()
-                    if row.get("timestamp")
-                    else None
-                ),
-            }
-        )
-
-    # Pour l’instant, on ne lit pas la table positions (schéma non défini)
-    positions = []
-
-    return jsonify(
-        {
-            "success": True,
-            "timestamp": datetime.now().isoformat(),
-            "portfolio": portfolio,
-            "trades_today": trades_today,
-            "positions": positions,
-            "recent_predictions": predictions,
-        }
-    )
-
-
-# =============================================================================
-# API: TRADES
-# =============================================================================
-
-@app.route("/api/trades")
-def api_trades():
-    """
-    Historique des trades basé sur ta table trades :
-
-    trades(id, timestamp, symbol, action, quantity, price, amount, reason, portfolio_value)
-
-    On adapte le JSON pour coller à peu près à l’ancien format sans utiliser des
-    colonnes qui n’existent pas (`ticker`, `pnl`, etc.).
-    """
-    days = request.args.get("days", 30, type=int)
-    ticker = request.args.get("ticker", None, type=str)
-    limit = request.args.get("limit", 100, type=int)
-
-    base_query = """
-        SELECT
-            id,
-            timestamp,
-            symbol,
-            action,
-            quantity,
-            price,
-            amount,
-            reason,
-            portfolio_value
-        FROM trades
-        WHERE timestamp >= NOW() - INTERVAL %s
-    """
-    params = [f"{days} days"]
-
-    if ticker:
-        base_query += " AND symbol = %s"
-        params.append(ticker)
-
-    base_query += " ORDER BY timestamp DESC LIMIT %s"
-    params.append(limit)
-
-    rows = execute_query(base_query, params) or []
-
     trades = []
-    for row in rows:
-        trades.append(
-            {
-                "id": row.get("id"),
-                "ticker": row.get("symbol"),  # mapping symbol -> ticker
-                "action": row.get("action"),
-                "shares": float(row.get("quantity") or 0.0),
-                "price": float(row.get("price") or 0.0),
-                "amount": float(row.get("amount") or 0.0),
-                "reason": row.get("reason"),
-                "entry_time": (
-                    row.get("timestamp").isoformat()
-                    if row.get("timestamp")
-                    else None
-                ),
-                # On ne dispose pas d’info de sortie par trade dans ce schéma
-                "exit_time": None,
-                "portfolio_value": float(row.get("portfolio_value") or 0.0),
-            }
-        )
+    
+    try:
+        if not TRADES_LOG_DIR.exists():
+            logger.warning(f"⚠️  Dossier {TRADES_LOG_DIR} n'existe pas")
+            return []
+        
+        # Charger tous les fichiers trades_*.json
+        for json_file in sorted(TRADES_LOG_DIR.glob('trades_*.json'), reverse=True):
+            try:
+                with open(json_file, 'r') as f:
+                    file_trades = json.load(f)
+                    trades.extend(file_trades)
+            except Exception as e:
+                logger.error(f"❌ Erreur lecture {json_file}: {e}")
+        
+        # Filtrer par date si nécessaire
+        if days and trades:
+            cutoff = datetime.now() - timedelta(days=days)
+            trades = [
+                t for t in trades 
+                if datetime.fromisoformat(t['timestamp']) > cutoff
+            ]
+        
+        # Trier par date décroissante
+        trades.sort(key=lambda t: t['timestamp'], reverse=True)
+        
+        logger.debug(f"✅ {len(trades)} trades chargés depuis JSON")
+        return trades
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur load_trades_from_json: {e}")
+        return []
 
-    # Stats simples (sans pnl car pas de colonne dédiée)
-    total_trades = len(trades)
-    total_amount = float(sum(t["amount"] for t in trades)) if trades else 0.0
-
-    stats = {
-        "total_trades": total_trades,
-        "total_amount": total_amount,
-        # placeholders pour compatibilité :
-        "winning_trades": None,
-        "avg_pnl_pct": None,
-        "max_win": None,
-        "max_loss": None,
-        "total_pnl": None,
+def calculate_statistics_from_trades(trades):
+    """
+    Calculer statistiques depuis les trades JSON
+    
+    Args:
+        trades: Liste des trades
+    
+    Returns:
+        dict: Statistiques
+    """
+    if not trades:
+        return {
+            'total_trades': 0,
+            'buy_count': 0,
+            'sell_count': 0,
+            'total_volume': 0,
+            'avg_trade_size': 0
+        }
+    
+    buy_trades = [t for t in trades if t['action'] == 'BUY']
+    sell_trades = [t for t in trades if t['action'] == 'SELL']
+    
+    total_volume = sum(t['amount'] for t in trades)
+    
+    return {
+        'total_trades': len(trades),
+        'buy_count': len(buy_trades),
+        'sell_count': len(sell_trades),
+        'total_volume': total_volume,
+        'avg_trade_size': total_volume / len(trades) if trades else 0
     }
 
-    return jsonify(
+def get_top_symbols_from_trades(trades, limit=10):
+    """
+    Obtenir les symboles les plus tradés
+    
+    Args:
+        trades: Liste des trades
+        limit: Nombre de symboles à retourner
+    
+    Returns:
+        list: Top symboles
+    """
+    symbol_stats = defaultdict(lambda: {'count': 0, 'volume': 0})
+    
+    for trade in trades:
+        symbol = trade['symbol']
+        symbol_stats[symbol]['count'] += 1
+        symbol_stats[symbol]['volume'] += trade['amount']
+    
+    # Convertir en liste et trier
+    top_symbols = [
         {
-            "success": True,
-            "trades": trades,
-            "stats": stats,
-            "filters": {
-                "days": days,
-                "ticker": ticker,
-                "limit": limit,
-            },
+            'symbol': symbol,
+            'trade_count': stats['count'],
+            'total_volume': stats['volume']
         }
-    )
-
-
-# =============================================================================
-# API: METRICS
-# =============================================================================
-
-@app.route("/api/metrics")
-def api_metrics():
-    """
-    Calcule les métriques globales à partir de daily_summary :
-
-    daily_summary(id, date, portfolio_value, cash, total_pl, positions_count, trades_count)
-    """
-    days = request.args.get("days", 90, type=int)
-
-    daily_query = """
-        SELECT
-            date,
-            portfolio_value,
-            cash,
-            total_pl,
-            positions_count,
-            trades_count
-        FROM daily_summary
-        WHERE date >= CURRENT_DATE - %s::INTERVAL
-        ORDER BY date ASC
-    """
-    daily_rows = execute_query(daily_query, [f"{days} days"]) or []
-
-    if not daily_rows:
-        return jsonify(
-            {
-                "success": True,
-                "metrics": {},
-                "daily_data": [],
-                "period_days": days,
-            }
-        )
-
-    portfolio_values = [
-        float(r.get("portfolio_value") or 0.0) for r in daily_rows
+        for symbol, stats in symbol_stats.items()
     ]
+    
+    top_symbols.sort(key=lambda x: x['trade_count'], reverse=True)
+    
+    return top_symbols[:limit]
 
-    # Total return sur la période = (dernier / premier - 1) * 100
-    first_value = portfolio_values[0] if portfolio_values else INITIAL_BALANCE
-    last_value = portfolio_values[-1] if portfolio_values else INITIAL_BALANCE
+@app.route('/')
+def index():
+    """Page principale du dashboard"""
+    return render_template('index.html')
 
-    if first_value > 0:
-        total_return = (last_value - first_value) / first_value * 100.0
-    else:
-        total_return = 0.0
+@app.route('/api/account')
+def get_account():
+    """Obtenir les infos du compte"""
+    try:
+        if not alpaca_client:
+            if not init_alpaca():
+                return jsonify({'success': False, 'error': 'Client non initialisé'}), 500
+        
+        account = alpaca_client.get_account()
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'portfolio_value': float(account['portfolio_value']),
+                'cash': float(account['cash']),
+                'buying_power': float(account['buying_power']),
+                'equity': float(account['equity']),
+                'last_equity': float(account.get('last_equity', account['equity']))
+            }
+        })
+    except Exception as e:
+        logger.error(f"❌ Erreur /api/account: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
-    # Returns journaliers
-    daily_returns = []
-    for i in range(1, len(portfolio_values)):
-        prev = portfolio_values[i - 1]
-        cur = portfolio_values[i]
-        if prev > 0:
-            daily_returns.append((cur - prev) / prev)
+@app.route('/api/positions')
+def get_positions():
+    """Obtenir toutes les positions"""
+    try:
+        if not alpaca_client:
+            if not init_alpaca():
+                return jsonify({'success': False, 'error': 'Client non initialisé'}), 500
+        
+        positions = alpaca_client.get_positions()
+        
+        positions_data = [{
+            'symbol': p['symbol'],
+            'qty': float(p['qty']),
+            'avg_entry_price': float(p['avg_entry_price']),
+            'current_price': float(p['current_price']),
+            'market_value': float(p['market_value']),
+            'unrealized_pl': float(p['unrealized_pl']),
+            'unrealized_plpc': float(p['unrealized_plpc']) * 100
+        } for p in positions]
+        
+        return jsonify({'success': True, 'data': positions_data})
+    except Exception as e:
+        logger.error(f"❌ Erreur /api/positions: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/orders')
+def get_orders():
+    """Obtenir les ordres récents"""
+    try:
+        if not alpaca_client:
+            if not init_alpaca():
+                return jsonify({'success': False, 'error': 'Client non initialisé'}), 500
+        
+        orders = alpaca_client.get_orders(status='closed', limit=50)
+        
+        orders_data = [{
+            'symbol': o.get('symbol', ''),
+            'qty': float(o.get('qty', 0)),
+            'side': o.get('side', ''),
+            'status': o.get('status', ''),
+            'filled_avg_price': float(o.get('filled_avg_price', 0)) if o.get('filled_avg_price') else 0,
+            'filled_at': o.get('filled_at', '')
+        } for o in orders]
+        
+        return jsonify({'success': True, 'data': orders_data})
+    except Exception as e:
+        logger.error(f"❌ Erreur /api/orders: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/performance')
+def get_performance():
+    """Calculer les performances"""
+    try:
+        if not alpaca_client:
+            if not init_alpaca():
+                return jsonify({'success': False, 'error': 'Client non initialisé'}), 500
+        
+        account = alpaca_client.get_account()
+        positions = alpaca_client.get_positions()
+        
+        total_pl = sum(float(p['unrealized_pl']) for p in positions)
+        winning = [p for p in positions if float(p['unrealized_pl']) > 0]
+        losing = [p for p in positions if float(p['unrealized_pl']) < 0]
+        win_rate = (len(winning) / len(positions) * 100) if positions else 0
+        
+        equity = float(account['equity'])
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'total_unrealized_pl': total_pl,
+                'total_unrealized_plpc': (total_pl / equity * 100) if equity > 0 else 0,
+                'total_positions': len(positions),
+                'winning_positions': len(winning),
+                'losing_positions': len(losing),
+                'win_rate': win_rate
+            }
+        })
+    except Exception as e:
+        logger.error(f"❌ Erreur /api/performance: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/close_position/<symbol>', methods=['POST'])
+def close_position(symbol):
+    """Fermer une position manuellement"""
+    try:
+        if not alpaca_client:
+            if not init_alpaca():
+                return jsonify({'success': False, 'error': 'Client non initialisé'}), 500
+        
+        result = alpaca_client.close_position(symbol, reason='Fermeture manuelle dashboard')
+        
+        if result:
+            logger.info(f"✅ Position {symbol} fermée manuellement")
+            return jsonify({'success': True, 'message': f'Position {symbol} fermée'})
         else:
-            daily_returns.append(0.0)
+            return jsonify({'success': False, 'error': 'Échec de fermeture'}), 400
+    except Exception as e:
+        logger.error(f"❌ Erreur close_position: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
-    # Sharpe
-    if daily_returns:
-        sharpe = (
-            np.mean(daily_returns)
-            / (np.std(daily_returns) + 1e-8)
-            * np.sqrt(252.0)
-        )
-    else:
-        sharpe = 0.0
+# ========== ROUTES LECTURE JSON (REMPLACEMENT BDD) ==========
 
-    # Max drawdown
-    peak = portfolio_values[0]
-    max_dd = 0.0
-    for v in portfolio_values:
-        if v > peak:
-            peak = v
-        dd = (v - peak) / peak if peak > 0 else 0.0
-        if dd < max_dd:
-            max_dd = dd
-    max_drawdown = abs(max_dd) * 100.0
+@app.route('/api/db/trades')
+def api_db_trades():
+    """Historique trades depuis JSON"""
+    try:
+        days = int(request.args.get('days', 30))
+        symbol = request.args.get('symbol', None)
+        
+        trades = load_trades_from_json(days=days)
+        
+        # Filtrer par symbole si demandé
+        if symbol:
+            trades = [t for t in trades if t['symbol'] == symbol]
+        
+        return jsonify({
+            'success': True,
+            'data': trades,
+            'count': len(trades),
+            'source': 'json'
+        })
+    except Exception as e:
+        logger.error(f"❌ Erreur /api/db/trades: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
-    total_trades = int(
-        sum(int(r.get("trades_count") or 0) for r in daily_rows)
-    )
-    avg_trades_per_day = (
-        float(total_trades) / len(daily_rows) if daily_rows else 0.0
-    )
+@app.route('/api/db/statistics')
+def api_db_statistics():
+    """Statistiques depuis JSON"""
+    try:
+        days = int(request.args.get('days', 30))
+        
+        trades = load_trades_from_json(days=days)
+        stats = calculate_statistics_from_trades(trades)
+        top_symbols = get_top_symbols_from_trades(trades, limit=10)
+        
+        # Win/loss basique
+        buy_count = stats['buy_count']
+        sell_count = stats['sell_count']
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'statistics': stats,
+                'top_symbols': top_symbols,
+                'win_loss': {
+                    'buy_count': buy_count,
+                    'sell_count': sell_count
+                }
+            },
+            'source': 'json'
+        })
+    except Exception as e:
+        logger.error(f"❌ Erreur /api/db/statistics: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
-    metrics = {
-        "total_return": total_return,
-        "sharpe_ratio": sharpe,
-        "max_drawdown": max_drawdown,
-        "current_value": last_value,
-        "total_trades": total_trades,
-        "avg_trades_per_day": avg_trades_per_day,
-    }
-
-    # On renvoie aussi les données brutes pour les graphes
-    daily_data = []
-    for r in daily_rows:
-        daily_data.append(
+@app.route('/api/db/evolution')
+def api_db_evolution():
+    """Évolution portfolio depuis JSON"""
+    try:
+        days = int(request.args.get('days', 30))
+        trades = load_trades_from_json(days=days)
+        
+        # Grouper par jour
+        daily_data = defaultdict(lambda: {'trades': 0, 'volume': 0, 'portfolio_value': None})
+        
+        for trade in trades:
+            date = trade['timestamp'][:10]  # YYYY-MM-DD
+            daily_data[date]['trades'] += 1
+            daily_data[date]['volume'] += trade['amount']
+            if trade.get('portfolio_value'):
+                daily_data[date]['portfolio_value'] = trade['portfolio_value']
+        
+        # Convertir en liste
+        evolution = [
             {
-                "date": r.get("date").isoformat() if r.get("date") else None,
-                "portfolio_value": float(r.get("portfolio_value") or 0.0),
-                "cash": float(r.get("cash") or 0.0),
-                "total_pl": float(r.get("total_pl") or 0.0),
-                "positions_count": int(r.get("positions_count") or 0),
-                "trades_count": int(r.get("trades_count") or 0),
+                'date': date,
+                'trades': data['trades'],
+                'volume': data['volume'],
+                'portfolio_value': data['portfolio_value']
             }
-        )
+            for date, data in sorted(daily_data.items())
+        ]
+        
+        return jsonify({
+            'success': True,
+            'data': evolution,
+            'source': 'json'
+        })
+    except Exception as e:
+        logger.error(f"❌ Erreur /api/db/evolution: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
-    return jsonify(
-        {
-            "success": True,
-            "metrics": metrics,
-            "daily_data": daily_data,
-            "period_days": days,
-        }
-    )
+@app.route('/api/db/summary')
+def api_db_summary():
+    """Résumés quotidiens depuis JSON"""
+    try:
+        days = int(request.args.get('days', 30))
+        trades = load_trades_from_json(days=days)
+        
+        # Grouper par jour
+        daily_summary = defaultdict(lambda: {
+            'date': None,
+            'trade_count': 0,
+            'buy_count': 0,
+            'sell_count': 0,
+            'total_volume': 0,
+            'portfolio_value': None
+        })
+        
+        for trade in trades:
+            date = trade['timestamp'][:10]
+            daily_summary[date]['date'] = date
+            daily_summary[date]['trade_count'] += 1
+            daily_summary[date]['total_volume'] += trade['amount']
+            
+            if trade['action'] == 'BUY':
+                daily_summary[date]['buy_count'] += 1
+            else:
+                daily_summary[date]['sell_count'] += 1
+            
+            if trade.get('portfolio_value'):
+                daily_summary[date]['portfolio_value'] = trade['portfolio_value']
+        
+        summaries = list(daily_summary.values())
+        summaries.sort(key=lambda x: x['date'], reverse=True)
+        
+        return jsonify({
+            'success': True,
+            'data': summaries,
+            'source': 'json'
+        })
+    except Exception as e:
+        logger.error(f"❌ Erreur /api/db/summary: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
+# ========== WEBSOCKET ==========
 
-# =============================================================================
-# API: PREDICTIONS (inchangée)
-# =============================================================================
+@socketio.on('connect')
+def handle_connect():
+    logger.info("🔌 Client WebSocket connecté")
+    emit('status', {'message': 'Connecté au serveur'})
 
-@app.route("/api/predictions")
-def api_predictions():
-    """Retourne les dernières prédictions de la table predictions."""
-    limit = request.args.get("limit", 50, type=int)
+@socketio.on('disconnect')
+def handle_disconnect():
+    logger.info("🔌 Client WebSocket déconnecté")
 
-    query = """
-        SELECT
-            action,
-            confidence,
-            timestamp,
-            features
-        FROM predictions
-        ORDER BY timestamp DESC
-        LIMIT %s
-    """
-    rows = execute_query(query, [limit]) or []
-
-    predictions = []
-    for r in rows:
-        predictions.append(
-            {
-                "action": r.get("action"),
-                "confidence": float(r.get("confidence") or 0.0),
-                "timestamp": (
-                    r.get("timestamp").isoformat()
-                    if r.get("timestamp")
-                    else None
-                ),
-                "features": r.get("features"),
-            }
-        )
-
-    return jsonify({"success": True, "predictions": predictions})
-
-
-# =============================================================================
-# API: HEALTH
-# =============================================================================
-
-@app.route("/api/health")
-def api_health():
-    conn = get_db_connection()
-    db_ok = conn is not None
-    if conn:
-        conn.close()
-    return jsonify(
-        {
-            "success": True,
-            "status": "healthy" if db_ok else "degraded",
-            "database": "ok" if db_ok else "error",
-            "timestamp": datetime.now().isoformat(),
-        }
-    )
-
-
-# =============================================================================
-# MAIN (mode dev)
-# =============================================================================
-
-if __name__ == "__main__":
-    print("⚡ Vérification connexion DB...")
-    conn = get_db_connection()
-    if conn:
-        print("✅ DB connectée")
-        conn.close()
+if __name__ == '__main__':
+    logger.info("="*70)
+    logger.info("🚀 DÉMARRAGE DU DASHBOARD PLOUTOS (JSON MODE)")
+    logger.info("="*70)
+    
+    if init_alpaca():
+        logger.info("✅ Dashboard prêt sur http://0.0.0.0:5000")
+        logger.info("📝 Source données: Fichiers JSON (logs/trades/)")
+        logger.info("="*70)
+        socketio.run(app, host='0.0.0.0', port=5000, debug=False, use_reloader=False)
     else:
-        print("❌ DB non accessible (mode dégradé)")
-
-    print("\n🚀 Démarrage dashboard (dev)...")
-    print("   URL: http://localhost:5000")
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=True)
+        logger.error("❌ Échec démarrage dashboard")
