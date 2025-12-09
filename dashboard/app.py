@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
 """
-🏛️ PLOUTOS DASHBOARD V4 - Interface Web Moderne
+🏛️ PLOUTOS DASHBOARD V4 – Version adaptée à la DB existante
 
-Dashboard Flask pour visualiser:
-- Portfolio en temps réel
-- Trades (historique + actifs)
-- Métriques performance
-- Prédictions modèle
-- Graphiques interactifs
+Compatible avec le schéma PostgreSQL actuel :
 
-Port: 5000 (local) ou 8080 (production)
-API: /api/status, /api/trades, /api/metrics
+Tables :
+  - trades(id, timestamp, symbol, action, quantity, price, amount, reason, portfolio_value)
+  - daily_summary(id, date, portfolio_value, cash, total_pl, positions_count, trades_count)
+  - predictions(id, ticker, action, confidence, timestamp, features JSONB)
+  - positions (non utilisée pour l’instant car schéma non précisé)
 
-Auteur: Ploutos AI Team
-Date: 9 Dec 2025
+Endpoints principaux :
+  - /            : page d’accueil (HTML)
+  - /api/status  : statut portfolio + trades du jour + prédictions
+  - /api/trades  : historique des trades (adapté à ta table trades)
+  - /api/metrics : métriques calculées depuis daily_summary
+  - /api/health  : healthcheck DB
 """
 
 from flask import Flask, render_template, jsonify, request
@@ -21,31 +23,33 @@ from flask_cors import CORS
 import psycopg2
 import psycopg2.extras
 from datetime import datetime, timedelta
-import json
 import os
-from pathlib import Path
+import numpy as np
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS
+CORS(app)
 
-# ============================================================================
+# =============================================================================
 # CONFIG
-# ============================================================================
+# =============================================================================
 
 DB_CONFIG = {
-    'host': os.getenv('DB_HOST', 'localhost'),
-    'port': int(os.getenv('DB_PORT', 5432)),
-    'database': os.getenv('DB_NAME', 'ploutos'),
-    'user': os.getenv('DB_USER', 'ploutos'),
-    'password': os.getenv('DB_PASSWORD', 'your_password')  # Change in prod
+    "host": os.getenv("DB_HOST", "localhost"),
+    "port": int(os.getenv("DB_PORT", 5432)),
+    "database": os.getenv("DB_NAME", "ploutos"),
+    "user": os.getenv("DB_USER", "ploutos"),
+    "password": os.getenv("DB_PASSWORD", "changeme"),  # à surcharger en prod
 }
 
-# ============================================================================
-# DATABASE HELPERS
-# ============================================================================
+INITIAL_BALANCE = float(os.getenv("INITIAL_BALANCE", "100000"))
+
+
+# =============================================================================
+# DB HELPERS
+# =============================================================================
 
 def get_db_connection():
-    """Connexion PostgreSQL"""
+    """Ouvre une connexion PostgreSQL."""
     try:
         conn = psycopg2.connect(**DB_CONFIG)
         return conn
@@ -53,96 +57,111 @@ def get_db_connection():
         print(f"❌ Erreur connexion DB: {e}")
         return None
 
+
 def execute_query(query, params=None, fetch=True):
-    """Exécute requête SQL"""
+    """Exécute une requête SQL et renvoie les résultats sous forme de dict."""
     conn = get_db_connection()
     if not conn:
         return None
-    
+
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute(query, params)
-        
+        cur.execute(query, params or [])
         if fetch:
             result = cur.fetchall()
         else:
             conn.commit()
             result = True
-        
         cur.close()
         conn.close()
         return result
     except Exception as e:
         print(f"❌ Erreur query: {e}")
-        if conn:
+        try:
             conn.close()
+        except Exception:
+            pass
         return None
 
-# ============================================================================
-# ROUTES WEB
-# ============================================================================
 
-@app.route('/')
+# =============================================================================
+# ROUTES HTML
+# =============================================================================
+
+@app.context_processor
+def inject_now():
+    """Injecte la date actuelle dans les templates."""
+    return {"now": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+
+@app.route("/")
 def index():
-    """Page d'accueil dashboard"""
-    return render_template('index.html')
+    return render_template("index.html")
 
-@app.route('/trades')
-def trades_page():
-    """Page historique trades"""
-    return render_template('trades.html')
 
-@app.route('/metrics')
-def metrics_page():
-    """Page métriques performance"""
-    return render_template('metrics.html')
+# =============================================================================
+# API: STATUS
+# =============================================================================
 
-# ============================================================================
-# API ROUTES
-# ============================================================================
-
-@app.route('/api/status')
+@app.route("/api/status")
 def api_status():
-    """Status bot + portfolio actuel"""
-    
-    # Portfolio actuel
+    """
+    Retourne :
+      - dernier daily_summary comme état du portfolio
+      - nb de trades du jour (table trades)
+      - dernières prédictions (table predictions)
+    """
+    # Dernier daily_summary
     portfolio_query = """
-        SELECT 
-            balance,
+        SELECT
+            date,
             portfolio_value,
-            (portfolio_value - 100000) / 100000 * 100 as return_pct,
-            timestamp
+            cash,
+            total_pl,
+            positions_count,
+            trades_count
         FROM daily_summary
-        ORDER BY timestamp DESC
+        ORDER BY date DESC
         LIMIT 1
     """
-    portfolio = execute_query(portfolio_query)
-    
-    # Trades aujourd'hui
-    today_trades_query = """
-        SELECT COUNT(*) as count
+    portfolio_rows = execute_query(portfolio_query) or []
+    portfolio = None
+
+    if portfolio_rows:
+        row = portfolio_rows[0]
+        pv = float(row.get("portfolio_value") or 0.0)
+        cash = float(row.get("cash") or 0.0)
+
+        # Return = (PV / INITIAL_BALANCE - 1) * 100
+        if INITIAL_BALANCE > 0:
+            return_pct = (pv - INITIAL_BALANCE) / INITIAL_BALANCE * 100.0
+        else:
+            return_pct = 0.0
+
+        portfolio = {
+            "date": row.get("date").isoformat() if row.get("date") else None,
+            "portfolio_value": pv,
+            "cash": cash,
+            "return_pct": return_pct,
+            "total_pl": float(row.get("total_pl") or 0.0),
+            "positions_count": int(row.get("positions_count") or 0),
+            "trades_count": int(row.get("trades_count") or 0),
+        }
+
+    # Trades du jour
+    trades_today_query = """
+        SELECT COUNT(*) AS count
         FROM trades
-        WHERE DATE(entry_time) = CURRENT_DATE
+        WHERE DATE(timestamp) = CURRENT_DATE
     """
-    today_trades = execute_query(today_trades_query)
-    
-    # Positions ouvertes
-    positions_query = """
-        SELECT 
-            ticker,
-            shares,
-            entry_price,
-            current_price,
-            (current_price - entry_price) / entry_price * 100 as pnl_pct
-        FROM trades
-        WHERE exit_time IS NULL
-        ORDER BY entry_time DESC
-    """
-    positions = execute_query(positions_query)
-    
-    # Dernières prédictions
+    trades_today_rows = execute_query(trades_today_query) or []
+    trades_today = (
+        int(trades_today_rows[0]["count"]) if trades_today_rows else 0
+    )
+
+    # Prédictions récentes
     predictions_query = """
-        SELECT 
+        SELECT
             ticker,
             action,
             confidence,
@@ -151,159 +170,264 @@ def api_status():
         ORDER BY timestamp DESC
         LIMIT 10
     """
-    predictions = execute_query(predictions_query)
-    
-    return jsonify({
-        'success': True,
-        'timestamp': datetime.now().isoformat(),
-        'portfolio': portfolio[0] if portfolio else None,
-        'trades_today': today_trades[0]['count'] if today_trades else 0,
-        'positions': positions or [],
-        'recent_predictions': predictions or []
-    })
+    predictions_rows = execute_query(predictions_query) or []
 
-@app.route('/api/trades')
-def api_trades():
-    """Historique trades avec filtres"""
-    
-    # Params
-    days = request.args.get('days', 30, type=int)
-    ticker = request.args.get('ticker', None)
-    limit = request.args.get('limit', 100, type=int)
-    
-    # Query
-    query = """
-        SELECT 
-            id,
-            ticker,
-            action,
-            shares,
-            entry_price,
-            exit_price,
-            entry_time,
-            exit_time,
-            pnl,
-            pnl_pct,
-            commission
-        FROM trades
-        WHERE entry_time >= NOW() - INTERVAL '%s days'
-    """
-    params = [days]
-    
-    if ticker:
-        query += " AND ticker = %s"
-        params.append(ticker)
-    
-    query += " ORDER BY entry_time DESC LIMIT %s"
-    params.append(limit)
-    
-    trades = execute_query(query, params)
-    
-    # Stats
-    stats_query = """
-        SELECT 
-            COUNT(*) as total_trades,
-            SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as winning_trades,
-            AVG(pnl_pct) as avg_pnl_pct,
-            MAX(pnl_pct) as max_win,
-            MIN(pnl_pct) as max_loss,
-            SUM(pnl) as total_pnl
-        FROM trades
-        WHERE entry_time >= NOW() - INTERVAL '%s days'
-    """
-    stats_params = [days]
-    
-    if ticker:
-        stats_query += " AND ticker = %s"
-        stats_params.append(ticker)
-    
-    stats = execute_query(stats_query, stats_params)
-    
-    return jsonify({
-        'success': True,
-        'trades': trades or [],
-        'stats': stats[0] if stats else {},
-        'filters': {
-            'days': days,
-            'ticker': ticker,
-            'limit': limit
+    predictions = []
+    for row in predictions_rows:
+        predictions.append(
+            {
+                "ticker": row.get("ticker"),
+                "action": row.get("action"),
+                "confidence": float(row.get("confidence") or 0.0),
+                "timestamp": (
+                    row.get("timestamp").isoformat()
+                    if row.get("timestamp")
+                    else None
+                ),
+            }
+        )
+
+    # Pour l’instant, on ne lit pas la table positions (schéma non défini)
+    positions = []
+
+    return jsonify(
+        {
+            "success": True,
+            "timestamp": datetime.now().isoformat(),
+            "portfolio": portfolio,
+            "trades_today": trades_today,
+            "positions": positions,
+            "recent_predictions": predictions,
         }
-    })
+    )
 
-@app.route('/api/metrics')
+
+# =============================================================================
+# API: TRADES
+# =============================================================================
+
+@app.route("/api/trades")
+def api_trades():
+    """
+    Historique des trades basé sur ta table trades :
+
+    trades(id, timestamp, symbol, action, quantity, price, amount, reason, portfolio_value)
+
+    On adapte le JSON pour coller à peu près à l’ancien format sans utiliser des
+    colonnes qui n’existent pas (`ticker`, `pnl`, etc.).
+    """
+    days = request.args.get("days", 30, type=int)
+    ticker = request.args.get("ticker", None, type=str)
+    limit = request.args.get("limit", 100, type=int)
+
+    base_query = """
+        SELECT
+            id,
+            timestamp,
+            symbol,
+            action,
+            quantity,
+            price,
+            amount,
+            reason,
+            portfolio_value
+        FROM trades
+        WHERE timestamp >= NOW() - INTERVAL %s
+    """
+    params = [f"{days} days"]
+
+    if ticker:
+        base_query += " AND symbol = %s"
+        params.append(ticker)
+
+    base_query += " ORDER BY timestamp DESC LIMIT %s"
+    params.append(limit)
+
+    rows = execute_query(base_query, params) or []
+
+    trades = []
+    for row in rows:
+        trades.append(
+            {
+                "id": row.get("id"),
+                "ticker": row.get("symbol"),  # mapping symbol -> ticker
+                "action": row.get("action"),
+                "shares": float(row.get("quantity") or 0.0),
+                "price": float(row.get("price") or 0.0),
+                "amount": float(row.get("amount") or 0.0),
+                "reason": row.get("reason"),
+                "entry_time": (
+                    row.get("timestamp").isoformat()
+                    if row.get("timestamp")
+                    else None
+                ),
+                # On ne dispose pas d’info de sortie par trade dans ce schéma
+                "exit_time": None,
+                "portfolio_value": float(row.get("portfolio_value") or 0.0),
+            }
+        )
+
+    # Stats simples (sans pnl car pas de colonne dédiée)
+    total_trades = len(trades)
+    total_amount = float(sum(t["amount"] for t in trades)) if trades else 0.0
+
+    stats = {
+        "total_trades": total_trades,
+        "total_amount": total_amount,
+        # placeholders pour compatibilité :
+        "winning_trades": None,
+        "avg_pnl_pct": None,
+        "max_win": None,
+        "max_loss": None,
+        "total_pnl": None,
+    }
+
+    return jsonify(
+        {
+            "success": True,
+            "trades": trades,
+            "stats": stats,
+            "filters": {
+                "days": days,
+                "ticker": ticker,
+                "limit": limit,
+            },
+        }
+    )
+
+
+# =============================================================================
+# API: METRICS
+# =============================================================================
+
+@app.route("/api/metrics")
 def api_metrics():
-    """Métriques performance"""
-    
-    days = request.args.get('days', 90, type=int)
-    
-    # Performance quotidienne
+    """
+    Calcule les métriques globales à partir de daily_summary :
+
+    daily_summary(id, date, portfolio_value, cash, total_pl, positions_count, trades_count)
+    """
+    days = request.args.get("days", 90, type=int)
+
     daily_query = """
-        SELECT 
-            DATE(timestamp) as date,
+        SELECT
+            date,
             portfolio_value,
-            balance,
-            daily_return,
-            n_trades
+            cash,
+            total_pl,
+            positions_count,
+            trades_count
         FROM daily_summary
-        WHERE timestamp >= NOW() - INTERVAL '%s days'
+        WHERE date >= CURRENT_DATE - %s::INTERVAL
         ORDER BY date ASC
     """
-    daily = execute_query(daily_query, [days])
-    
-    # Calcul métriques
-    if daily and len(daily) > 0:
-        returns = [d['daily_return'] for d in daily if d['daily_return'] is not None]
-        
-        import numpy as np
-        
-        total_return = (daily[-1]['portfolio_value'] - 100000) / 100000 * 100
-        
-        # Sharpe
-        if len(returns) > 0:
-            sharpe = np.mean(returns) / (np.std(returns) + 1e-8) * np.sqrt(252)
-        else:
-            sharpe = 0
-        
-        # Max Drawdown
-        portfolio_values = [d['portfolio_value'] for d in daily]
-        peak = portfolio_values[0]
-        max_dd = 0
-        
-        for value in portfolio_values:
-            if value > peak:
-                peak = value
-            dd = (value - peak) / peak
-            if dd < max_dd:
-                max_dd = dd
-        
-        max_drawdown = abs(max_dd) * 100
-        
-        metrics = {
-            'total_return': total_return,
-            'sharpe_ratio': sharpe,
-            'max_drawdown': max_drawdown,
-            'current_value': daily[-1]['portfolio_value'],
-            'total_trades': sum(d['n_trades'] or 0 for d in daily),
-            'avg_trades_per_day': np.mean([d['n_trades'] or 0 for d in daily])
-        }
-    else:
-        metrics = {}
-    
-    return jsonify({
-        'success': True,
-        'metrics': metrics,
-        'daily_data': daily or [],
-        'period_days': days
-    })
+    daily_rows = execute_query(daily_query, [f"{days} days"]) or []
 
-@app.route('/api/predictions')
+    if not daily_rows:
+        return jsonify(
+            {
+                "success": True,
+                "metrics": {},
+                "daily_data": [],
+                "period_days": days,
+            }
+        )
+
+    portfolio_values = [
+        float(r.get("portfolio_value") or 0.0) for r in daily_rows
+    ]
+
+    # Total return sur la période = (dernier / premier - 1) * 100
+    first_value = portfolio_values[0] if portfolio_values else INITIAL_BALANCE
+    last_value = portfolio_values[-1] if portfolio_values else INITIAL_BALANCE
+
+    if first_value > 0:
+        total_return = (last_value - first_value) / first_value * 100.0
+    else:
+        total_return = 0.0
+
+    # Returns journaliers
+    daily_returns = []
+    for i in range(1, len(portfolio_values)):
+        prev = portfolio_values[i - 1]
+        cur = portfolio_values[i]
+        if prev > 0:
+            daily_returns.append((cur - prev) / prev)
+        else:
+            daily_returns.append(0.0)
+
+    # Sharpe
+    if daily_returns:
+        sharpe = (
+            np.mean(daily_returns)
+            / (np.std(daily_returns) + 1e-8)
+            * np.sqrt(252.0)
+        )
+    else:
+        sharpe = 0.0
+
+    # Max drawdown
+    peak = portfolio_values[0]
+    max_dd = 0.0
+    for v in portfolio_values:
+        if v > peak:
+            peak = v
+        dd = (v - peak) / peak if peak > 0 else 0.0
+        if dd < max_dd:
+            max_dd = dd
+    max_drawdown = abs(max_dd) * 100.0
+
+    total_trades = int(
+        sum(int(r.get("trades_count") or 0) for r in daily_rows)
+    )
+    avg_trades_per_day = (
+        float(total_trades) / len(daily_rows) if daily_rows else 0.0
+    )
+
+    metrics = {
+        "total_return": total_return,
+        "sharpe_ratio": sharpe,
+        "max_drawdown": max_drawdown,
+        "current_value": last_value,
+        "total_trades": total_trades,
+        "avg_trades_per_day": avg_trades_per_day,
+    }
+
+    # On renvoie aussi les données brutes pour les graphes
+    daily_data = []
+    for r in daily_rows:
+        daily_data.append(
+            {
+                "date": r.get("date").isoformat() if r.get("date") else None,
+                "portfolio_value": float(r.get("portfolio_value") or 0.0),
+                "cash": float(r.get("cash") or 0.0),
+                "total_pl": float(r.get("total_pl") or 0.0),
+                "positions_count": int(r.get("positions_count") or 0),
+                "trades_count": int(r.get("trades_count") or 0),
+            }
+        )
+
+    return jsonify(
+        {
+            "success": True,
+            "metrics": metrics,
+            "daily_data": daily_data,
+            "period_days": days,
+        }
+    )
+
+
+# =============================================================================
+# API: PREDICTIONS (inchangée)
+# =============================================================================
+
+@app.route("/api/predictions")
 def api_predictions():
-    """Prédictions récentes modèle"""
-    
-    limit = request.args.get('limit', 50, type=int)
-    
+    """Retourne les dernières prédictions de la table predictions."""
+    limit = request.args.get("limit", 50, type=int)
+
     query = """
-        SELECT 
+        SELECT
             ticker,
             action,
             confidence,
@@ -313,88 +437,60 @@ def api_predictions():
         ORDER BY timestamp DESC
         LIMIT %s
     """
-    predictions = execute_query(query, [limit])
-    
-    # Distribution actions
-    dist_query = """
-        SELECT 
-            action,
-            COUNT(*) as count
-        FROM predictions
-        WHERE timestamp >= NOW() - INTERVAL '24 hours'
-        GROUP BY action
-    """
-    distribution = execute_query(dist_query)
-    
-    return jsonify({
-        'success': True,
-        'predictions': predictions or [],
-        'distribution_24h': distribution or []
-    })
+    rows = execute_query(query, [limit]) or []
 
-@app.route('/api/tickers')
-def api_tickers():
-    """Liste tickers surveillés"""
-    
-    query = """
-        SELECT DISTINCT ticker
-        FROM trades
-        ORDER BY ticker
-    """
-    tickers = execute_query(query)
-    
-    return jsonify({
-        'success': True,
-        'tickers': [t['ticker'] for t in tickers] if tickers else []
-    })
+    predictions = []
+    for r in rows:
+        predictions.append(
+            {
+                "ticker": r.get("ticker"),
+                "action": r.get("action"),
+                "confidence": float(r.get("confidence") or 0.0),
+                "timestamp": (
+                    r.get("timestamp").isoformat()
+                    if r.get("timestamp")
+                    else None
+                ),
+                "features": r.get("features"),
+            }
+        )
 
-@app.route('/api/health')
+    return jsonify({"success": True, "predictions": predictions})
+
+
+# =============================================================================
+# API: HEALTH
+# =============================================================================
+
+@app.route("/api/health")
 def api_health():
-    """Healthcheck"""
-    
-    # Test DB
-    db_ok = get_db_connection() is not None
-    
-    return jsonify({
-        'success': True,
-        'status': 'healthy' if db_ok else 'degraded',
-        'database': 'ok' if db_ok else 'error',
-        'timestamp': datetime.now().isoformat()
-    })
+    conn = get_db_connection()
+    db_ok = conn is not None
+    if conn:
+        conn.close()
+    return jsonify(
+        {
+            "success": True,
+            "status": "healthy" if db_ok else "degraded",
+            "database": "ok" if db_ok else "error",
+            "timestamp": datetime.now().isoformat(),
+        }
+    )
 
-# ============================================================================
-# ERROR HANDLERS
-# ============================================================================
 
-@app.errorhandler(404)
-def not_found(e):
-    return jsonify({'success': False, 'error': 'Not found'}), 404
+# =============================================================================
+# MAIN (mode dev)
+# =============================================================================
 
-@app.errorhandler(500)
-def internal_error(e):
-    return jsonify({'success': False, 'error': 'Internal server error'}), 500
-
-# ============================================================================
-# MAIN
-# ============================================================================
-
-if __name__ == '__main__':
-    # Vérifier DB
+if __name__ == "__main__":
     print("⚡ Vérification connexion DB...")
     conn = get_db_connection()
     if conn:
         print("✅ DB connectée")
         conn.close()
     else:
-        print("❌ DB non accessible (dashboard fonctionne en mode dégradé)")
-    
-    # Run
-    print("\n🚀 Démarrage dashboard...")
+        print("❌ DB non accessible (mode dégradé)")
+
+    print("\n🚀 Démarrage dashboard (dev)...")
     print("   URL: http://localhost:5000")
-    print("   API: http://localhost:5000/api/status")
-    
-    app.run(
-        host='0.0.0.0',
-        port=int(os.getenv('PORT', 5000)),
-        debug=os.getenv('DEBUG', 'True').lower() == 'true'
-    )
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=True)
