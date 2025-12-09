@@ -36,20 +36,23 @@ echo -e "${GREEN}✅ pip3 installé${NC}"
 echo -e "${YELLOW}🔄 Mise à jour pip...${NC}"
 pip3 install --upgrade pip -q
 
-# Installer PyTorch avec CUDA si disponible
+# Détecter GPU (optionnel)
+HAS_GPU=false
 if command -v nvidia-smi &> /dev/null; then
-    echo -e "${YELLOW}🔥 GPU détecté, installation PyTorch avec CUDA...${NC}"
-    
-    CUDA_VERSION=$(nvidia-smi | grep "CUDA Version" | awk '{print $9}' | cut -d. -f1,2)
-    echo -e "${GREEN}✅ CUDA Version: $CUDA_VERSION${NC}"
-    
-    if [ "$(echo "$CUDA_VERSION >= 11.8" | bc)" -eq 1 ]; then
-        pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-    else
-        pip3 install torch torchvision torchaudio
+    if nvidia-smi &> /dev/null; then
+        HAS_GPU=true
+        GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)
+        echo -e "${GREEN}✅ GPU détecté: $GPU_NAME${NC}"
     fi
+fi
+
+# Installer PyTorch
+if [ "$HAS_GPU" = true ]; then
+    echo -e "${YELLOW}🔥 Installation PyTorch avec support CUDA...${NC}"
+    pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 else
-    echo -e "${YELLOW}⚠️  Pas de GPU, installation PyTorch CPU only${NC}"
+    echo -e "${YELLOW}💻 Installation PyTorch CPU only...${NC}"
+    echo -e "${YELLOW}(L'entraînement sera plus lent)${NC}"
     pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 fi
 
@@ -57,29 +60,32 @@ echo -e "${GREEN}✅ PyTorch installé${NC}"
 
 # Installer requirements
 if [ -f "requirements_training.txt" ]; then
-    echo -e "${YELLOW}📚 Installation des dépendances...${NC}"
-    pip3 install -r requirements_training.txt
+    echo -e "${YELLOW}📚 Installation des dépendances depuis requirements...${NC}"
+    pip3 install -r requirements_training.txt -q
     echo -e "${GREEN}✅ Dépendances installées${NC}"
 else
     echo -e "${YELLOW}⚠️  requirements_training.txt non trouvé${NC}"
-    echo -e "${YELLOW}Installation manuelle...${NC}"
+    echo -e "${YELLOW}Installation manuelle des packages essentiels...${NC}"
     
-    pip3 install stable-baselines3
-    pip3 install gymnasium
-    pip3 install ta
-    pip3 install scipy
-    pip3 install pandas numpy
-    pip3 install yfinance
-    pip3 install wandb
-    pip3 install tensorboard
-    pip3 install PyYAML
-    pip3 install alpaca-py
-    pip3 install python-dotenv
-    pip3 install tqdm
+    pip3 install -q stable-baselines3
+    pip3 install -q gymnasium
+    pip3 install -q ta
+    pip3 install -q scipy
+    pip3 install -q pandas numpy
+    pip3 install -q yfinance
+    pip3 install -q wandb
+    pip3 install -q tensorboard
+    pip3 install -q PyYAML
+    pip3 install -q alpaca-py
+    pip3 install -q python-dotenv
+    pip3 install -q tqdm
+    
+    echo -e "${GREEN}✅ Packages essentiels installés${NC}"
 fi
 
 # Vérifier installations
-echo -e "${YELLOW}🔍 Vérification...${NC}"
+echo ""
+echo -e "${YELLOW}🔍 Vérification des installations...${NC}"
 echo ""
 
 python3 << 'EOF'
@@ -99,18 +105,36 @@ packages = [
 ]
 
 all_ok = True
+print("Package                    Version")
+print("="*50)
 
 for module, name in packages:
     try:
         mod = __import__(module)
         version = getattr(mod, '__version__', 'unknown')
-        print(f"✅ {name:25s} {version}")
+        status = "✅"
+        print(f"{status} {name:25s} {version}")
     except ImportError:
-        print(f"❌ {name:25s} NOT INSTALLED")
+        status = "❌"
+        print(f"{status} {name:25s} NOT INSTALLED")
         all_ok = False
 
+print("="*50)
+
+# Vérifier CUDA
+try:
+    import torch
+    if torch.cuda.is_available():
+        print(f"\n🔥 CUDA disponible: {torch.cuda.get_device_name(0)}")
+        print(f"   CUDA Version: {torch.version.cuda}")
+    else:
+        print("\n💻 CPU only (pas de CUDA détecté)")
+except:
+    pass
+
 if all_ok:
-    print("\n✅ Toutes les dépendances sont installées")
+    print("\n✅ Toutes les dépendances sont installées avec succès")
+    sys.exit(0)
 else:
     print("\n❌ Certaines dépendances manquent")
     sys.exit(1)
@@ -123,9 +147,14 @@ if [ $? -eq 0 ]; then
     echo -e "${BLUE}========================================${NC}"
     echo ""
     echo -e "${GREEN}Vous pouvez maintenant lancer:${NC}"
-    echo -e "${YELLOW}bash scripts/launch_training_ultimate.sh${NC}"
+    echo -e "${YELLOW}  bash scripts/launch_training_ultimate.sh${NC}"
+    echo ""
+    echo -e "${YELLOW}Ou en mode arrière-plan:${NC}"
+    echo -e "${YELLOW}  bash scripts/launch_training_ultimate.sh --nohup${NC}"
     echo ""
 else
-    echo -e "${RED}❌ Échec installation${NC}"
+    echo ""
+    echo -e "${RED}❌ Échec de l'installation${NC}"
+    echo -e "${YELLOW}Vérifiez les erreurs ci-dessus${NC}"
     exit 1
 fi
