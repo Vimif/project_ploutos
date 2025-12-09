@@ -18,8 +18,6 @@ import pandas as pd
 from typing import Dict, List, Tuple, Optional
 from collections import deque
 
-from core.advanced_features import AdvancedFeatureEngineering, add_market_regime_features
-
 
 class UniversalTradingEnvV4(gym.Env):
     """Environnement Gymnasium pour trading multi-assets ultra-réaliste"""
@@ -30,20 +28,20 @@ class UniversalTradingEnvV4(gym.Env):
         self,
         data: Dict[str, pd.DataFrame],
         initial_balance: float = 100000.0,
-        commission: float = 0.0,  # Alpaca commission-free
-        sec_fee: float = 0.0000221,  # SEC fee
-        finra_taf: float = 0.000145,  # FINRA TAF
+        commission: float = 0.0,
+        sec_fee: float = 0.0000221,
+        finra_taf: float = 0.000145,
         max_steps: int = 2000,
         buy_pct: float = 0.2,
-        slippage_model: str = 'realistic',  # 'none', 'simple', 'realistic'
-        spread_bps: float = 2.0,  # Spread en basis points
+        slippage_model: str = 'realistic',
+        spread_bps: float = 2.0,
         market_impact_factor: float = 0.0001,
-        max_position_pct: float = 0.3,  # Max 30% par action
+        max_position_pct: float = 0.3,
         reward_scaling: float = 1.0,
         use_sharpe_penalty: bool = True,
         use_drawdown_penalty: bool = True,
-        max_trades_per_day: int = 3,  # PDT rule
-        min_holding_period: int = 0,  # Holding minimum
+        max_trades_per_day: int = 3,
+        min_holding_period: int = 0,
     ):
         super().__init__()
         
@@ -57,13 +55,13 @@ class UniversalTradingEnvV4(gym.Env):
         self.equity = initial_balance
         
         # Frais réalistes Alpaca
-        self.commission = commission  # 0 pour Alpaca
-        self.sec_fee = sec_fee  # 0.00221% SEC
-        self.finra_taf = finra_taf  # 0.0145% FINRA TAF
+        self.commission = commission
+        self.sec_fee = sec_fee
+        self.finra_taf = finra_taf
         
         # Slippage & Spread
         self.slippage_model = slippage_model
-        self.spread_bps = spread_bps / 10000  # Convertir en decimal
+        self.spread_bps = spread_bps / 10000
         self.market_impact_factor = market_impact_factor
         
         # Portfolio constraints
@@ -86,7 +84,7 @@ class UniversalTradingEnvV4(gym.Env):
         
         # Portfolio
         self.portfolio = {ticker: 0.0 for ticker in self.tickers}
-        self.portfolio_value_history = deque(maxlen=252)  # 1 an
+        self.portfolio_value_history = deque(maxlen=252)
         self.returns_history = deque(maxlen=100)
         self.peak_value = initial_balance
         
@@ -95,45 +93,81 @@ class UniversalTradingEnvV4(gym.Env):
         self.last_trade_step = {ticker: -999 for ticker in self.tickers}
         self.total_trades = 0
         
-        # Features engineering
-        self.feature_engineer = AdvancedFeatureEngineering()
-        self._prepare_data()
+        # ✅ FIX : Simplifier les features
+        self._prepare_simple_features()
         
         # Spaces
-        n_features = len(self.feature_columns)
+        # ✅ FIX : Features simples = 10 par ticker + 3 globales
+        n_features_per_ticker = 10
+        obs_size = self.n_assets * n_features_per_ticker + self.n_assets + 3
+        
         self.observation_space = gym.spaces.Box(
-            low=-np.inf,
-            high=np.inf,
-            shape=(self.n_assets * n_features + self.n_assets + 3,),
+            low=-5.0,  # ✅ FIX : Clip plus agressif
+            high=5.0,
+            shape=(obs_size,),
             dtype=np.float32
         )
         
         # Actions: 0=HOLD, 1=BUY, 2=SELL pour chaque asset
         self.action_space = gym.spaces.MultiDiscrete([3] * self.n_assets)
     
-    def _prepare_data(self):
-        """Préparer les données avec features avancées"""
+    def _prepare_simple_features(self):
+        """✅ FIX : Préparer features SIMPLES et ROBUSTES"""
         self.processed_data = {}
         
         for ticker in self.tickers:
             df = self.data[ticker].copy()
             
-            # Features avancées
-            df = self.feature_engineer.calculate_all_features(df)
+            # Features SIMPLES seulement
+            close = df['Close']
+            high = df['High']
+            low = df['Low']
+            volume = df['Volume']
             
-            # Features de régime
-            df = add_market_regime_features(df)
+            # 1. Returns
+            df['returns'] = close.pct_change().fillna(0)
             
-            # Normaliser
-            df = self._normalize_features(df)
+            # 2. SMAs
+            df['sma_10'] = close.rolling(10, min_periods=1).mean() / (close + 1e-8)
+            df['sma_20'] = close.rolling(20, min_periods=1).mean() / (close + 1e-8)
+            
+            # 3. Volatility
+            df['volatility'] = df['returns'].rolling(20, min_periods=1).std().fillna(0)
+            
+            # 4. RSI simple
+            delta = close.diff()
+            gain = (delta.where(delta > 0, 0)).rolling(14, min_periods=1).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(14, min_periods=1).mean()
+            rs = gain / (loss + 1e-8)
+            df['rsi'] = 100 - (100 / (1 + rs))
+            df['rsi'] = (df['rsi'] - 50) / 50  # Normaliser -1 à 1
+            
+            # 5. Volume ratio
+            df['volume_ratio'] = volume / (volume.rolling(20, min_periods=1).mean() + 1e-8)
+            
+            # 6. High/Low ratio
+            df['hl_ratio'] = (high - low) / (close + 1e-8)
+            
+            # 7. Momentum
+            df['momentum_5'] = close / (close.shift(5) + 1e-8) - 1
+            df['momentum_10'] = close / (close.shift(10) + 1e-8) - 1
+            
+            # 8. Trend
+            df['trend'] = (close - close.rolling(50, min_periods=1).mean()) / (close + 1e-8)
+            
+            # ✅ FIX : Remplir NaN et clipper AGRESSIVEMENT
+            for col in df.columns:
+                if col not in ['Open', 'High', 'Low', 'Close', 'Volume']:
+                    df[col] = df[col].fillna(0)
+                    df[col] = df[col].replace([np.inf, -np.inf], 0)
+                    df[col] = df[col].clip(-5, 5)  # Clip très agressif
             
             self.processed_data[ticker] = df
         
-        # Feature columns (exclure OHLCV)
-        exclude_cols = ['Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close']
+        # Feature columns
         self.feature_columns = [
-            col for col in self.processed_data[self.tickers[0]].columns
-            if col not in exclude_cols
+            'returns', 'sma_10', 'sma_20', 'volatility', 'rsi',
+            'volume_ratio', 'hl_ratio', 'momentum_5', 'momentum_10', 'trend'
         ]
         
         # Longueur minimale
@@ -141,21 +175,6 @@ class UniversalTradingEnvV4(gym.Env):
             self.max_steps,
             min(len(df) for df in self.processed_data.values()) - 100
         )
-    
-    def _normalize_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Normaliser les features"""
-        # Features à ne pas normaliser
-        no_norm = ['Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close']
-        
-        for col in df.columns:
-            if col not in no_norm:
-                # Normalisation robuste
-                median = df[col].rolling(window=252, min_periods=50).median()
-                mad = (df[col] - median).abs().rolling(window=252, min_periods=50).median()
-                df[col] = (df[col] - median) / (mad + 1e-8)
-                df[col] = df[col].clip(-10, 10)  # Clip outliers
-        
-        return df
     
     def reset(self, seed=None, options=None):
         """Réinitialiser l'environnement"""
@@ -172,7 +191,7 @@ class UniversalTradingEnvV4(gym.Env):
         self.returns_history.clear()
         
         # Reset tracking
-        self.current_step = np.random.randint(100, self.max_steps // 2)
+        self.current_step = np.random.randint(100, max(101, self.max_steps // 2))
         self.trades_today = 0
         self.last_trade_step = {ticker: -999 for ticker in self.tickers}
         self.total_trades = 0
@@ -188,8 +207,8 @@ class UniversalTradingEnvV4(gym.Env):
         if self.done:
             return self._get_observation(), 0.0, True, False, self._get_info()
         
-        # Reset trades counter (nouveau jour si step % 390 == 0 pour trading horaire)
-        if self.current_step % 78 == 0:  # ~1 jour de trading
+        # Reset trades counter
+        if self.current_step % 78 == 0:
             self.trades_today = 0
         
         # Exécuter trades
@@ -199,7 +218,7 @@ class UniversalTradingEnvV4(gym.Env):
         for i, (ticker, action) in enumerate(zip(self.tickers, actions)):
             reward = self._execute_trade(ticker, action, i)
             total_reward += reward
-            if action != 0:  # Si trade exécuté
+            if action != 0:
                 trades_executed += 1
         
         # Update equity
@@ -208,20 +227,29 @@ class UniversalTradingEnvV4(gym.Env):
         # Calculer reward global
         reward = self._calculate_reward(total_reward, trades_executed)
         
+        # ✅ FIX : Clip reward pour éviter explosions
+        reward = np.clip(reward, -10, 10)
+        
         # Next step
         self.current_step += 1
         
         # Check done
         self.done = (
             self.current_step >= self.max_steps or
-            self.equity < self.initial_balance * 0.5 or  # Stop-loss 50%
+            self.equity < self.initial_balance * 0.5 or
             self.balance < 0
         )
         
         terminated = self.done
         truncated = False
         
-        return self._get_observation(), reward, terminated, truncated, self._get_info()
+        obs = self._get_observation()
+        
+        # ✅ FIX : Vérifier NaN dans obs
+        if np.any(np.isnan(obs)) or np.any(np.isinf(obs)):
+            obs = np.nan_to_num(obs, nan=0.0, posinf=5.0, neginf=-5.0)
+        
+        return obs, float(reward), terminated, truncated, self._get_info()
     
     def _execute_trade(self, ticker: str, action: int, ticker_idx: int) -> float:
         """Exécuter un trade avec slippage et fees réalistes"""
@@ -230,28 +258,30 @@ class UniversalTradingEnvV4(gym.Env):
         
         # Check PDT rule
         if self.trades_today >= self.max_trades_per_day:
-            return -0.1  # Penalty
+            return -0.1
         
         # Check holding period
         if (self.current_step - self.last_trade_step[ticker]) < self.min_holding_period:
-            return -0.05  # Penalty
+            return -0.05
         
         # Prix de base
         current_price = self._get_current_price(ticker)
         
+        if current_price <= 0 or np.isnan(current_price) or np.isinf(current_price):
+            return -0.1
+        
         if action == 1:  # BUY
-            # Calculer quantité
             max_invest = min(
                 self.balance * self.buy_pct,
                 self.equity * self.max_position_pct
             )
             
-            if max_invest < current_price * 1.1:  # Minimum 1 action + fees
-                return -0.01  # Penalty pour tentative invalid
+            if max_invest < current_price * 1.1:
+                return -0.01
             
             # Prix avec slippage + spread
             execution_price = self._apply_slippage_buy(ticker, current_price)
-            execution_price *= (1 + self.spread_bps)  # Ask price
+            execution_price *= (1 + self.spread_bps)
             
             # Quantité
             quantity = max_invest / execution_price
@@ -268,19 +298,17 @@ class UniversalTradingEnvV4(gym.Env):
                 self.trades_today += 1
                 self.total_trades += 1
                 self.last_trade_step[ticker] = self.current_step
-                
-                # Reward proportionnel au montant
-                return 0.0  # Neutre, reward viendra du P&L
+                return 0.0
         
         elif action == 2:  # SELL
             quantity = self.portfolio[ticker]
             
             if quantity < 1e-6:
-                return -0.01  # Penalty pour tentative invalid
+                return -0.01
             
             # Prix avec slippage + spread
             execution_price = self._apply_slippage_sell(ticker, current_price)
-            execution_price *= (1 - self.spread_bps)  # Bid price
+            execution_price *= (1 - self.spread_bps)
             
             # Vente
             proceeds = quantity * execution_price
@@ -295,9 +323,6 @@ class UniversalTradingEnvV4(gym.Env):
             self.trades_today += 1
             self.total_trades += 1
             self.last_trade_step[ticker] = self.current_step
-            
-            # Reward = P&L
-            # (sera capturé dans le calcul global)
             return 0.0
         
         return 0.0
@@ -310,17 +335,8 @@ class UniversalTradingEnvV4(gym.Env):
         if self.slippage_model == 'simple':
             return price * (1 + np.random.uniform(0, 0.001))
         
-        # Realistic slippage basé sur ATR
-        df = self.processed_data[ticker]
-        if self.current_step >= len(df):
-            return price
-        
-        volatility = df.iloc[self.current_step].get('ATR_14', 0.01)
-        normalized_vol = volatility / (price + 1e-8)
-        
-        # Slippage proportionnel à la volatilité
-        slippage_pct = normalized_vol * np.random.uniform(0.1, 0.3)
-        
+        # Realistic slippage (simple)
+        slippage_pct = np.random.uniform(0.0001, 0.001)  # 0.01% - 0.1%
         return price * (1 + slippage_pct)
     
     def _apply_slippage_sell(self, ticker: str, price: float) -> float:
@@ -331,16 +347,8 @@ class UniversalTradingEnvV4(gym.Env):
         if self.slippage_model == 'simple':
             return price * (1 - np.random.uniform(0, 0.001))
         
-        # Realistic slippage
-        df = self.processed_data[ticker]
-        if self.current_step >= len(df):
-            return price
-        
-        volatility = df.iloc[self.current_step].get('ATR_14', 0.01)
-        normalized_vol = volatility / (price + 1e-8)
-        
-        slippage_pct = normalized_vol * np.random.uniform(0.1, 0.3)
-        
+        # Realistic slippage (simple)
+        slippage_pct = np.random.uniform(0.0001, 0.001)
         return price * (1 - slippage_pct)
     
     def _get_current_price(self, ticker: str) -> float:
@@ -348,19 +356,25 @@ class UniversalTradingEnvV4(gym.Env):
         df = self.processed_data[ticker]
         if self.current_step >= len(df):
             return df.iloc[-1]['Close']
-        return df.iloc[self.current_step]['Close']
+        price = df.iloc[self.current_step]['Close']
+        
+        # ✅ FIX : Vérifier validité
+        if np.isnan(price) or np.isinf(price) or price <= 0:
+            return df['Close'].median()
+        
+        return price
     
     def _update_equity(self):
         """Mettre à jour l'équité totale"""
-        portfolio_value = sum(
-            self.portfolio[ticker] * self._get_current_price(ticker)
-            for ticker in self.tickers
-        )
+        portfolio_value = 0.0
+        for ticker in self.tickers:
+            price = self._get_current_price(ticker)
+            if price > 0:
+                portfolio_value += self.portfolio[ticker] * price
         
         self.equity = self.balance + portfolio_value
         self.portfolio_value_history.append(self.equity)
         
-        # Update peak
         if self.equity > self.peak_value:
             self.peak_value = self.equity
     
@@ -372,79 +386,87 @@ class UniversalTradingEnvV4(gym.Env):
         # 1. Rendement
         prev_equity = self.portfolio_value_history[-2]
         current_equity = self.equity
-        pct_return = (current_equity - prev_equity) / (prev_equity + 1e-8)
         
+        if prev_equity <= 0:
+            return 0.0
+        
+        pct_return = (current_equity - prev_equity) / prev_equity
         self.returns_history.append(pct_return)
         
-        reward = pct_return * 100  # Amplifier
+        reward = pct_return * 100
         
         # 2. Penalty pour drawdown
-        if self.use_drawdown_penalty:
-            drawdown = (self.peak_value - current_equity) / (self.peak_value + 1e-8)
-            if drawdown > 0.1:  # Si drawdown > 10%
-                reward -= drawdown * 10
+        if self.use_drawdown_penalty and self.peak_value > 0:
+            drawdown = (self.peak_value - current_equity) / self.peak_value
+            if drawdown > 0.1:
+                reward -= drawdown * 5  # Réduit de 10 à 5
         
-        # 3. Sharpe penalty
-        if self.use_sharpe_penalty and len(self.returns_history) >= 30:
-            returns_array = np.array(self.returns_history)
-            sharpe = returns_array.mean() / (returns_array.std() + 1e-8)
-            
-            if sharpe < 0:  # Pénaliser Sharpe négatif
-                reward += sharpe * 0.1
-        
-        # 4. Penalty pour overtrading
+        # 3. Penalty pour overtrading
         if trades_executed > 1:
             reward -= 0.01 * trades_executed
         
-        # 5. Bonus pour bonne perf
-        if pct_return > 0.02:  # +2%
-            reward += 0.5
+        # 4. Bonus pour bonne perf
+        if pct_return > 0.01:  # +1%
+            reward += 0.2
         
         return reward * self.reward_scaling
     
     def _get_observation(self) -> np.ndarray:
-        """Construire l'observation"""
+        """✅ FIX : Construire l'observation ROBUSTE"""
         obs_parts = []
         
-        # Features pour chaque ticker
+        # Features pour chaque ticker (10 features)
         for ticker in self.tickers:
             df = self.processed_data[ticker]
             
             if self.current_step >= len(df):
                 features = np.zeros(len(self.feature_columns))
             else:
-                features = df.iloc[self.current_step][self.feature_columns].values
+                row = df.iloc[self.current_step]
+                features = row[self.feature_columns].values
+            
+            # ✅ FIX : Sécurité totale
+            features = np.nan_to_num(features, nan=0.0, posinf=5.0, neginf=-5.0)
+            features = np.clip(features, -5, 5)
             
             obs_parts.append(features)
         
-        # Portfolio state
+        # Portfolio state (n_assets)
         for ticker in self.tickers:
-            position_value = self.portfolio[ticker] * self._get_current_price(ticker)
-            position_pct = position_value / (self.equity + 1e-8)
+            price = self._get_current_price(ticker)
+            if price > 0:
+                position_value = self.portfolio[ticker] * price
+                position_pct = position_value / (self.equity + 1e-8)
+            else:
+                position_pct = 0.0
+            
+            position_pct = np.clip(position_pct, 0, 1)
             obs_parts.append([position_pct])
         
-        # Global state
-        cash_pct = self.balance / (self.equity + 1e-8)
-        total_return = (self.equity - self.initial_balance) / self.initial_balance
-        
-        # Drawdown
-        drawdown = (self.peak_value - self.equity) / (self.peak_value + 1e-8)
+        # Global state (3)
+        cash_pct = np.clip(self.balance / (self.equity + 1e-8), 0, 1)
+        total_return = np.clip((self.equity - self.initial_balance) / self.initial_balance, -1, 5)
+        drawdown = np.clip((self.peak_value - self.equity) / (self.peak_value + 1e-8), 0, 1)
         
         obs_parts.append([cash_pct, total_return, drawdown])
         
         # Concat
         obs = np.concatenate([np.array(p).flatten() for p in obs_parts])
         
+        # ✅ FIX : Vérification finale
+        obs = np.nan_to_num(obs, nan=0.0, posinf=5.0, neginf=-5.0)
+        obs = np.clip(obs, -5, 5)
+        
         return obs.astype(np.float32)
     
     def _get_info(self) -> dict:
         """Info supplémentaires"""
         return {
-            'equity': self.equity,
-            'balance': self.balance,
-            'total_return': (self.equity - self.initial_balance) / self.initial_balance,
-            'total_trades': self.total_trades,
-            'current_step': self.current_step
+            'equity': float(self.equity),
+            'balance': float(self.balance),
+            'total_return': float((self.equity - self.initial_balance) / self.initial_balance),
+            'total_trades': int(self.total_trades),
+            'current_step': int(self.current_step)
         }
     
     def render(self, mode='human'):
