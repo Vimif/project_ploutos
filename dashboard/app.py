@@ -162,7 +162,6 @@ def api_status():
     # Prédictions récentes
     predictions_query = """
         SELECT
-            ticker,
             action,
             confidence,
             timestamp
@@ -176,7 +175,6 @@ def api_status():
     for row in predictions_rows:
         predictions.append(
             {
-                "ticker": row.get("ticker"),
                 "action": row.get("action"),
                 "confidence": float(row.get("confidence") or 0.0),
                 "timestamp": (
@@ -428,7 +426,6 @@ def api_predictions():
 
     query = """
         SELECT
-            ticker,
             action,
             confidence,
             timestamp,
@@ -443,7 +440,6 @@ def api_predictions():
     for r in rows:
         predictions.append(
             {
-                "ticker": r.get("ticker"),
                 "action": r.get("action"),
                 "confidence": float(r.get("confidence") or 0.0),
                 "timestamp": (
