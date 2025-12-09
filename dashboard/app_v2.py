@@ -150,11 +150,27 @@ def get_daily_data(days=30):
         return []
 
 
+# ========== ROUTES PAGES HTML ==========
+
 @app.route('/')
 def index():
     """Page principale"""
     return render_template('index.html')
 
+
+@app.route('/trades')
+def trades_page():
+    """Page des trades"""
+    return render_template('trades.html')
+
+
+@app.route('/metrics')
+def metrics_page():
+    """Page des métriques"""
+    return render_template('metrics.html')
+
+
+# ========== ROUTES API ALPACA ==========
 
 @app.route('/api/account')
 def get_account():
@@ -499,6 +515,7 @@ if __name__ == '__main__':
         logger.info("   - Métriques avancées (Sharpe/Sortino/Calmar)")
         logger.info("   - Analyse drawdown et risque")
         logger.info("   - Analytics par symbole")
+        logger.info("   - Pages /trades et /metrics complètes")
         logger.info("="*70)
         socketio.run(app, host='0.0.0.0', port=5000, debug=False, use_reloader=False)
     else:
