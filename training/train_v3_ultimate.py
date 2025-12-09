@@ -17,9 +17,12 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# ✅ FIX : Supprimer warning Gym (on utilise Gymnasium)
+import warnings
+warnings.filterwarnings('ignore', message='.*Gym has been unmaintained.*')
+
 import os
 import yaml
-import wandb
 import torch
 import numpy as np
 from datetime import datetime
@@ -31,10 +34,18 @@ from stable_baselines3.common.callbacks import (
 from stable_baselines3.common.monitor import Monitor
 
 from core.universal_environment_v4 import UniversalTradingEnvV4
-from core.data_fetcher import download_data
+from core.data_fetcher import download_data  # ✅ FIX : Import correct
 from core.utils import setup_logging
 
 logger = setup_logging(__name__, 'training_v3.log')
+
+# Weights & Biases (optionnel)
+try:
+    import wandb
+    WANDB_AVAILABLE = True
+except ImportError:
+    WANDB_AVAILABLE = False
+    logger.warning("⚠️ Weights & Biases non installé, metrics ne seront pas trackées")
 
 
 class WandbCallback:
@@ -44,6 +55,9 @@ class WandbCallback:
         self.verbose = verbose
     
     def __call__(self, locals_, globals_):
+        if not WANDB_AVAILABLE:
+            return True
+        
         # Log métriques
         if 'infos' in locals_ and len(locals_['infos']) > 0:
             info = locals_['infos'][0]
@@ -118,7 +132,7 @@ def get_default_config() -> dict:
             'activation_fn': 'tanh'
         },
         'wandb': {
-            'enabled': True,
+            'enabled': WANDB_AVAILABLE,
             'project': 'Ploutos_Trading_V3_ULTIMATE',
             'entity': None
         }
@@ -154,43 +168,69 @@ def train_ultimate_model(config_path: str = None):
     logger.info(f"✅ Configuration chargée")
     
     # 2. Setup Weights & Biases
-    if config['wandb']['enabled']:
-        wandb.init(
-            project=config['wandb']['project'],
-            entity=config['wandb']['entity'],
-            config=config,
-            name=f"ploutos_v3_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        )
-        logger.info("✅ Weights & Biases initialisé")
+    if WANDB_AVAILABLE and config['wandb']['enabled']:
+        try:
+            wandb.init(
+                project=config['wandb']['project'],
+                entity=config['wandb']['entity'],
+                config=config,
+                name=f"ploutos_v3_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            )
+            logger.info("✅ Weights & Biases initialisé")
+        except Exception as e:
+            logger.warning(f"⚠️ W&B init failed: {e}")
     
     # 3. Télécharger données
     logger.info("📊 Téléchargement des données...")
-    data = download_data(
-        tickers=config['data']['tickers'],
-        period=config['data']['period'],
-        interval=config['data']['interval']
-    )
-    logger.info(f"✅ {len(data)} tickers chargés")
+    
+    try:
+        data = download_data(
+            tickers=config['data']['tickers'],
+            period=config['data']['period'],
+            interval=config['data']['interval']
+        )
+        
+        if not data or len(data) == 0:
+            raise ValueError("❌ Aucune donnée récupérée")
+        
+        logger.info(f"✅ {len(data)} tickers chargés")
+        
+        # Afficher info données
+        for ticker, df in data.items():
+            logger.info(f"  {ticker}: {len(df)} bougies ({df.index[0]} → {df.index[-1]})")
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur téléchargement données: {e}")
+        import traceback
+        traceback.print_exc()
+        return
     
     # 4. Créer environnements parallèles
     logger.info(f"🏭 Création de {config['training']['n_envs']} environnements parallèles...")
     
-    envs = SubprocVecEnv([
-        make_env(data, config, i)
-        for i in range(config['training']['n_envs'])
-    ])
-    
-    # Normalisation
-    envs = VecNormalize(
-        envs,
-        norm_obs=True,
-        norm_reward=True,
-        clip_obs=10.0,
-        clip_reward=10.0,
-        gamma=config['training']['gamma']
-    )
-    
-    logger.info("✅ Environnements créés et normalisés")
+    try:
+        envs = SubprocVecEnv([
+            make_env(data, config, i)
+            for i in range(config['training']['n_envs'])
+        ])
+        
+        # Normalisation
+        envs = VecNormalize(
+            envs,
+            norm_obs=True,
+            norm_reward=True,
+            clip_obs=10.0,
+            clip_reward=10.0,
+            gamma=config['training']['gamma']
+        )
+        
+        logger.info("✅ Environnements créés et normalisés")
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur création environnements: {e}")
+        import traceback
+        traceback.print_exc()
+        return
     
     # 5. Créer modèle PPO
     logger.info("🧠 Création du modèle PPO...")
@@ -206,6 +246,9 @@ def train_ultimate_model(config_path: str = None):
     # Device
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     logger.info(f"💻 Device: {device}")
+    
+    if device == 'cuda':
+        logger.info(f"  GPU: {torch.cuda.get_device_name(0)}")
     
     model = PPO(
         'MlpPolicy',
@@ -264,7 +307,7 @@ def train_ultimate_model(config_path: str = None):
     
     # 7. ENTRAÎNEMENT
     logger.info("="*70)
-    logger.info("🏋️  DÉBUT DE L'ENTRAÎNEMENT")
+    logger.info("🏋️ DÉBUT DE L'ENTRAÎNEMENT")
     logger.info("="*70)
     logger.info(f"Total timesteps: {config['training']['total_timesteps']:,}")
     logger.info(f"Batch size: {config['training']['batch_size']:,}")
@@ -281,7 +324,7 @@ def train_ultimate_model(config_path: str = None):
         logger.info("✅ Entraînement terminé avec succès")
         
     except KeyboardInterrupt:
-        logger.warning("⚠️  Entraînement interrompu par l'utilisateur")
+        logger.warning("⚠️ Entraînement interrompu par l'utilisateur")
     
     except Exception as e:
         logger.error(f"❌ Erreur pendant l'entraînement: {e}")
@@ -308,7 +351,7 @@ def train_ultimate_model(config_path: str = None):
     logger.info(f"✅ Config sauvegardée: {config_save_path}")
     
     # 10. Fermer W&B
-    if config['wandb']['enabled']:
+    if WANDB_AVAILABLE and config['wandb']['enabled']:
         wandb.finish()
     
     logger.info("="*70)

@@ -66,17 +66,17 @@ class UniversalDataFetcher:
                     start=datetime.now() - timedelta(days=2)
                 )
                 client.get_stock_bars(test_request)
-                print("  ✅ Alpaca connecté (alpaca-py)")
+                print("✅ Alpaca connecté (alpaca-py)")
                 return client
             except Exception as test_err:
-                print(f"  ⚠️ Alpaca test échec : {str(test_err)[:80]}")
+                print(f"⚠️ Alpaca test échec : {str(test_err)[:80]}")
                 return None
             
         except ImportError:
-            print("  ⚠️ alpaca-py non installé (pip install alpaca-py)")
+            print("⚠️ alpaca-py non installé (pip install alpaca-py)")
             return None
         except Exception as e:
-            print(f"  ⚠️ Alpaca échec : {str(e)[:80]}")
+            print(f"⚠️ Alpaca échec : {str(e)[:80]}")
             return None
 
     
@@ -91,13 +91,13 @@ class UniversalDataFetcher:
                 return None
             
             client = RESTClient(api_key=api_key)
-            print("  ✅ Polygon connecté")
+            print("✅ Polygon connecté")
             return client
             
         except ImportError:
             return None
         except Exception as e:
-            print(f"  ⚠️ Polygon échec : {str(e)[:50]}")
+            print(f"⚠️ Polygon échec : {str(e)[:50]}")
             return None
     
     def fetch(self, ticker, start_date=None, end_date=None, interval='1h', max_retries=2):
@@ -153,12 +153,12 @@ class UniversalDataFetcher:
                     # Validation
                     if df is not None and len(df) > 100:
                         df_normalized = self._normalize_dataframe(df)
-                        print(f"  ✅ {source} : {len(df_normalized)} bougies")
+                        print(f"✅ {source} : {len(df_normalized)} bougies")
                         return df_normalized
                     
                 except Exception as e:
                     if attempt == max_retries - 1:
-                        print(f"  ⚠️ {source} échec (tentative {attempt+1}/{max_retries}) : {str(e)[:80]}")
+                        print(f"⚠️ {source} échec (tentative {attempt+1}/{max_retries}) : {str(e)[:80]}")
                     continue
         
         # Si toutes les sources ont échoué
@@ -229,7 +229,7 @@ class UniversalDataFetcher:
             if delta_days > 729:
                 # Ajuster automatiquement
                 start_date = (end_dt - timedelta(days=729)).strftime('%Y-%m-%d')
-                print(f"    ⚠️ Yahoo limite 730j pour {interval} : ajusté à {start_date}")
+                print(f"⚠️ Yahoo limite 730j pour {interval} : ajusté à {start_date}")
         
         # Mapping interval
         interval_map = {
@@ -379,7 +379,7 @@ class UniversalDataFetcher:
                 
                 return (ticker, df)
             except Exception as e:
-                print(f"  ❌ {ticker} : {str(e)[:80]}")
+                print(f"❌ {ticker} : {str(e)[:80]}")
                 return (ticker, None)
         
         with ThreadPoolExecutor(max_workers=3) as executor:
@@ -423,13 +423,53 @@ class UniversalDataFetcher:
         file_age = datetime.now() - datetime.fromtimestamp(os.path.getmtime(path))
         
         if file_age.days > max_age_days:
-            print(f"  ⏰ Cache {ticker} trop vieux ({file_age.days} jours)")
+            print(f"⏰ Cache {ticker} trop vieux ({file_age.days} jours)")
             return None
         
         try:
             from core.data_loader import load_market_data
             df = load_market_data(path)
-            print(f"  💾 {ticker} chargé depuis cache")
+            print(f"💾 {ticker} chargé depuis cache")
             return df
         except:
             return None
+
+
+# ✅ AJOUT : Fonction wrapper pour compatibilité
+def download_data(tickers, period='2y', interval='1h'):
+    """
+    Fonction wrapper simple pour télécharger des données
+    
+    Args:
+        tickers: Liste de tickers ou ticker unique (str)
+        period: Période ('1y', '2y', '5y', etc.)
+        interval: Intervalle ('1h', '1d', etc.)
+    
+    Returns:
+        dict: {ticker: DataFrame} ou DataFrame si ticker unique
+    """
+    # Convertir period en dates
+    end_date = datetime.now()
+    
+    period_map = {
+        '1y': 365, '2y': 730, '3y': 1095, '5y': 1825, '10y': 3650
+    }
+    
+    days = period_map.get(period, 730)  # Défaut 2 ans
+    start_date = end_date - timedelta(days=days)
+    
+    # Si interval horaire, limiter à 730 jours max
+    if interval in ['1h', '30m', '15m', '5m'] and days > 730:
+        days = 729
+        start_date = end_date - timedelta(days=days)
+        print(f"⚠️ Limite Yahoo 730j pour {interval}, ajusté à 2 ans")
+    
+    # Créer fetcher
+    fetcher = UniversalDataFetcher()
+    
+    # Si ticker unique
+    if isinstance(tickers, str):
+        return fetcher.fetch(tickers, start_date, end_date, interval)
+    
+    # Si liste de tickers
+    return fetcher.bulk_fetch(tickers, start_date, end_date, interval, save_to_cache=False)
