@@ -9,7 +9,7 @@ Optimisations:
 - Hyperparams optimisés
 - Data augmentation
 - Callbacks avancés
-- Weights & Biases tracking
+- Weights & Biases tracking (optionnel)
 - Multi-GPU support
 """
 
@@ -34,42 +34,10 @@ from stable_baselines3.common.callbacks import (
 from stable_baselines3.common.monitor import Monitor
 
 from core.universal_environment_v4 import UniversalTradingEnvV4
-from core.data_fetcher import download_data  # ✅ FIX : Import correct
+from core.data_fetcher import download_data
 from core.utils import setup_logging
 
 logger = setup_logging(__name__, 'training_v3.log')
-
-# Weights & Biases (optionnel)
-try:
-    import wandb
-    WANDB_AVAILABLE = True
-except ImportError:
-    WANDB_AVAILABLE = False
-    logger.warning("⚠️ Weights & Biases non installé, metrics ne seront pas trackées")
-
-
-class WandbCallback:
-    """Callback pour logger sur Weights & Biases"""
-    
-    def __init__(self, verbose=0):
-        self.verbose = verbose
-    
-    def __call__(self, locals_, globals_):
-        if not WANDB_AVAILABLE:
-            return True
-        
-        # Log métriques
-        if 'infos' in locals_ and len(locals_['infos']) > 0:
-            info = locals_['infos'][0]
-            
-            if 'equity' in info:
-                wandb.log({
-                    'equity': info['equity'],
-                    'total_return': info.get('total_return', 0),
-                    'total_trades': info.get('total_trades', 0)
-                })
-        
-        return True
 
 
 def load_config(config_path: str = 'config/training_config_v3.yaml') -> dict:
@@ -132,7 +100,7 @@ def get_default_config() -> dict:
             'activation_fn': 'tanh'
         },
         'wandb': {
-            'enabled': WANDB_AVAILABLE,
+            'enabled': False,  # Désactivé par défaut
             'project': 'Ploutos_Trading_V3_ULTIMATE',
             'entity': None
         }
@@ -152,12 +120,13 @@ def make_env(data, config, rank):
     return _init
 
 
-def train_ultimate_model(config_path: str = None):
+def train_ultimate_model(config_path: str = None, enable_wandb: bool = False):
     """
     Entraînement V3 ULTIMATE
     
     Args:
         config_path: Chemin vers fichier config YAML
+        enable_wandb: Activer Weights & Biases
     """
     logger.info("="*70)
     logger.info("🚀 DÉMARRAGE ENTRAÎNEMENT V3 ULTIMATE")
@@ -167,18 +136,29 @@ def train_ultimate_model(config_path: str = None):
     config = load_config(config_path) if config_path else get_default_config()
     logger.info(f"✅ Configuration chargée")
     
-    # 2. Setup Weights & Biases
-    if WANDB_AVAILABLE and config['wandb']['enabled']:
+    # Override W&B si spécifié
+    if enable_wandb:
+        config['wandb']['enabled'] = True
+    
+    # 2. Setup Weights & Biases (OPTIONNEL)
+    wandb_initialized = False
+    if config['wandb']['enabled']:
         try:
+            import wandb
             wandb.init(
                 project=config['wandb']['project'],
                 entity=config['wandb']['entity'],
                 config=config,
                 name=f"ploutos_v3_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             )
-            logger.info("✅ Weights & Biases initialisé")
+            wandb_initialized = True
+            logger.info("✅ Weights & Biases activé")
+        except ImportError:
+            logger.warning("⚠️ wandb non installé (pip install wandb)")
         except Exception as e:
             logger.warning(f"⚠️ W&B init failed: {e}")
+    else:
+        logger.info("ℹ️ Weights & Biases désactivé (utiliser --wandb pour activer)")
     
     # 3. Télécharger données
     logger.info("📊 Téléchargement des données...")
@@ -196,8 +176,10 @@ def train_ultimate_model(config_path: str = None):
         logger.info(f"✅ {len(data)} tickers chargés")
         
         # Afficher info données
-        for ticker, df in data.items():
+        for ticker, df in list(data.items())[:3]:  # Limiter affichage
             logger.info(f"  {ticker}: {len(df)} bougies ({df.index[0]} → {df.index[-1]})")
+        if len(data) > 3:
+            logger.info(f"  ... et {len(data)-3} autres tickers")
         
     except Exception as e:
         logger.error(f"❌ Erreur téléchargement données: {e}")
@@ -312,6 +294,7 @@ def train_ultimate_model(config_path: str = None):
     logger.info(f"Total timesteps: {config['training']['total_timesteps']:,}")
     logger.info(f"Batch size: {config['training']['batch_size']:,}")
     logger.info(f"Updates: {config['training']['total_timesteps'] // (config['training']['n_steps'] * config['training']['n_envs']):,}")
+    logger.info(f"Durée estimée: ~3-5h sur GPU")
     logger.info("="*70)
     
     try:
@@ -351,12 +334,16 @@ def train_ultimate_model(config_path: str = None):
     logger.info(f"✅ Config sauvegardée: {config_save_path}")
     
     # 10. Fermer W&B
-    if WANDB_AVAILABLE and config['wandb']['enabled']:
+    if wandb_initialized:
+        import wandb
         wandb.finish()
+        logger.info("✅ W&B session fermée")
     
     logger.info("="*70)
     logger.info("🎉 ENTRAÎNEMENT V3 ULTIMATE TERMINÉ")
     logger.info("="*70)
+    logger.info(f"Modèle final: {final_model_path}")
+    logger.info(f"TensorBoard: tensorboard --logdir runs/v3_ultimate/")
     
     return model, envs
 
@@ -366,7 +353,8 @@ if __name__ == '__main__':
     
     parser = argparse.ArgumentParser(description='Entraînement V3 ULTIMATE')
     parser.add_argument('--config', type=str, default=None, help='Chemin config YAML')
+    parser.add_argument('--wandb', action='store_true', help='Activer Weights & Biases')
     
     args = parser.parse_args()
     
-    train_ultimate_model(config_path=args.config)
+    train_ultimate_model(config_path=args.config, enable_wandb=args.wandb)

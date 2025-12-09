@@ -91,7 +91,9 @@ network:
   activation_fn: tanh  # 'tanh' ou 'relu'
 
 wandb:
-  enabled: true
+  # ❌ Désactivé par défaut (cause socket errors)
+  # Pour activer: python training/train_v3_ultimate.py --wandb
+  enabled: false
   project: Ploutos_Trading_V3_ULTIMATE
   entity: null  # Votre username W&B
 
