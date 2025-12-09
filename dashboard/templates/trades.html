@@ -1,0 +1,267 @@
+{% extends "base.html" %}
+
+{% block title %}Trades - Ploutos Dashboard{% endblock %}
+
+{% block extra_css %}
+<style>
+    .filters {
+        display: flex;
+        gap: 15px;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+    }
+    
+    .filter-group {
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .filter-group label {
+        color: #94a3b8;
+        font-size: 0.9em;
+        margin-bottom: 5px;
+    }
+    
+    .filter-group select,
+    .filter-group input {
+        background: #334155;
+        border: 1px solid #475569;
+        color: #e2e8f0;
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-size: 0.95em;
+    }
+    
+    .filter-group select:focus,
+    .filter-group input:focus {
+        outline: none;
+        border-color: #60a5fa;
+    }
+    
+    .btn {
+        background: #60a5fa;
+        color: white;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 600;
+        transition: background 0.3s;
+    }
+    
+    .btn:hover {
+        background: #3b82f6;
+    }
+    
+    .trade-row-buy {
+        border-left: 3px solid #10b981;
+    }
+    
+    .trade-row-sell {
+        border-left: 3px solid #ef4444;
+    }
+    
+    .pagination {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        margin-top: 20px;
+    }
+    
+    .pagination button {
+        background: #334155;
+        color: #94a3b8;
+        border: 1px solid #475569;
+        padding: 8px 16px;
+        border-radius: 6px;
+        cursor: pointer;
+    }
+    
+    .pagination button:hover:not(:disabled) {
+        background: #475569;
+        color: #60a5fa;
+    }
+    
+    .pagination button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    
+    .pagination .active {
+        background: #60a5fa;
+        color: white;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>💰 Historique des Trades</h2>
+    
+    <!-- Filtres -->
+    <div class="filters">
+        <div class="filter-group">
+            <label>Période</label>
+            <select id="filter-days">
+                <option value="7">7 derniers jours</option>
+                <option value="14">14 derniers jours</option>
+                <option value="30" selected>30 derniers jours</option>
+                <option value="60">60 derniers jours</option>
+                <option value="90">90 derniers jours</option>
+            </select>
+        </div>
+        
+        <div class="filter-group">
+            <label>Action</label>
+            <select id="filter-action">
+                <option value="">Toutes</option>
+                <option value="BUY">Achats</option>
+                <option value="SELL">Ventes</option>
+            </select>
+        </div>
+        
+        <div class="filter-group">
+            <label>Symbole</label>
+            <input type="text" id="filter-symbol" placeholder="Ex: NVDA">
+        </div>
+        
+        <div class="filter-group" style="justify-content: flex-end;">
+            <button class="btn" onclick="applyFilters()">Filtrer</button>
+        </div>
+    </div>
+    
+    <!-- Stats rapides -->
+    <div class="grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 20px;">
+        <div class="stat">
+            <div id="total-trades" class="stat-value neutral">-</div>
+            <div class="stat-label">Total Trades</div>
+        </div>
+        <div class="stat">
+            <div id="buy-trades" class="stat-value positive">-</div>
+            <div class="stat-label">Achats</div>
+        </div>
+        <div class="stat">
+            <div id="sell-trades" class="stat-value negative">-</div>
+            <div class="stat-label">Ventes</div>
+        </div>
+        <div class="stat">
+            <div id="total-volume" class="stat-value neutral">-</div>
+            <div class="stat-label">Volume Total</div>
+        </div>
+    </div>
+    
+    <!-- Table des trades -->
+    <div id="trades-container">
+        <div class="loading">Chargement des trades...</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let currentPage = 1;
+    let tradesData = [];
+    
+    async function loadTrades() {
+        try {
+            const days = document.getElementById('filter-days').value;
+            const action = document.getElementById('filter-action').value;
+            const symbol = document.getElementById('filter-symbol').value;
+            
+            let url = `/api/db/trades?days=${days}`;
+            if (symbol) url += `&symbol=${symbol}`;
+            
+            const response = await fetch(url);
+            const data = await response.json();
+            
+            if (!data.success) {
+                throw new Error(data.error || 'Erreur chargement trades');
+            }
+            
+            tradesData = data.data;
+            
+            // Filtrer par action si nécessaire
+            if (action) {
+                tradesData = tradesData.filter(t => t.action === action);
+            }
+            
+            // Mettre à jour les stats
+            updateStats(tradesData);
+            
+            // Afficher les trades
+            displayTrades(tradesData);
+            
+        } catch (error) {
+            console.error('Erreur loadTrades:', error);
+            document.getElementById('trades-container').innerHTML = 
+                `<p style="color: #ef4444; text-align: center; padding: 20px;">❌ ${error.message}</p>`;
+        }
+    }
+    
+    function updateStats(trades) {
+        const buyTrades = trades.filter(t => t.action === 'BUY');
+        const sellTrades = trades.filter(t => t.action === 'SELL');
+        const totalVolume = trades.reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
+        
+        document.getElementById('total-trades').textContent = trades.length;
+        document.getElementById('buy-trades').textContent = buyTrades.length;
+        document.getElementById('sell-trades').textContent = sellTrades.length;
+        document.getElementById('total-volume').textContent = formatCurrency(totalVolume);
+    }
+    
+    function displayTrades(trades) {
+        if (trades.length === 0) {
+            document.getElementById('trades-container').innerHTML = 
+                '<p style="text-align: center; padding: 40px; color: #94a3b8;">Aucun trade trouvé</p>';
+            return;
+        }
+        
+        const html = `
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Action</th>
+                        <th>Symbole</th>
+                        <th>Quantité</th>
+                        <th>Prix</th>
+                        <th>Montant</th>
+                        <th>Raison</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${trades.map(trade => `
+                        <tr class="trade-row-${trade.action.toLowerCase()}">
+                            <td>${formatDate(trade.timestamp)}</td>
+                            <td>
+                                <span class="badge badge-${trade.action.toLowerCase()}">
+                                    ${trade.action}
+                                </span>
+                            </td>
+                            <td><strong>${trade.symbol}</strong></td>
+                            <td>${trade.quantity ? parseFloat(trade.quantity).toFixed(2) : '-'}</td>
+                            <td>${formatCurrency(parseFloat(trade.price))}</td>
+                            <td>${formatCurrency(parseFloat(trade.amount))}</td>
+                            <td style="color: #94a3b8; font-size: 0.9em;">
+                                ${trade.reason || '-'}
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+        
+        document.getElementById('trades-container').innerHTML = html;
+    }
+    
+    function applyFilters() {
+        loadTrades();
+    }
+    
+    // Chargement initial
+    loadTrades();
+    
+    // Rafraîchir toutes les 30 secondes
+    setInterval(loadTrades, 30000);
+</script>
+{% endblock %}
