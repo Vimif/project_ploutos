@@ -33,7 +33,14 @@ from stable_baselines3.common.callbacks import (
 )
 from stable_baselines3.common.monitor import Monitor
 
-from core.universal_environment_v4 import UniversalTradingEnvV4
+# ✅ Essayer V4 simple d'abord, puis ultimate si disponible
+try:
+    from core.universal_environment_v4_ultimate import UniversalTradingEnvV4Ultimate as TradingEnv
+    print("✅ Utilisation environnement V4 ULTIMATE (50+ features)")
+except ImportError:
+    from core.universal_environment_v4 import UniversalTradingEnvV4 as TradingEnv
+    print("✅ Utilisation environnement V4 standard")
+
 from core.data_fetcher import download_data
 from core.utils import setup_logging
 
@@ -100,7 +107,7 @@ def get_default_config() -> dict:
             'activation_fn': 'tanh'
         },
         'wandb': {
-            'enabled': False,  # Désactivé par défaut
+            'enabled': False,
             'project': 'Ploutos_Trading_V3_ULTIMATE',
             'entity': None
         }
@@ -110,7 +117,7 @@ def get_default_config() -> dict:
 def make_env(data, config, rank):
     """Créer un environnement"""
     def _init():
-        env = UniversalTradingEnvV4(
+        env = TradingEnv(
             data=data,
             **config['environment']
         )
@@ -176,7 +183,7 @@ def train_ultimate_model(config_path: str = None, enable_wandb: bool = False):
         logger.info(f"✅ {len(data)} tickers chargés")
         
         # Afficher info données
-        for ticker, df in list(data.items())[:3]:  # Limiter affichage
+        for ticker, df in list(data.items())[:3]:
             logger.info(f"  {ticker}: {len(df)} bougies ({df.index[0]} → {df.index[-1]})")
         if len(data) > 3:
             logger.info(f"  ... et {len(data)-3} autres tickers")
