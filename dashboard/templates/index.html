@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+
+{% block title %}Accueil - Ploutos Dashboard{% endblock %}
+
+{% block content %}
+<div class="grid">
+    <div class="card">
+        <div class="stat">
+            <div id="portfolio-value" class="stat-value neutral">-</div>
+            <div class="stat-label">Portfolio</div>
+        </div>
+    </div>
+    
+    <div class="card">
+        <div class="stat">
+            <div id="return-pct" class="stat-value neutral">-</div>
+            <div class="stat-label">Return</div>
+        </div>
+    </div>
+    
+    <div class="card">
+        <div class="stat">
+            <div id="trades-today" class="stat-value neutral">-</div>
+            <div class="stat-label">Trades Aujourd'hui</div>
+        </div>
+    </div>
+    
+    <div class="card">
+        <div class="stat">
+            <div id="positions-count" class="stat-value neutral">-</div>
+            <div class="stat-label">Positions Ouvertes</div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>💼 Positions Ouvertes</h2>
+    <div id="positions-container">
+        <div class="loading">Chargement...</div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>🧠 Prédictions Récentes</h2>
+    <div id="predictions-container">
+        <div class="loading">Chargement...</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    async function fetchStatus() {
+        try {
+            const response = await fetch('/api/status');
+            const data = await response.json();
+            
+            if (!data.success) return;
+            
+            // Portfolio
+            if (data.portfolio) {
+                document.getElementById('portfolio-value').textContent = formatCurrency(data.portfolio.portfolio_value);
+                
+                const returnPct = data.portfolio.return_pct;
+                const returnEl = document.getElementById('return-pct');
+                returnEl.textContent = formatPercent(returnPct);
+                returnEl.className = 'stat-value ' + (returnPct > 0 ? 'positive' : returnPct < 0 ? 'negative' : 'neutral');
+            }
+            
+            // Trades
+            document.getElementById('trades-today').textContent = data.trades_today;
+            
+            // Positions
+            document.getElementById('positions-count').textContent = data.positions.length;
+            
+            // Positions table
+            const positionsHtml = data.positions.length > 0 ? `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Ticker</th>
+                            <th>Shares</th>
+                            <th>Entry</th>
+                            <th>Current</th>
+                            <th>PnL</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${data.positions.map(p => `
+                            <tr>
+                                <td><strong>${p.ticker}</strong></td>
+                                <td>${p.shares}</td>
+                                <td>${formatCurrency(p.entry_price)}</td>
+                                <td>${formatCurrency(p.current_price)}</td>
+                                <td class="${p.pnl_pct > 0 ? 'positive' : 'negative'}">
+                                    ${formatPercent(p.pnl_pct)}
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            ` : '<p style="text-align:center;padding:20px;color:#64748b;">Aucune position ouverte</p>';
+            
+            document.getElementById('positions-container').innerHTML = positionsHtml;
+            
+            // Predictions
+            const predictionsHtml = data.recent_predictions.length > 0 ? `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Ticker</th>
+                            <th>Action</th>
+                            <th>Confidence</th>
+                            <th>Time</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${data.recent_predictions.map(p => `
+                            <tr>
+                                <td><strong>${p.ticker}</strong></td>
+                                <td><span class="badge badge-${p.action.toLowerCase()}">${p.action}</span></td>
+                                <td>${(p.confidence * 100).toFixed(1)}%</td>
+                                <td>${formatDate(p.timestamp)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            ` : '<p style="text-align:center;padding:20px;color:#64748b;">Aucune prédiction récente</p>';
+            
+            document.getElementById('predictions-container').innerHTML = predictionsHtml;
+            
+        } catch (error) {
+            console.error('Erreur fetch status:', error);
+        }
+    }
+    
+    // Initial load
+    fetchStatus();
+    
+    // Auto-refresh every 5s
+    setInterval(fetchStatus, 5000);
+</script>
+{% endblock %}
