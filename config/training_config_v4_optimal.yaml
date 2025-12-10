@@ -1,0 +1,111 @@
+# config/training_config_v4_optimal.yaml
+# Configuration OPTIMALE pour Performance Maximale - Ploutos V4
+
+training:
+  # ✅ Durée totale AUGMENTÉE pour meilleur apprentissage
+  total_timesteps: 20000000  # 20M steps (~6-8h sur RTX 3080)
+  
+  # Parallélisation
+  n_envs: 16  # 16 environnements parallèles
+  
+  # Batch config
+  batch_size: 8192
+  n_steps: 4096
+  n_epochs: 20
+  
+  # ✅ Learning rate OPTIMISÉ
+  learning_rate: 0.0001  # 1e-4, légèrement plus élevé pour convergence plus rapide
+  
+  # Discount & GAE
+  gamma: 0.99        # Discount factor (moyen terme)
+  gae_lambda: 0.95   # GAE parameter
+  
+  # ✅ PPO specific - EXPLORATION AUGMENTÉE
+  clip_range: 0.2
+  ent_coef: 0.08           # ✅ 0.01 → 0.08 : EXPLORATION++
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  target_kl: 0.02          # Slightly higher
+
+environment:
+  # Capital
+  initial_balance: 100000
+  
+  # Frais Alpaca réels
+  commission: 0.0
+  sec_fee: 0.0000221
+  finra_taf: 0.000145
+  
+  # Episode
+  max_steps: 3000
+  
+  # ✅ Trading OPTIMISÉ - Moins de contraintes
+  buy_pct: 0.25              # ✅ 15% → 25% : Positions plus grandes
+  max_position_pct: 0.35     # ✅ 25% → 35% : Max position augmenté
+  max_trades_per_day: 10     # ✅ 4 → 10 : Moins de contraintes PDT
+  min_holding_period: 2      # ✅ 5 → 2 : Plus flexible
+  
+  # Réalisme
+  slippage_model: realistic
+  spread_bps: 2.0
+  market_impact_factor: 0.0001
+  
+  # ✅ Rewards OPTIMISÉS - Encourage trading
+  reward_scaling: 1.5              # ✅ 1.0 → 1.5 : Amplifier rewards
+  use_sharpe_penalty: true
+  use_drawdown_penalty: true
+  
+  # ✅ NOUVEAUX paramètres bonus
+  reward_trade_success: 0.5        # Bonus pour trade profitable
+  penalty_overtrading: 0.005       # Pénalité réduite (0.01 → 0.005)
+  drawdown_penalty_factor: 3       # Réduit (5 → 3)
+
+data:
+  tickers:
+    # Tech giants
+    - NVDA
+    - MSFT
+    - AAPL
+    - GOOGL
+    - AMZN
+    - META
+    - TSLA
+    
+    # Indices
+    - SPY
+    - QQQ
+    - VOO
+    - VTI
+    
+    # Secteurs
+    - XLE   # Energy
+    - XLF   # Finance
+    - XLK   # Tech
+    - XLV   # Health
+    
+  period: '5y'
+  interval: '1h'
+
+network:
+  # ✅ Architecture PROFONDE pour capacité maximale
+  net_arch:
+    - 1024
+    - 1024  # ✅ Layer supplémentaire
+    - 512
+    - 256
+  
+  activation_fn: tanh
+
+wandb:
+  enabled: false
+  project: Ploutos_Trading_V4_OPTIMAL
+  entity: null
+
+checkpoint:
+  save_freq: 50000
+  save_path: ./models/v4_optimal_checkpoints/
+
+eval:
+  eval_freq: 10000
+  n_eval_episodes: 5
+  best_model_save_path: ./models/v4_optimal_best/
