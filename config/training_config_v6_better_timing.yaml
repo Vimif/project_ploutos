@@ -1,0 +1,93 @@
+# config/training_config_v6_better_timing.yaml
+# Configuration V6 - MEILLEUR TIMING
+
+training:
+  total_timesteps: 15000000  # 15M
+  
+  n_envs: 16
+  
+  batch_size: 8192
+  n_steps: 4096
+  n_epochs: 20
+  
+  learning_rate: 0.0001
+  
+  gamma: 0.99
+  gae_lambda: 0.95
+  
+  # Exploration
+  clip_range: 0.2
+  ent_coef: 0.10  # Entre V4 et V5
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  target_kl: 0.02
+
+environment:
+  initial_balance: 100000
+  
+  commission: 0.0
+  sec_fee: 0.0000221
+  finra_taf: 0.000145
+  
+  max_steps: 2500
+  
+  buy_pct: 0.20
+  max_position_pct: 0.25
+  max_trades_per_day: 10
+  min_holding_period: 2
+  
+  slippage_model: realistic
+  spread_bps: 2.0
+  market_impact_factor: 0.0001
+  
+  reward_scaling: 1.5
+  use_sharpe_penalty: true
+  use_drawdown_penalty: true
+  reward_trade_success: 0.5
+  penalty_overtrading: 0.005
+  drawdown_penalty_factor: 3.0
+
+data:
+  tickers:
+    - NVDA
+    - MSFT
+    - AAPL
+    - GOOGL
+    - AMZN
+    - META
+    - TSLA
+    - SPY
+    - QQQ
+    - VOO
+    - VTI
+    - XLE
+    - XLF
+    - XLK
+    - XLV
+    
+  period: '5y'
+  interval: '1h'
+
+network:
+  # Réseau plus profond pour 60+ features
+  net_arch:
+    - 1024
+    - 1024
+    - 512
+    - 256
+  
+  activation_fn: tanh
+
+wandb:
+  enabled: false
+  project: Ploutos_Trading_V6_BetterTiming
+  entity: null
+
+checkpoint:
+  save_freq: 50000
+  save_path: ./models/v6_better_timing_checkpoints/
+
+eval:
+  eval_freq: 10000
+  n_eval_episodes: 5
+  best_model_save_path: ./models/v6_better_timing_best/
