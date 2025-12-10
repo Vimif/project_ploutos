@@ -37,15 +37,23 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Configuration - MEMES 10 TICKERS QUE L'ENTRAINEMENT
-TICKERS = [
-    # Tech Growth
-    'NVDA', 'MSFT', 'AAPL', 'GOOGL', 'AMZN',
+# ✅ Configuration - MEMES 15 TICKERS QUE L'ENTRAINEMENT V3
+TICKERS_V3 = [
+    # Tech giants
+    'NVDA', 'MSFT', 'AAPL', 'GOOGL', 'AMZN', 'META', 'TSLA',
     # Indices
-    'SPY', 'QQQ', 'VOO',
-    # Sectoriels
+    'SPY', 'QQQ', 'VOO', 'VTI',
+    # Secteurs
     'XLE',  # Energy
-    'XLF'   # Finance
+    'XLF',  # Finance
+    'XLK',  # Tech
+    'XLV'   # Health
+]
+
+# Configuration V2 (10 tickers)
+TICKERS_V2 = [
+    'NVDA', 'MSFT', 'AAPL', 'GOOGL', 'AMZN',
+    'SPY', 'QQQ', 'VOO', 'XLE', 'XLF'
 ]
 
 INITIAL_BALANCE = 100000
@@ -114,6 +122,20 @@ class BacktestReliability:
                     from core.universal_environment_v4_ultimate import UniversalTradingEnvV4Ultimate
                     self.env_class = UniversalTradingEnvV4Ultimate
                     logger.info(f"  • Détection: Environnement V4 ULTIMATE ({obs_shape} dims)")
+                    
+                    # ✅ Vérifier nombre de tickers attendus
+                    # Formula: obs_shape = n_tickers * n_features + n_tickers + 3
+                    # Avec 37 features: obs_shape = n_tickers * 37 + n_tickers + 3 = n_tickers * 38 + 3
+                    expected_tickers = (obs_shape - 3) / 38
+                    logger.info(f"  • Tickers attendus: ~{expected_tickers:.1f}")
+                    
+                    if abs(expected_tickers - len(self.tickers)) > 0.5:
+                        logger.warning(f"  ⚠️  Liste tickers fournie: {len(self.tickers)}")
+                        logger.warning(f"  ⚠️  Ajustement automatique...")
+                        # Utiliser la liste V3 complète
+                        self.tickers = TICKERS_V3
+                        logger.info(f"  ✅ Utilisation liste V3: {len(self.tickers)} tickers")
+                    
                 except ImportError:
                     logger.error("❌ Environnement V4 Ultimate non trouvé")
                     return False
@@ -135,6 +157,7 @@ class BacktestReliability:
     def fetch_data(self, days=90):
         """Charger données historiques"""
         logger.info(f"📊 Chargement données {days} jours...")
+        logger.info(f"  • Tickers: {len(self.tickers)}")
         
         fetcher = UniversalDataFetcher()
         end_date = datetime.now()
@@ -245,6 +268,8 @@ class BacktestReliability:
         
         if obs.shape[0] != self.model.observation_space.shape[0]:
             logger.error(f"❌ MISMATCH! Env génère {obs.shape[0]} dims, model attend {self.model.observation_space.shape[0]}")
+            logger.error(f"   Nombre de tickers: {len(data)}")
+            logger.error(f"   Formule: {len(data)} tickers × 37 features + {len(data)} + 3 = {len(data)*37 + len(data) + 3}")
             raise ValueError("Incompatibilité taille observation")
         
         return env
@@ -523,10 +548,10 @@ def main():
     print("🧪 BACKTEST DE FIABILITÉ - PLOUTOS")
     print("="*70 + "\n")
     
-    # Initialiser
+    # ✅ Initialiser avec TICKERS_V3 par défaut (sera ajusté si besoin)
     backtest = BacktestReliability(
         model_path=args.model,
-        tickers=TICKERS,
+        tickers=TICKERS_V3,  # 15 tickers V3
         initial_balance=INITIAL_BALANCE
     )
     
