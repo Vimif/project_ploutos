@@ -38,9 +38,9 @@ fi
 echo "🐍 Activation virtualenv..."
 source "$VENV_PATH/bin/activate"
 
-# Vérifier deps
+# ✅ Vérifier deps avec correction typo
 echo "✅ Vérification dépendances..."
-python -c "import torch; import stable_baselines3; import gymnasium; print(f'PyTorch: {torch.__version__}'); print(f'CUDA: {torch.cuda.is_available__()}'); print(f'SB3: {stable_baselines3.__version__}')"
+python -c "import torch; import stable_baselines3; import gymnasium; print(f'PyTorch: {torch.__version__}'); print(f'CUDA: {torch.cuda.is_available()}'); print(f'SB3: {stable_baselines3.__version__}')"
 echo ""
 
 # Créer dossiers
@@ -63,7 +63,7 @@ done
 if [ "$NOHUP" = true ]; then
     echo "========================================"
     echo "🚀 DÉMARRAGE EN MODE BACKGROUND"
-echo "========================================"
+    echo "========================================"
     echo ""
     echo "  • Logs: logs/v4_optimal/training_$(date +%Y%m%d_%H%M%S).log"
     echo "  • Pour suivre: tail -f logs/v4_optimal/training_*.log"
