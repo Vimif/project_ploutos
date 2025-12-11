@@ -378,14 +378,15 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
             df = self.processed_data[ticker]
             
             if self.current_step >= len(df):
-                features = np.zeros(len(self.feature_columns))
+                features = np.zeros(len(self.feature_columns), dtype=np.float32)
             else:
                 row = df.iloc[self.current_step]
-                features = row[self.feature_columns].values
+                # FIX: Convertir en float64 d'abord, puis en float32
+                features = pd.to_numeric(row[self.feature_columns], errors='coerce').values.astype(np.float32)
             
             # Nettoyage
             features = np.nan_to_num(features, nan=0.0, posinf=10.0, neginf=-10.0)
-            features = np.clip(features, -10, 10)
+            features = np.clip(features, -10.0, 10.0)  # Spécifier les bounds comme floats
             
             obs_parts.append(features)
         
@@ -398,22 +399,22 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
             else:
                 position_pct = 0.0
             
-            position_pct = np.clip(position_pct, 0, 1)
+            position_pct = np.clip(position_pct, 0.0, 1.0)
             obs_parts.append([position_pct])
         
         # État global
-        cash_pct = np.clip(self.balance / (self.equity + 1e-8), 0, 1)
-        total_return = np.clip((self.equity - self.initial_balance) / self.initial_balance, -1, 5)
-        drawdown = np.clip((self.peak_value - self.equity) / (self.peak_value + 1e-8), 0, 1)
+        cash_pct = np.clip(self.balance / (self.equity + 1e-8), 0.0, 1.0)
+        total_return = np.clip((self.equity - self.initial_balance) / self.initial_balance, -1.0, 5.0)
+        drawdown = np.clip((self.peak_value - self.equity) / (self.peak_value + 1e-8), 0.0, 1.0)
         
         obs_parts.append([cash_pct, total_return, drawdown])
         
         # Concaténer tout
-        obs = np.concatenate([np.array(p).flatten() for p in obs_parts])
+        obs = np.concatenate([np.array(p, dtype=np.float32).flatten() for p in obs_parts])
         
         # Nettoyage final
         obs = np.nan_to_num(obs, nan=0.0, posinf=10.0, neginf=-10.0)
-        obs = np.clip(obs, -10, 10)
+        obs = np.clip(obs, -10.0, 10.0)
         
         return obs.astype(np.float32)
     
