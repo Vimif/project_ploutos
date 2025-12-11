@@ -42,9 +42,8 @@ setup-v6:
 	@echo "2. Apply all V6 patches automatically"
 	@echo "3. Verify the patches are correct"
 	@echo ""
-	@read -p "Continue? (y/n) " -n 1 -r; \
-	echo; \
-	if [[ $$REPLY =~ ^[Yy]$$ ]]; then \
+	@printf "Continue? (y/n) "; read REPLY; \
+	if [ "$$REPLY" = "y" ] || [ "$$REPLY" = "Y" ]; then \
 		python scripts/apply_v6_patches.py; \
 	fi
 
@@ -102,9 +101,8 @@ train-v6-test:
 	@echo "Expected time: 12-24 hours"
 	@echo "Target Sharpe: > 0.8"
 	@echo ""
-	@read -p "Continue? (y/n) " -n 1 -r; \
-	echo; \
-	if [[ $$REPLY =~ ^[Yy]$$ ]]; then \
+	@printf "Continue? (y/n) "; read REPLY; \
+	if [ "$$REPLY" = "y" ] || [ "$$REPLY" = "Y" ]; then \
 		mkdir -p models logs/tensorboard; \
 		python scripts/train_v6_extended_with_optimizations.py \
 			--config config/training_v6_extended_optimized.yaml \
@@ -130,9 +128,8 @@ train-v6-full:
 	@echo "   - Enough disk space (50+ GB)"
 	@echo "   - GPU available"
 	@echo ""
-	@read -p "Continue? (y/n) " -n 1 -r; \
-	echo; \
-	if [[ $$REPLY =~ ^[Yy]$$ ]]; then \
+	@printf "Continue? (y/n) "; read REPLY; \
+	if [ "$$REPLY" = "y" ] || [ "$$REPLY" = "Y" ]; then \
 		mkdir -p models logs/tensorboard; \
 		python scripts/train_v6_extended_with_optimizations.py \
 			--config config/training_v6_extended_optimized.yaml \
@@ -163,10 +160,10 @@ analyze-features:
 
 deploy-vps:
 	@echo ""
-	@echo 🚀 Deploying to VPS..."
+	@echo "🚀 Deploying to VPS..."
 	@echo "================================================"
 	@echo ""
-	@read -p "VPS Host (default: root@VPS): " VPS_HOST; \
+	@printf "VPS Host (default: root@VPS): "; read VPS_HOST; \
 	VPS_HOST=$${VPS_HOST:-root@VPS}; \
 	echo "Deploying to: $$VPS_HOST"; \
 	rsync -avz models/v6_extended_full/ $$VPS_HOST:/root/ploutos/models/v6_extended_full/
@@ -176,7 +173,7 @@ paper-trade:
 	@echo "📋 Starting Paper Trading..."
 	@echo "================================================"
 	@echo ""
-	@read -p "VPS Host (default: root@VPS): " VPS_HOST; \
+	@printf "VPS Host (default: root@VPS): "; read VPS_HOST; \
 	VPS_HOST=$${VPS_HOST:-root@VPS}; \
 	ssh $$VPS_HOST "sudo systemctl restart ploutos-trader-v2"; \
 	echo "✅ Paper trading started!"
