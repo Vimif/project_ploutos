@@ -1,5 +1,6 @@
-# core/universal_environment_v6_better_timing.py
-"""✅ Environnement V6 - MEILLEUR TIMING avec Features V2
+#!/usr/bin/env python3
+"""
+✅ Environnement V6 - MEILLEUR TIMING avec Features V2
 
 Objectif: Résoudre le problème "buy high" (85% mauvais timing)
 
@@ -93,10 +94,10 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
         self.winning_trades = 0
         self.losing_trades = 0
         
-        # ✅ Features V2
+        # ✅ Préparer les features V2
         self._prepare_features_v2()
         
-        # Spaces
+        # Définir les spaces
         n_features_per_ticker = len(self.feature_columns)
         obs_size = self.n_assets * n_features_per_ticker + self.n_assets + 3
         
@@ -137,10 +138,8 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
             min(len(df) for df in self.processed_data.values()) - 100
         )
     
-    # ✅ Le reste du code est identique à V4 Optimal
-    # (reset, step, _execute_trade, etc.)
-    
     def reset(self, seed=None, options=None):
+        """Reset l'environnement pour un nouvel épisode"""
         super().reset(seed=seed)
         
         self.balance = self.initial_balance
@@ -166,27 +165,34 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
         return obs, info
     
     def step(self, actions):
+        """Un step dans l'environnement"""
         if self.done:
             return self._get_observation(), 0.0, True, False, self._get_info()
         
+        # Reset les trades du jour (78 = ~6.5 heures de trading)
         if self.current_step % 78 == 0:
             self.trades_today = 0
         
         total_reward = 0.0
         trades_executed = 0
         
+        # Exécuter les actions pour chaque ticker
         for i, (ticker, action) in enumerate(zip(self.tickers, actions)):
             reward = self._execute_trade(ticker, action, i)
             total_reward += reward
             if action != 0:
                 trades_executed += 1
         
+        # Mettre à jour l'equity
         self._update_equity()
+        
+        # Calculer la récompense
         reward = self._calculate_reward(total_reward, trades_executed)
         reward = np.clip(reward, -10, 10)
         
         self.current_step += 1
         
+        # Condition d'arrêt
         self.done = (
             self.current_step >= self.max_steps or
             self.equity < self.initial_balance * 0.5 or
@@ -195,15 +201,18 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
         
         obs = self._get_observation()
         
+        # Sécurité: nettoyer les NaN/Inf
         if np.any(np.isnan(obs)) or np.any(np.isinf(obs)):
             obs = np.nan_to_num(obs, nan=0.0, posinf=10.0, neginf=-10.0)
         
         return obs, float(reward), self.done, False, self._get_info()
     
     def _execute_trade(self, ticker: str, action: int, ticker_idx: int) -> float:
-        if action == 0:
+        """Exécuter une action de trading pour un ticker"""
+        if action == 0:  # HOLD
             return 0.0
         
+        # Vérifier les limites de trading
         if self.trades_today >= self.max_trades_per_day:
             return -0.02
         
@@ -283,6 +292,7 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
         return 0.0
     
     def _calculate_reward(self, trade_reward: float, trades_executed: int) -> float:
+        """Calculer la récompense pour ce step"""
         if len(self.portfolio_value_history) < 2:
             return 0.0
         
@@ -297,17 +307,21 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
         
         reward = pct_return * 100
         
+        # Pénalité drawdown
         if self.use_drawdown_penalty and self.peak_value > 0:
             drawdown = (self.peak_value - current_equity) / self.peak_value
             if drawdown > 0.15:
                 reward -= drawdown * self.drawdown_penalty_factor
         
+        # Pénalité sur-trading
         if trades_executed > 2:
             reward -= self.penalty_overtrading * trades_executed
         
+        # Bonus pour return positif
         if pct_return > 0.01:
             reward += 0.3
         
+        # Bonus pour bonne win rate
         if self.total_trades > 10:
             win_rate = self.winning_trades / self.total_trades
             if win_rate > 0.6:
@@ -316,18 +330,21 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
         return reward * self.reward_scaling
     
     def _apply_slippage_buy(self, ticker: str, price: float) -> float:
+        """Appliquer le slippage à l'achat"""
         if self.slippage_model == 'none':
             return price
         slippage_pct = np.random.uniform(0.0001, 0.001)
         return price * (1 + slippage_pct)
     
     def _apply_slippage_sell(self, ticker: str, price: float) -> float:
+        """Appliquer le slippage à la vente"""
         if self.slippage_model == 'none':
             return price
         slippage_pct = np.random.uniform(0.0001, 0.001)
         return price * (1 - slippage_pct)
     
     def _get_current_price(self, ticker: str) -> float:
+        """Obtenir le prix actuel"""
         df = self.processed_data[ticker]
         if self.current_step >= len(df):
             return df.iloc[-1]['Close']
@@ -339,6 +356,7 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
         return price
     
     def _update_equity(self):
+        """Mettre à jour l'equity total"""
         portfolio_value = 0.0
         for ticker in self.tickers:
             price = self._get_current_price(ticker)
@@ -352,8 +370,10 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
             self.peak_value = self.equity
     
     def _get_observation(self) -> np.ndarray:
+        """Construire l'observation"""
         obs_parts = []
         
+        # Features pour chaque ticker
         for ticker in self.tickers:
             df = self.processed_data[ticker]
             
@@ -363,11 +383,13 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
                 row = df.iloc[self.current_step]
                 features = row[self.feature_columns].values
             
+            # Nettoyage
             features = np.nan_to_num(features, nan=0.0, posinf=10.0, neginf=-10.0)
             features = np.clip(features, -10, 10)
             
             obs_parts.append(features)
         
+        # Position pour chaque ticker
         for ticker in self.tickers:
             price = self._get_current_price(ticker)
             if price > 0:
@@ -379,20 +401,24 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
             position_pct = np.clip(position_pct, 0, 1)
             obs_parts.append([position_pct])
         
+        # État global
         cash_pct = np.clip(self.balance / (self.equity + 1e-8), 0, 1)
         total_return = np.clip((self.equity - self.initial_balance) / self.initial_balance, -1, 5)
         drawdown = np.clip((self.peak_value - self.equity) / (self.peak_value + 1e-8), 0, 1)
         
         obs_parts.append([cash_pct, total_return, drawdown])
         
+        # Concaténer tout
         obs = np.concatenate([np.array(p).flatten() for p in obs_parts])
         
+        # Nettoyage final
         obs = np.nan_to_num(obs, nan=0.0, posinf=10.0, neginf=-10.0)
         obs = np.clip(obs, -10, 10)
         
         return obs.astype(np.float32)
     
     def _get_info(self) -> dict:
+        """Retourner les infos du step"""
         return {
             'equity': float(self.equity),
             'balance': float(self.balance),
@@ -404,6 +430,7 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
         }
     
     def render(self, mode='human'):
+        """Afficher les stats"""
         win_rate = self.winning_trades / self.total_trades if self.total_trades > 0 else 0
         print(f"Step: {self.current_step} | Equity: ${self.equity:,.2f} | "
               f"Return: {(self.equity/self.initial_balance - 1)*100:.2f}% | "
