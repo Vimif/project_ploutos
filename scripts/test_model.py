@@ -21,6 +21,7 @@ import gymnasium as gym
 from stable_baselines3 import PPO
 import matplotlib.pyplot as plt
 import os
+import sys
 
 # Import des modules internes
 sys.path.append(os.getcwd())
@@ -120,8 +121,12 @@ def main():
     # 5. Comparaison SPY (Buy & Hold)
     if 'SPY' in data:
         spy_data = data['SPY']
+        # Ajuster les index pour correspondre à la période testée
+        if len(spy_data) > len(equity_curve):
+             spy_data = spy_data.iloc[-len(equity_curve):]
+        
         spy_start = spy_data.iloc[0]['Close']
-        spy_end = spy_data.iloc[len(equity_curve)-1]['Close']
+        spy_end = spy_data.iloc[-1]['Close']
         spy_return = (spy_end - spy_start) / spy_start
         print(f"🆚 Benchmark SPY Return: {spy_return:.2%}")
         
@@ -131,5 +136,4 @@ def main():
             print("⚠️ Le bot sous-performe le marché.")
 
 if __name__ == "__main__":
-    import sys
     main()
