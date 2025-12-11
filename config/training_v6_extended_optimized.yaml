@@ -1,0 +1,274 @@
+# Ploutos V6 Extended - Optimized Configuration
+# ============================================
+#
+# Cette configuration intègre les 7 optimizations critiques:
+# 1. ✅ Adaptive Normalizer (Feature normalization par groupe)
+# 2. ✅ PrioritizedReplayBuffer (Rejoue les experiences surprenantes)
+# 3. ✅ Transformer Encoder (Architecture temporelle avancee)
+# 4. ✅ Feature Importance Analysis (Detecte features inutiles)
+# 5. ✅ Walk-Forward Validator (Validation robuste temporelle)
+# 6. ✅ Ensemble Trader (Vote de 3 modeles)
+# 7. ✅ Comprehensive Drift Detector (5 methodes de detection)
+#
+# Date: 11 Dec 2025
+# Version: V6.1
+
+training:
+  # Hyperparameters optimises pour convergence
+  timesteps: 50_000_000          # 50M steps (evolution complete)
+  n_envs: 32                     # Reduit a 32 pour VRAM (RTX 3080)
+  n_steps: 2048                  # Stable avec 32 envs
+  batch_size: 2048               # 32 envs x 2048 steps / 32 = valide
+  learning_rate: 1.0e-4          # Decroissance polynomiale
+  learning_rate_decay: 0.95      # Diviser par 0.95 tous les 1M steps
+  n_epochs: 10
+  clip_range: 0.2                # Standard PPO
+  clip_range_vf: 0.2             # Value function clip
+  entropy_coef: 0.01             # Reduit progressivement
+  entropy_coef_decay: 0.99       # Decay entropy over time
+  vf_coef: 0.5                   # Value function weight
+  max_grad_norm: 0.5             # Gradient clipping
+  gamma: 0.99                    # Discount factor (long-term focus)
+  gae_lambda: 0.95               # Generalized Advantage Estimation
+  target_kl: 0.01                # Early stopping criterion
+  
+  # Device
+  device: "cuda:0"               # GPU support
+  
+  # Checkpoint Strategy
+  save_freq: 500_000             # Sauvegarde tous les 500k steps
+  eval_freq: 1_000_000           # Evaluation tous les 1M steps
+  
+  # Early Stopping
+  early_stop_patience: 5         # 5 evals sans amelioration
+  early_stop_threshold: -10      # Si Sharpe < -10, stop
+  
+  # Curriculum Learning: 3 stages
+  curriculum_stages:
+    stage_1:
+      name: "Mono-Asset (SPY Warm-up)"
+      assets: ["SPY"]
+      timesteps: 5_000_000
+      learning_rate: 1.0e-4
+    
+    stage_2:
+      name: "Multi-ETF (Diversification)"
+      assets: ["SPY", "QQQ", "VOO", "VTI"]
+      timesteps: 20_000_000
+      learning_rate: 5.0e-5        # Reduit progressivement
+    
+    stage_3:
+      name: "Complex Stocks (Final)"
+      assets: ["NVDA", "MSFT", "AAPL", "GOOGL", "AMZN", "JPM", "XOM", "CVX"]
+      timesteps: 25_000_000
+      learning_rate: 2.0e-5
+
+environment:
+  # Observation Space: 1293 features optimises
+  lookback_period: 60            # 60 jours d'historique (3 mois)
+  
+  feature_groups:
+    technical: 512               # OHLCV + talib indicators
+    ml_features: 400             # Autoencoder embeddings
+    market_regime: 100           # Clustering + volatility + VIX proxy
+    portfolio_state: 150         # Position, cash, drawdown
+    graph_embeddings: 131        # GNN embeddings (optionnel)
+  
+  # Market Microstructure (Realistic costs)
+  realistic_costs: true
+  commission: 0.0005             # 5 basis points
+  slippage: 0.0002               # 2 bps spread
+  market_impact: 0.00001         # Order book impact
+  bid_ask_spread: 0.0001         # 1 bp bid-ask
+  
+  # Position Management
+  max_position_size: 0.5         # 50% of capital per asset
+  min_trade_amount: 100          # Minimum $100 per trade
+  max_concurrent_positions: 10   # Max 10 open positions
+  position_time_limit: 259200    # Max 3 days (72 hours)
+  
+  # Reward Function (Differential Sharpe Ratio)
+  reward_type: "differential_sharpe"
+  sharpe_window: 252             # 1 year for Sharpe calculation
+  trades_penalty: 0.0001         # Small penalty per trade (discourage overtrading)
+  position_penalty: 0.00001      # Cost of holding position
+  max_leverage_penalty: 0.001    # Penalty for high leverage
+
+# OPTIMIZATIONS (7 features avancees)
+optimizations:
+  # 1. Adaptive Normalization
+  normalization:
+    enabled: true
+    type: "adaptive_by_group"
+    scaler_type: "robust"         # RobustScaler for outliers
+    save_path: "models/normalizer_v6_extended.pkl"
+  
+  # 2. Prioritized Experience Replay
+  prioritized_replay:
+    enabled: true
+    alpha: 0.6                   # Prioritization exponent
+    beta: 0.4                    # Importance sampling
+    beta_increment: 0.0001       # Beta increase per step
+    buffer_size: 100_000         # Experience buffer size
+  
+  # 3. Transformer Architecture
+  feature_extractor:
+    type: "transformer"          # "mlp" | "cnn" | "transformer" | "conv_transformer"
+    d_model: 128                 # Embedding dimension
+    n_heads: 4                   # Attention heads
+    n_layers: 2                  # Encoder layers
+    dim_feedforward: 512
+    dropout: 0.1
+    max_seq_len: 60              # Same as lookback
+  
+  # 4. Feature Importance Analysis
+  feature_importance:
+    enabled: true
+    calculate_freq: 1_000_000    # Every 1M steps
+    n_samples: 100
+    remove_unused: false         # Don't auto-remove, just report
+    threshold: 0.001             # Importance threshold
+  
+  # 5. Walk-Forward Validation
+  walk_forward:
+    enabled: true
+    train_window: 252            # 1 year
+    test_window: 63              # 3 months
+    gap: 21                      # 3 weeks (lookahead prevention)
+    stride: 63                   # Step by 3 months
+    min_consistency: 0.5         # Min consistency score
+  
+  # 6. Ensemble Trading (3 models)
+  ensemble:
+    enabled: false               # Enable in production
+    n_models: 3
+    voting_method: "majority_vote"  # "majority_vote" | "weighted" | "mean_confidence"
+    min_confidence: 0.65         # Min confidence to trade
+    model_names: ["Sniper", "Hedge", "Trend"]
+  
+  # 7. Drift Detection
+  drift_detection:
+    enabled: true
+    sensitivity: "medium"        # "low" | "medium" | "high"
+    check_frequency: 3600        # Every hour
+    
+    # PSI (Population Stability Index)
+    psi_threshold: 0.25
+    psi_enabled: true
+    
+    # KS Test (Kolmogorov-Smirnov)
+    ks_threshold: 0.15
+    ks_enabled: true
+    
+    # MMD (Maximum Mean Discrepancy)
+    mmd_threshold: 0.10
+    mmd_enabled: true
+    
+    # ADDM (Autoregressive Drift)
+    addm_threshold: 0.20
+    addm_enabled: true
+    
+    # Performance Drift
+    performance_drop_threshold: 0.10
+    performance_enabled: true
+    
+    # Auto-retrain trigger
+    auto_retrain:
+      enabled: true
+      trigger: "medium_drift"    # "low" | "medium" | "high"
+      partial_retrain_steps: 1_000_000
+
+validation:
+  walk_forward:
+    train_window: 252
+    test_window: 63
+    overlap: 126
+  
+  metrics:
+    - sharpe_ratio
+    - sortino_ratio
+    - calmar_ratio
+    - max_drawdown
+    - win_rate
+    - profit_factor
+    - returns_consistency
+
+monitoring:
+  # Weights & Biases
+  wandb:
+    enabled: true
+    project: "Ploutos_Trading_V50_ULTIMATE"
+    entity: null                 # Your W&B entity
+    name: "v6_extended_optimized"
+    tags: ["production", "v6-extended", "50m-steps", "7-optimizations"]
+    log_frequency: 1000
+    log_model: true
+  
+  # TensorBoard
+  tensorboard:
+    enabled: true
+    log_dir: "logs/tensorboard"
+  
+  # Structured Logging
+  logging:
+    level: "INFO"
+    format: "json"               # json for easy parsing
+    file: "logs/ploutos_v6_extended.log"
+    max_size: "500MB"
+    backup_count: 10
+  
+  # Prometheus Metrics
+  prometheus:
+    enabled: true
+    port: 8000
+    scrape_interval: 15
+
+data:
+  # Yahoo Finance
+  yfinance:
+    enabled: true
+    max_lookback: 730            # 2 years (Yahoo limit)
+  
+  # Alpaca
+  alpaca:
+    enabled: true
+    paper_trading: true
+    base_url: "https://paper-api.alpaca.markets"
+  
+  # Cache
+  cache:
+    enabled: true
+    backend: "redis"
+    ttl:
+      daily: 86400
+      hourly: 3600
+      intraday: 300
+
+database:
+  # PostgreSQL
+  postgres:
+    host: "localhost"
+    port: 5432
+    database: "ploutos"
+    user: "ploutos"
+    ssl: false
+    
+    pool_size: 20
+    max_overflow: 10
+    pool_timeout: 30
+    pool_recycle: 3600
+
+security:
+  secrets_backend: "env"        # environment variables
+  rate_limit:
+    alpaca_api: 200
+    db_queries: 1000
+  
+  audit_log: true
+  audit_log_file: "logs/audit.jsonl"
+
+experimental:
+  # Experimental features
+  meta_learning: false           # MAML (Model-Agnostic Meta-Learning)
+  adversarial_training: false   # Adversarial examples
+  multi_task_learning: false    # Multi-asset joint training
