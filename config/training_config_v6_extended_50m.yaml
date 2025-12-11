@@ -1,0 +1,101 @@
+# config/training_config_v6_extended_50m.yaml
+# Configuration V6 Extended - 50M TIMESTEPS
+# Objectif: Convergence complète pour résoudre problème BUY timing
+# Durée estimée: 15-18h sur RTX 3080
+
+training:
+  total_timesteps: 50000000  # 50M (3.3x plus que V6 standard)
+  
+  n_envs: 16  # Parallélisation GPU
+  
+  batch_size: 8192
+  n_steps: 4096
+  n_epochs: 20
+  
+  learning_rate: 0.0001  # Inchangé
+  
+  gamma: 0.99
+  gae_lambda: 0.95
+  
+  # Exploration / Régularisation
+  clip_range: 0.2
+  ent_coef: 0.08  # Réduit vs 0.10 pour plus de convergence
+  vf_coef: 0.5
+  max_grad_norm: 0.5  # Protection contre gradients explosifs
+  target_kl: 0.02  # Limite divergence policy
+
+environment:
+  initial_balance: 100000
+  
+  commission: 0.0
+  sec_fee: 0.0000221
+  finra_taf: 0.000145
+  
+  max_steps: 2500
+  
+  buy_pct: 0.20
+  max_position_pct: 0.25
+  max_trades_per_day: 10
+  min_holding_period: 2
+  
+  slippage_model: realistic
+  spread_bps: 2.0
+  market_impact_factor: 0.0001
+  
+  reward_scaling: 1.5
+  use_sharpe_penalty: true
+  use_drawdown_penalty: true
+  reward_trade_success: 0.5
+  penalty_overtrading: 0.005
+  drawdown_penalty_factor: 3.0
+
+data:
+  tickers:
+    - NVDA
+    - MSFT
+    - AAPL
+    - GOOGL
+    - AMZN
+    - META
+    - TSLA
+    - SPY
+    - QQQ
+    - VOO
+    - VTI
+    - XLE
+    - XLF
+    - XLK
+    - XLV
+    
+  period: '5y'
+  interval: '1h'
+
+network:
+  # Réseau profond pour 85 features/ticker
+  net_arch:
+    - 1024
+    - 1024
+    - 512
+    - 256
+  
+  activation_fn: tanh
+
+wandb:
+  enabled: false  # Activer si monitoring W&B souhaité
+  project: Ploutos_Trading_V6_Extended_50M
+  entity: null
+
+checkpoint:
+  save_freq: 100000  # Checkpoint tous les 100k (toutes les 30min environ)
+  save_path: ./models/v6_extended_50m_checkpoints/
+
+eval:
+  eval_freq: 20000  # Évaluation tous les 20k steps
+  n_eval_episodes: 5
+  best_model_save_path: ./models/v6_extended_50m_best/
+  
+  # ✅ EARLY STOPPING pour éviter overfitting
+  early_stopping:
+    enabled: true
+    max_no_improvement_evals: 25  # Stop si pas amélioration pendant 25 evals (500k steps)
+    min_evals: 100  # Attendre au moins 100 evals (2M steps) avant de pouvoir stop
