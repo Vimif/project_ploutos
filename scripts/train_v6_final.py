@@ -8,13 +8,14 @@ Fixes:
 2. Gymnasium compatibility (reset(seed=...))
 3. Action space attribute compatibility (action_space vs single_action_space)
 4. SDE handling for discrete/continuous spaces
+5. Learning rate parsing (string to float)
 
 Usage:
     python scripts/train_v6_final.py \
         --config config/training_v6_extended_optimized.yaml \
-        --output models/v6_test_5m \
+        --output models/v6_final_50m \
         --device cuda:0 \
-        --timesteps 5000000
+        --timesteps 50000000
 """
 
 import os
@@ -130,9 +131,9 @@ def make_env(rank, seed=0, data=None):
 def main():
     parser = argparse.ArgumentParser(description='Train Ploutos V6')
     parser.add_argument('--config', default='config/training_v6_extended_optimized.yaml')
-    parser.add_argument('--output', default='models/v6_test_5m')
+    parser.add_argument('--output', default='models/v6_final_50m')
     parser.add_argument('--device', default='cuda:0')
-    parser.add_argument('--timesteps', type=int, default=5000000)
+    parser.add_argument('--timesteps', type=int, default=50000000)
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--data', default='data/historical_daily.csv')
     args = parser.parse_args()
@@ -193,10 +194,15 @@ def main():
     # Extract training params
     train_cfg = config.get('training', {})
     
+    # FIX: Parse learning_rate as float (might be string from YAML)
+    learning_rate = train_cfg.get('learning_rate', 1e-4)
+    if isinstance(learning_rate, str):
+        learning_rate = float(learning_rate)
+    
     model = PPO(
         'MlpPolicy',
         env,
-        learning_rate=train_cfg.get('learning_rate', 1e-4),
+        learning_rate=learning_rate,
         n_steps=train_cfg.get('n_steps', 2048),
         batch_size=train_cfg.get('batch_size', 4096),
         n_epochs=train_cfg.get('n_epochs', 10),
