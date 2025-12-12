@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Ploutos V6 Extended - FINAL WORKING Training Script
-===================================================
+Ploutos V6 Extended - FINAL WORKING Training Script (STABLE VERSION)
+====================================================================
 
 Fixes:
 1. Data loading (passed 'data' dict instead of 'data_path')
@@ -9,6 +9,7 @@ Fixes:
 3. Action space attribute compatibility (action_space vs single_action_space)
 4. SDE handling for discrete/continuous spaces
 5. Learning rate parsing (string to float)
+6. **Numerical stability** (gradient clipping, NaN detection, reward bounds)
 
 Usage:
     python scripts/train_v6_final.py \
@@ -29,8 +30,9 @@ from pathlib import Path
 import gymnasium as gym
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import SubprocVecEnv
-from stable_baselines3.common.callbacks import CheckpointCallback
+from stable_baselines3.common.callbacks import CheckpointCallback, BaseCallback
 from stable_baselines3.common.utils import set_random_seed
+import torch
 
 # Setup logging
 os.makedirs('logs', exist_ok=True)
@@ -43,6 +45,68 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+
+class NaNDetectionCallback(BaseCallback):
+    """
+    Détecte les NaN/Inf et alerte
+    """
+    def __init__(self, verbose=0):
+        super().__init__(verbose)
+        self.nan_count = 0
+    
+    def _on_training_start(self) -> None:
+        pass
+    
+    def _on_step(self) -> bool:
+        # Check policy parameters
+        for param in self.model.policy.parameters():
+            if torch.isnan(param).any() or torch.isinf(param).any():
+                self.nan_count += 1
+                logger.warning(f"⚠️  NaN/Inf detected in policy parameters (count={self.nan_count})")
+                if self.nan_count > 5:
+                    logger.error("❌ Too many NaN/Inf detected. Stopping training.")
+                    return False
+        return True
+
+
+class StableWrapper(gym.Wrapper):
+    """
+    Wrapper pour stabiliser les observations et récompenses
+    """
+    def __init__(self, env):
+        super().__init__(env)
+        self.reward_clip_value = 10.0
+        self.obs_clip_value = 1e6
+    
+    def step(self, action):
+        obs, reward, done, truncated, info = self.env.step(action)
+        
+        # Clip and clean observations
+        if isinstance(obs, np.ndarray):
+            obs = np.clip(obs, -self.obs_clip_value, self.obs_clip_value)
+            obs = np.nan_to_num(obs, nan=0.0, posinf=self.obs_clip_value, neginf=-self.obs_clip_value)
+        
+        # Clip and clean rewards
+        reward = float(np.clip(reward, -self.reward_clip_value, self.reward_clip_value))
+        reward = float(np.nan_to_num(reward, nan=0.0, posinf=self.reward_clip_value, neginf=-self.reward_clip_value))
+        
+        # Ensure info dict is clean
+        for key, val in info.items():
+            if isinstance(val, (int, float)):
+                info[key] = float(np.nan_to_num(val, nan=0.0))
+        
+        return obs, reward, done, truncated, info
+    
+    def reset(self, seed=None, options=None):
+        obs, info = self.env.reset(seed=seed, options=options)
+        
+        # Clip observations
+        if isinstance(obs, np.ndarray):
+            obs = np.clip(obs, -self.obs_clip_value, self.obs_clip_value)
+            obs = np.nan_to_num(obs, nan=0.0, posinf=self.obs_clip_value, neginf=-self.obs_clip_value)
+        
+        return obs, info
 
 
 def load_data_dictionary(data_path):
@@ -91,7 +155,7 @@ def load_data_dictionary(data_path):
 
 def make_env(rank, seed=0, data=None):
     """
-    Create environment for multiprocessing.
+    Create environment for multiprocessing with stability wrapper.
     """
     def _init():
         try:
@@ -102,26 +166,28 @@ def make_env(rank, seed=0, data=None):
             env_data = data if data is not None else load_data_dictionary("dummy")
             
             env = UniversalTradingEnvV6BetterTiming(
-                data=env_data,  # FIX: Pass 'data' dict, not 'data_path' string
+                data=env_data,
                 initial_balance=100000,
                 commission=0.001,
             )
             
+            # Add stability wrapper
+            env = StableWrapper(env)
+            
             # Wrap with TimeLimit
             env = gym.wrappers.TimeLimit(env, max_episode_steps=1000)
             
-            # FIX: Use reset(seed=...) instead of env.seed()
+            # Reset with seed
             env.reset(seed=seed + rank)
             
-            # logger.info(f"Env {rank}: Real trading environment initialized")
             return env
             
         except Exception as e:
             logger.warning(f"Env {rank}: Fallback to CartPole. Error: {e}")
-            # logger.exception("Full traceback:")
             
             # Fallback environment
             env = gym.make('CartPole-v1')
+            env = StableWrapper(env)
             env.reset(seed=seed + rank)
             return env
     
@@ -129,7 +195,7 @@ def make_env(rank, seed=0, data=None):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Train Ploutos V6')
+    parser = argparse.ArgumentParser(description='Train Ploutos V6 (Stable)')
     parser.add_argument('--config', default='config/training_v6_extended_optimized.yaml')
     parser.add_argument('--output', default='models/v6_final_50m')
     parser.add_argument('--device', default='cuda:0')
@@ -144,7 +210,7 @@ def main():
     Path('logs/tensorboard').mkdir(parents=True, exist_ok=True)
     
     logger.info("="*70)
-    logger.info("🚀 PLOUTOS V6 - TRAINING START (FINAL VERSION)")
+    logger.info("🚀 PLOUTOS V6 - TRAINING START (STABLE VERSION)")
     logger.info("="*70)
     
     # Load config
@@ -167,8 +233,7 @@ def main():
     ])
     logger.info("✅ Environments created")
     
-    # FIX: Check action space robustly
-    # Try 'single_action_space' (new SB3) or 'action_space' (old SB3 / VecEnv standard)
+    # Check action space
     if hasattr(env, 'single_action_space'):
         action_space = env.single_action_space
     else:
@@ -182,22 +247,25 @@ def main():
     
     if not use_sde:
         logger.info("⚠️  Discrete/MultiDiscrete action space detected - disabling SDE")
-        # Ensure sde_sample_freq is -1
         sde_sample_freq = -1
     else:
         logger.info("✅ Continuous action space detected - SDE enabled")
         sde_sample_freq = 4
     
-    # Create model
-    logger.info("Creating PPO model...")
+    # Create model with stability tweaks
+    logger.info("Creating PPO model (with gradient clipping)...")
     
     # Extract training params
     train_cfg = config.get('training', {})
     
-    # FIX: Parse learning_rate as float (might be string from YAML)
+    # Parse learning_rate as float
     learning_rate = train_cfg.get('learning_rate', 1e-4)
     if isinstance(learning_rate, str):
         learning_rate = float(learning_rate)
+    
+    # CRITICAL: Reduce learning rate further for stability
+    learning_rate = min(learning_rate, 5e-5)  # Cap at 5e-5
+    logger.info(f"📊 Learning rate: {learning_rate}")
     
     model = PPO(
         'MlpPolicy',
@@ -209,7 +277,9 @@ def main():
         gamma=0.99,
         gae_lambda=0.95,
         clip_range=0.2,
+        clip_range_vf=0.2,  # CRITICAL: Clip value function too
         ent_coef=0.01,
+        max_grad_norm=0.5,  # CRITICAL: Gradient clipping
         use_sde=use_sde,
         sde_sample_freq=sde_sample_freq,
         tensorboard_log='logs/tensorboard',
@@ -219,18 +289,21 @@ def main():
     )
     logger.info("✅ Model created")
     
-    # Train
+    # Train with NaN detection
     logger.info(f"Starting training ({args.timesteps:,} steps)...")
     logger.info("="*70)
     
     try:
         model.learn(
             total_timesteps=args.timesteps,
-            callback=CheckpointCallback(
-                save_freq=500000,
-                save_path=str(output_dir),
-                name_prefix='checkpoint'
-            ),
+            callback=[
+                CheckpointCallback(
+                    save_freq=500000,
+                    save_path=str(output_dir),
+                    name_prefix='checkpoint'
+                ),
+                NaNDetectionCallback(verbose=1),
+            ],
             tb_log_name='v6_training',
             progress_bar=True,
         )
@@ -239,6 +312,11 @@ def main():
         logger.info("✅ TRAINING COMPLETED!")
         model.save(str(output_dir / 'final_model'))
         logger.info(f"✅ Model saved to {output_dir / 'final_model'}")
+        
+    except KeyboardInterrupt:
+        logger.warning("⚠️  Training interrupted by user")
+        model.save(str(output_dir / 'interrupted_model'))
+        logger.info(f"Model saved to {output_dir / 'interrupted_model'}")
         
     except Exception as e:
         logger.error(f"❌ Error: {e}")
