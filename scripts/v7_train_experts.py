@@ -22,7 +22,7 @@ warnings.filterwarnings('ignore')
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Model Definitions (Copied from evaluate script)
+# Model Definitions
 
 class AttentionBlock(nn.Module):
     def __init__(self, dim, num_heads=4):
@@ -61,7 +61,7 @@ class EnhancedMomentumClassifier(nn.Module):
         if self.use_attention: features = features + self.attention(features) * 0.1
         return self.classifier(features)
 
-# Feature Engineering (Copied from evaluate script)
+# Feature Engineering
 
 def calculate_momentum_features(df):
     features = pd.DataFrame(index=df.index)
@@ -87,51 +87,92 @@ def calculate_momentum_features(df):
 def train_expert(expert_type, tickers, epochs):
     logger.info(f"--- Training {expert_type.upper()} Expert ---")
     
-    # 1. Data Loading
-    all_features = []
-    all_labels = []
-    for ticker in tickers:
-        df = yf.download(ticker, period="5y", progress=False)
-        if len(df) < 252: continue
-
-        features = calculate_momentum_features(df)
-        future_returns = df['Close'].pct_change(5).shift(-5)
-
-        # Align and create labels
-        aligned_features = features.reindex(future_returns.index).dropna()
-        aligned_returns = future_returns.reindex(aligned_features.index).dropna()
-
-        labels = (aligned_returns > 0).astype(int)
-        
-        all_features.append(aligned_features.loc[labels.index])
-        all_labels.append(labels)
-
-    X = pd.concat(all_features).values
-    y = pd.concat(all_labels).values.flatten()
+    # 1. Data Loading and Alignment
+    all_X = []
+    all_y = []
     
-    logger.info(f"Data shapes: X={X.shape}, y={y.shape}")
+    for ticker in tickers:
+        try:
+            df = yf.download(ticker, period="5y", progress=False)
+            if len(df) < 252: 
+                continue
+
+            # Calculate features
+            features = calculate_momentum_features(df)
+            
+            # Calculate future returns (5-day forward return)
+            future_returns = df['Close'].pct_change(5).shift(-5)
+            
+            # Align features with future returns
+            common_index = features.index.intersection(future_returns.index)
+            X = features.loc[common_index]
+            y = (future_returns.loc[common_index] > 0).astype(int)
+            
+            # Remove NaN values
+            valid_mask = ~y.isna()
+            X = X[valid_mask]
+            y = y[valid_mask]
+            
+            if len(X) < 100:
+                logger.warning(f"Not enough samples for {ticker}: {len(X)}")
+                continue
+            
+            all_X.append(X.values)
+            all_y.append(y.values)
+            logger.info(f"Loaded {ticker}: {len(X)} samples")
+            
+        except Exception as e:
+            logger.warning(f"Error loading {ticker}: {e}")
+            continue
+    
+    if not all_X:
+        logger.error("No data loaded!")
+        return
+    
+    X = np.concatenate(all_X, axis=0)
+    y = np.concatenate(all_y, axis=0)
+    
+    logger.info(f"\nFinal data shapes: X={X.shape}, y={y.shape}")
+    logger.info(f"Class distribution: {np.bincount(y)}")
 
     # 2. Data Splitting and Scaling
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+    try:
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=42, stratify=y
+        )
+    except ValueError as e:
+        logger.error(f"Cannot stratify: {e}")
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=42
+        )
+    
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
     X_test_scaled = scaler.transform(X_test)
 
+    logger.info(f"Train: {X_train_scaled.shape}, Test: {X_test_scaled.shape}")
+
     # 3. DataLoader
-    train_dataset = TensorDataset(torch.FloatTensor(X_train_scaled), torch.LongTensor(y_train))
-    train_loader = DataLoader(train_dataset, batch_size=4096, shuffle=True)
+    train_dataset = TensorDataset(
+        torch.FloatTensor(X_train_scaled), 
+        torch.LongTensor(y_train)
+    )
+    train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True)
 
     # 4. Model, Loss, Optimizer
     input_dim = X_train_scaled.shape[1]
-    model = EnhancedMomentumClassifier(input_dim, [448, 128, 64], 0.3)
+    model = EnhancedMomentumClassifier(input_dim, [256, 128], 0.2)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-5)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.9)
 
     # 5. Training Loop
+    logger.info(f"\nStarting training on {device}...\n")
     for epoch in range(epochs):
         model.train()
+        total_loss = 0
         for X_batch, y_batch in train_loader:
             X_batch, y_batch = X_batch.to(device), y_batch.to(device)
             optimizer.zero_grad()
@@ -139,6 +180,9 @@ def train_expert(expert_type, tickers, epochs):
             loss = criterion(outputs, y_batch)
             loss.backward()
             optimizer.step()
+            total_loss += loss.item()
+        
+        scheduler.step()
         
         # Validation
         model.eval()
@@ -147,13 +191,14 @@ def train_expert(expert_type, tickers, epochs):
             _, predicted = torch.max(test_outputs, 1)
             accuracy = (predicted == torch.LongTensor(y_test).to(device)).float().mean()
 
-        logger.info(f"Epoch {epoch+1}/{epochs}, Loss: {loss.item():.4f}, Val Accuracy: {accuracy.item():.4f}")
+        if (epoch + 1) % 10 == 0:
+            logger.info(f"Epoch {epoch+1}/{epochs}, Loss: {total_loss/len(train_loader):.4f}, Val Acc: {accuracy.item():.4f}")
 
     # 6. Save Model and Scaler
     Path("models").mkdir(exist_ok=True)
     torch.save(model.state_dict(), f"models/v7_{expert_type}_expert_final.pth")
     joblib.dump(scaler, f"models/v7_{expert_type}_scaler_final.pkl")
-    logger.info(f"✅ Model and scaler for {expert_type} saved.")
+    logger.info(f"\n✅ Model and scaler for {expert_type} saved.")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
