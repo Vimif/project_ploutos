@@ -132,6 +132,11 @@ def train_expert(expert_type, tickers, epochs):
     X = np.concatenate(all_X, axis=0)
     y = np.concatenate(all_y, axis=0)
     
+    # FINAL CLEANUP: Remove any remaining NaN rows
+    nan_mask = ~np.isnan(X).any(axis=1)
+    X = X[nan_mask]
+    y = y[nan_mask]
+    
     logger.info(f"\nFinal data shapes: X={X.shape}, y={y.shape}")
     logger.info(f"NaN in X: {np.isnan(X).any()}, NaN in y: {np.isnan(y).any()}")
     logger.info(f"Inf in X: {np.isinf(X).any()}, Inf in y: {np.isinf(y).any()}")
