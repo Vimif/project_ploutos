@@ -108,8 +108,8 @@ def train_expert(expert_type, tickers, epochs):
             X = features.loc[common_index]
             y = (future_returns.loc[common_index] > 0).astype(int)
             
-            # Remove NaN values
-            valid_mask = ~y.isna()
+            # Remove NaN values in both X and y
+            valid_mask = ~(y.isna() | X.isna().any(axis=1))
             X = X[valid_mask]
             y = y[valid_mask]
             
@@ -133,6 +133,8 @@ def train_expert(expert_type, tickers, epochs):
     y = np.concatenate(all_y, axis=0)
     
     logger.info(f"\nFinal data shapes: X={X.shape}, y={y.shape}")
+    logger.info(f"NaN in X: {np.isnan(X).any()}, NaN in y: {np.isnan(y).any()}")
+    logger.info(f"Inf in X: {np.isinf(X).any()}, Inf in y: {np.isinf(y).any()}")
     logger.info(f"Class distribution: {np.bincount(y)}")
 
     # 2. Data Splitting and Scaling
