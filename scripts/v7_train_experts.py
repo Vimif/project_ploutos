@@ -118,7 +118,7 @@ def train_expert(expert_type, tickers, epochs):
                 continue
             
             all_X.append(X.values)
-            all_y.append(y.values)
+            all_y.append(y.values.flatten())  # FIX: Flatten to 1D
             logger.info(f"Loaded {ticker}: {len(X)} samples")
             
         except Exception as e:
