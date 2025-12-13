@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🤌 PLOUTOS V7.1 - Hyperparameter Optimizer (FIXED)
+🧠 PLOUTOS V7.1 - Hyperparameter Optimizer (FIXED)
 
 Utilise Optuna + vraies données financières (MACD, RSI, Bollinger Bands)
 Pas de données aléatoires.
@@ -206,24 +206,36 @@ def calculate_momentum_features(df):
     return features
 
 def calculate_reversion_features(df):
-    """Calcule les features pour Reversion Expert (FIX)"""
+    """Calcule les features pour Reversion Expert (REWRITTEN)"""
     features = pd.DataFrame(index=df.index)
+    
+    close = df['Close'].values
     
     # SMA
     features['sma_20'] = df['Close'].rolling(20).mean()
     features['sma_50'] = df['Close'].rolling(50).mean()
     
-    # Bollinger Bands
+    # Bollinger Bands - FIXED VERSION
     bb_middle = df['Close'].rolling(20).mean()
     bb_std = df['Close'].rolling(20).std()
-    features['bb_upper'] = bb_middle + (bb_std * 2)
-    features['bb_lower'] = bb_middle - (bb_std * 2)
-    features['bb_width'] = features['bb_upper'] - features['bb_lower']
-    # FIX: Use .values to avoid pandas assignment issue
-    features['bb_position'] = ((df['Close'].values - features['bb_lower'].values) / (features['bb_width'].values + 1e-8))
+    bb_upper = bb_middle + (bb_std * 2)
+    bb_lower = bb_middle - (bb_std * 2)
+    
+    features['bb_upper'] = bb_upper
+    features['bb_lower'] = bb_lower
+    features['bb_width'] = bb_upper - bb_lower
+    
+    # BB Position: normalize price within bands (always 1D)
+    bb_width_safe = features['bb_width'].values + 1e-8
+    bb_lower_vals = features['bb_lower'].values
+    close_vals = df['Close'].values
+    
+    features['bb_position'] = (close_vals - bb_lower_vals) / bb_width_safe
     
     # Z-score
-    features['z_score'] = (df['Close'] - features['sma_20']) / (bb_std + 1e-8)
+    sma_20_vals = features['sma_20'].values
+    std_safe = (df['Close'].rolling(20).std().values + 1e-8)
+    features['z_score'] = (close_vals - sma_20_vals) / std_safe
     
     # RSI
     delta = df['Close'].diff()
@@ -464,7 +476,7 @@ if __name__ == '__main__':
     tickers = args.tickers.split(',')
     
     print("\n" + "="*70)
-    print("🤌 PLOUTOS V7.1 - Hyperparameter Optimizer (FIXED)")
+    print("🧠 PLOUTOS V7.1 - Hyperparameter Optimizer (FIXED)")
     print("="*70)
     print(f"🌟 GPU: {torch.cuda.is_available()}")
     print(f"📅 Tickers: {len(tickers)}")
