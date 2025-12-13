@@ -180,6 +180,14 @@ class WeightedFocalLoss(nn.Module):
 
 class OptunaObjective:
     def __init__(self, X_train, y_train, X_val, y_val, expert_type='momentum'):
+        # CRITICAL: Ensure y is 1D and matches X shape
+        y_train = np.asarray(y_train).flatten()
+        y_val = np.asarray(y_val).flatten()
+        
+        # Verify matching dimensions
+        assert X_train.shape[0] == y_train.shape[0], f"X_train {X_train.shape[0]} != y_train {y_train.shape[0]}"
+        assert X_val.shape[0] == y_val.shape[0], f"X_val {X_val.shape[0]} != y_val {y_val.shape[0]}"
+        
         self.X_train = torch.FloatTensor(X_train)
         self.y_train = torch.LongTensor(y_train)
         self.X_val = torch.FloatTensor(X_val)
@@ -226,7 +234,7 @@ class OptunaObjective:
         
         model = model.to(self.device)
         
-        # Data loaders
+        # Data loaders - X and y are already verified to match
         train_set = TensorDataset(self.X_train, self.y_train)
         val_set = TensorDataset(self.X_val, self.y_val)
         train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
@@ -322,6 +330,8 @@ def optimize_expert(expert_type, tickers, trials=50, timeout=3600):
                 X = np.random.randn(len(vol), 6)  # Placeholder
                 y = (vol > vol.mean()).astype(int)
             
+            # Ensure y is 1D before appending
+            y = np.asarray(y).flatten()
             all_X.append(X)
             all_y.append(y)
         except Exception as e:
@@ -331,10 +341,13 @@ def optimize_expert(expert_type, tickers, trials=50, timeout=3600):
         logger.error("❌ No data downloaded!")
         return None
     
+    # Stack arrays - ensure 1D for y
     X = np.vstack(all_X)
-    y = np.hstack(all_y)
+    y = np.concatenate(all_y)  # Use concatenate instead of hstack for safety
     
-    # Normalize
+    logger.info(f"📊 Raw data shapes: X={X.shape}, y={y.shape}")
+    
+    # Normalize X
     scaler = StandardScaler()
     X = scaler.fit_transform(X)
     
@@ -343,9 +356,14 @@ def optimize_expert(expert_type, tickers, trials=50, timeout=3600):
     X_train, X_val = X[:split_idx], X[split_idx:]
     y_train, y_val = y[:split_idx], y[split_idx:]
     
-    logger.info(f"✅ Data loaded: {len(X_train)} train, {len(X_val)} val")
+    logger.info(f"✅ Data loaded: X_train={X_train.shape}, y_train={y_train.shape}")
+    logger.info(f"✅ Data loaded: X_val={X_val.shape}, y_val={y_val.shape}")
     
-    # FIX: Flatten y_train before counting (handles 2D array issue)
+    # Verify dimensions match
+    assert X_train.shape[0] == y_train.shape[0], f"Train size mismatch: {X_train.shape[0]} vs {y_train.shape[0]}"
+    assert X_val.shape[0] == y_val.shape[0], f"Val size mismatch: {X_val.shape[0]} vs {y_val.shape[0]}"
+    
+    # Class distribution
     y_train_flat = np.asarray(y_train).flatten()
     class_dist = np.bincount(y_train_flat.astype(int))
     logger.info(f"📈 Classe distribution: {class_dist}")
