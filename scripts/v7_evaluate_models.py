@@ -26,7 +26,7 @@ from sklearn.metrics import accuracy_score, precision_score, classification_repo
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# ========== DEFINITIONS DES CLASSES (Copie stricte pour charger les poids) ==========
+# ========== DEFINITIONS DES CLASSES ==========
 
 class AttentionBlock(nn.Module):
     def __init__(self, dim, num_heads=4):
@@ -99,7 +99,7 @@ class EnhancedVolatilityModel(nn.Module):
         features = features + self.attention(features) * 0.05
         return self.classifier(features)
 
-# ========== FEATURE ENGINEERING (Copie stricte) ==========
+# ========== FEATURE ENGINEERING ==========
 
 def calculate_momentum_features(df):
     features = pd.DataFrame(index=df.index)
@@ -243,6 +243,10 @@ def evaluate(tickers):
                 calc = feature_calculators[expert_name]
                 features = calc(df)
                 
+                # Log feature dimensions
+                n_features = features.shape[1]
+                logger.debug(f"{ticker} - {expert_name}: {n_features} features")
+                
                 df_aligned = df.loc[features.index]
                 future_returns = df_aligned['Close'].pct_change(5).shift(-5)
                 
@@ -252,6 +256,13 @@ def evaluate(tickers):
                 actual_returns = future_returns[valid_mask].values
                 
                 if len(X) < 10:
+                    logger.debug(f"{ticker} - {expert_name}: Insuffisant ({len(X)} samples)")
+                    continue
+                
+                # Check dimensions before scaling
+                expected_dim = list(models.values())[0].input_norm.weight.shape[0] if expert_name == list(models.keys())[0] else None
+                if X.shape[1] != model.input_norm.weight.shape[0]:
+                    logger.warning(f"{ticker} - {expert_name}: Shape mismatch: got {X.shape[1]}, expected {model.input_norm.weight.shape[0]}")
                     continue
                 
                 X_scaled = scalers[expert_name].transform(X)
@@ -274,6 +285,7 @@ def evaluate(tickers):
                     'BuyHold_Return': buy_hold_return,
                     'Outperform': algo_return > buy_hold_return
                 })
+                logger.debug(f"{ticker} - {expert_name}: ✓ OK")
                 
         except Exception as e:
             logger.debug(f"⚠️  Erreur sur {ticker}: {str(e)[:80]}")
@@ -307,10 +319,16 @@ def evaluate(tickers):
         print("\n" + "="*80)
     else:
         logger.error("❌ Aucun résultat généré.")
+        logger.error("💡 Conseil: Relancez avec --debug pour voir les détails.")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--tickers', default='NVDA,AAPL,MSFT,TSLA,AMZN,GOOGL,META,NFLX,AMD,INTC', help="Tickers de test")
+    parser.add_argument('--debug', action='store_true', help="Mode debug (affiche plus de détails)")
     args = parser.parse_args()
+    
+    if args.debug:
+        logger.setLevel(logging.DEBUG)
+        logging.getLogger().setLevel(logging.DEBUG)
     
     evaluate(args.tickers.split(','))
