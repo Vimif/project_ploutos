@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🌐 PLOUTOS WEB DASHBOARD + V7 ENHANCED (SANS ENSEMBLE V7)
+🌐 PLOUTOS WEB DASHBOARD + V7 ENHANCED (AVEC COMPATIBILITÉ)
 
 Dashboard Web moderne pour monitorer le bot de trading
 
@@ -11,10 +11,11 @@ Features:
 - Health Score et auto-amélioration
 - Historique des trades
 - Alertes et suggestions
+- Compatibilité avec anciens endpoints V7 (redirection automatique)
 
-NOTE: L'ancien système V7 Ensemble (multiticker / mean reversion / volatility)
-      est désactivé par défaut car les fichiers ne sont pas présents
-      en production. Seul V7 Enhanced est utilisé côté dashboard.
+NOTE: Les anciens endpoints /api/v7/analysis et /api/v7/batch redirigent
+      automatiquement vers le nouveau système V7 Enhanced pour éviter
+      de casser le front-end existant.
 
 Auteur: Ploutos AI Team
 Date: Dec 2025
@@ -129,7 +130,7 @@ def api_status():
     })
 
 
-# ★ V7 ENHANCED ENDPOINTS
+# ★ V7 ENHANCED ENDPOINTS (NOUVEAUX)
 
 @app.route('/api/v7/enhanced/predict/<ticker>')
 def api_v7_enhanced_single(ticker):
@@ -214,6 +215,90 @@ def api_v7_enhanced_batch():
     except Exception as e:
         logger.error(f"❌ Erreur prédictions V7 Enhanced: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+# ★ V7 COMPATIBILITY ENDPOINTS (ANCIENS - REDIRECTION)
+
+@app.route('/api/v7/analysis')
+def api_v7_analysis():
+    """
+    COMPATIBILITÉ: Ancien endpoint /api/v7/analysis
+    Redirige vers V7 Enhanced avec format compatible
+    """
+    ticker = request.args.get('ticker', '').upper()
+    
+    if not ticker:
+        return jsonify({'error': 'Ticker requis'}), 400
+    
+    if not v7_enhanced:
+        return jsonify({'error': 'V7 Enhanced non disponible'}), 503
+    
+    try:
+        result = v7_enhanced.predict(ticker, period="3mo")
+        
+        if "error" not in result:
+            # Format compatible avec l'ancien système V7 Ensemble
+            signal = 'BUY' if result['prediction'] == 'UP' else 'SELL'
+            strength = 'STRONG' if result['confidence'] > 0.65 else 'WEAK'
+            
+            return jsonify({
+                'ticker': ticker,
+                'signal': signal,
+                'strength': strength,
+                'experts': {
+                    'momentum': {
+                        'prediction': result['prediction'],
+                        'confidence': result['confidence'] * 100
+                    }
+                },
+                'timestamp': datetime.now().isoformat(),
+                'note': 'Using V7 Enhanced (68.35% accuracy)'
+            })
+        else:
+            return jsonify({'error': result['error']}), 400
+            
+    except Exception as e:
+        logger.error(f"Erreur V7 analysis: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/v7/batch')
+def api_v7_batch():
+    """
+    COMPATIBILITÉ: Ancien endpoint /api/v7/batch
+    Redirige vers V7 Enhanced avec format compatible
+    """
+    tickers = request.args.get('tickers', 'NVDA,AAPL,MSFT').split(',')
+    
+    if not v7_enhanced:
+        return jsonify({'error': 'V7 Enhanced non disponible'}), 503
+    
+    results = []
+    
+    for ticker in tickers:
+        ticker = ticker.strip().upper()
+        try:
+            result = v7_enhanced.predict(ticker, period="3mo")
+            
+            if "error" not in result:
+                signal = 'BUY' if result['prediction'] == 'UP' else 'SELL'
+                strength = 'STRONG' if result['confidence'] > 0.65 else 'WEAK'
+                
+                results.append({
+                    'ticker': ticker,
+                    'signal': signal,
+                    'strength': strength,
+                    'momentum_conf': float(result['confidence'] * 100)
+                })
+        except Exception as e:
+            logger.error(f"Erreur V7 batch {ticker}: {e}")
+            pass
+    
+    return jsonify({
+        'results': convert_to_native_python(results),
+        'timestamp': datetime.now().isoformat(),
+        'note': 'Using V7 Enhanced (68.35% accuracy)'
+    })
 
 
 # ========== ENDPOINTS STANDARD ==========
@@ -388,13 +473,18 @@ if __name__ == '__main__':
     debug = os.getenv('DASHBOARD_DEBUG', 'false').lower() == 'true'
     
     print("\n" + "="*60)
-    print("🌐 PLOUTOS WEB DASHBOARD + V7 ENHANCED (SANS ENSEMBLE)")
+    print("🌐 PLOUTOS WEB DASHBOARD + V7 ENHANCED (AVEC COMPATIBILITÉ)")
     print("="*60)
     print(f"\n🚀 Démarrage sur http://{host}:{port}")
     print(f"🔧 Mode debug: {debug}")
     print(f"📊 Alpaca: {'Actif' if alpaca_client else 'Inactif'}")
     print(f"🧠 Self-Improvement: {'Actif' if SELF_IMPROVEMENT_AVAILABLE else 'Inactif'}")
     print(f"⭐ V7 Enhanced: {'Actif (68.35% accuracy)' if v7_enhanced else 'Inactif'}")
+    print("\n✅ Endpoints V7:")
+    print("   - /api/v7/enhanced/predict/<ticker> (nouveau)")
+    print("   - /api/v7/enhanced/batch (nouveau)")
+    print("   - /api/v7/analysis (ancien, redirigé vers V7 Enhanced)")
+    print("   - /api/v7/batch (ancien, redirigé vers V7 Enhanced)")
     print("\n" + "="*60 + "\n")
     
     app.run(host=host, port=port, debug=debug)
