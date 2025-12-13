@@ -240,8 +240,9 @@ def evaluate(tickers):
                     df_aligned = df.loc[features.index]
                     future_returns = df_aligned['Close'].pct_change(5).shift(-5)
                     
+                    # FIX: Convert pandas Series to numpy array for proper indexing
                     valid_mask = ~future_returns.isna()
-                    X = features.loc[valid_mask].values
+                    X = features.loc[valid_mask.values].values
                     y_true = (future_returns[valid_mask] > 0).astype(int).values
                     actual_returns = future_returns[valid_mask].values
                     
