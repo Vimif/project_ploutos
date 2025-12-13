@@ -82,7 +82,7 @@ def calculate_momentum_features(df):
     features['macd_hist'] = features['macd'] - features['signal']
     features['momentum_10'] = df['Close'] - df['Close'].shift(10)
     features['momentum_20'] = df['Close'] - df['Close'].shift(20)
-    return features.dropna()
+    return features
 
 def train_expert(expert_type, tickers, epochs):
     logger.info(f"--- Training {expert_type.upper()} Expert ---")
@@ -97,18 +97,22 @@ def train_expert(expert_type, tickers, epochs):
             if len(df) < 252: 
                 continue
 
-            # Calculate features
+            # Calculate features (without dropna yet)
             features = calculate_momentum_features(df)
             
             # Calculate future returns (5-day forward return)
             future_returns = df['Close'].pct_change(5).shift(-5)
             
-            # Align features with future returns
-            common_index = features.index.intersection(future_returns.index)
-            X = features.loc[common_index]
-            y = (future_returns.loc[common_index] > 0).astype(int)
+            # Align by truncating last 5 rows (where future_returns will be NaN)
+            features = features[:-5]
+            future_returns = future_returns[:-5]
             
-            # Remove NaN values in both X and y
+            # Now dropna on features
+            valid_idx = features.dropna().index
+            X = features.loc[valid_idx]
+            y = (future_returns.loc[valid_idx] > 0).astype(int)
+            
+            # Final cleanup
             valid_mask = ~(y.isna() | X.isna().any(axis=1))
             X = X[valid_mask]
             y = y[valid_mask]
