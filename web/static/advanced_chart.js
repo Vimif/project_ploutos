@@ -397,41 +397,80 @@ function formatVolume(vol) {
     return vol.toFixed(0);
 }
 
-// ========== INDICATORS SUMMARY ==========
+// ========== INDICATORS SUMMARY (FIXÉ) ==========
 
 function updateIndicatorsSummary(data) {
     const signals = data.signals || {};
     const container = document.getElementById('indicators-summary');
     
-    let html = '<div class="space-y-2 text-sm">';
+    let html = '<div class="space-y-3 text-sm">';
     
     // Trend
-    if (signals.trend) {
-        html += '<div class="font-bold text-blue-400 mb-1">📈 Tendance</div>';
+    if (signals.trend && Object.keys(signals.trend).length > 0) {
+        html += '<div><div class="font-bold text-blue-400 mb-2">📈 Tendance</div>';
         for (const [key, val] of Object.entries(signals.trend)) {
-            const color = val.signal.includes('BUY') ? 'text-green-400' : 
-                         val.signal.includes('SELL') ? 'text-red-400' : 'text-gray-400';
-            html += `<div class="flex justify-between text-xs">
+            const signalText = val.signal || 'UNKNOWN';
+            const color = signalText.includes('BUY') ? 'text-green-400' : 
+                         signalText.includes('SELL') ? 'text-red-400' : 'text-gray-400';
+            html += `<div class="flex justify-between text-xs mb-1">
                 <span class="text-gray-400">${key.toUpperCase()}</span>
-                <span class="${color}">${val.signal}</span>
+                <span class="${color} font-bold">${signalText}</span>
             </div>`;
         }
+        html += '</div>';
     }
     
     // Momentum
-    if (signals.momentum) {
-        html += '<div class="font-bold text-purple-400 mt-3 mb-1">⚡ Momentum</div>';
+    if (signals.momentum && Object.keys(signals.momentum).length > 0) {
+        html += '<div><div class="font-bold text-purple-400 mb-2">⚡ Momentum</div>';
         for (const [key, val] of Object.entries(signals.momentum)) {
-            const color = val.signal === 'OVERSOLD' ? 'text-green-400' : 
-                         val.signal === 'OVERBOUGHT' ? 'text-red-400' : 'text-gray-400';
-            html += `<div class="flex justify-between text-xs">
+            const signalText = val.signal || 'UNKNOWN';
+            const color = signalText === 'OVERSOLD' ? 'text-green-400' : 
+                         signalText === 'OVERBOUGHT' ? 'text-red-400' : 'text-gray-400';
+            html += `<div class="flex justify-between text-xs mb-1">
                 <span class="text-gray-400">${key.toUpperCase()}</span>
-                <span class="${color}">${val.signal}</span>
+                <span class="${color} font-bold">${signalText}</span>
             </div>`;
         }
+        html += '</div>';
+    }
+    
+    // Volatility
+    if (signals.volatility && Object.keys(signals.volatility).length > 0) {
+        html += '<div><div class="font-bold text-orange-400 mb-2">🌊 Volatilité</div>';
+        for (const [key, val] of Object.entries(signals.volatility)) {
+            const signalText = val.signal || 'UNKNOWN';
+            const color = signalText === 'OVERSOLD' ? 'text-green-400' : 
+                         signalText === 'OVERBOUGHT' ? 'text-red-400' : 'text-gray-400';
+            html += `<div class="flex justify-between text-xs mb-1">
+                <span class="text-gray-400">${key.toUpperCase()}</span>
+                <span class="${color} font-bold">${signalText}</span>
+            </div>`;
+        }
+        html += '</div>';
+    }
+    
+    // Volume
+    if (signals.volume && Object.keys(signals.volume).length > 0) {
+        html += '<div><div class="font-bold text-cyan-400 mb-2">📊 Volume</div>';
+        for (const [key, val] of Object.entries(signals.volume)) {
+            const signalText = val.signal || 'UNKNOWN';
+            const color = signalText === 'OVERSOLD' ? 'text-green-400' : 
+                         signalText === 'OVERBOUGHT' ? 'text-red-400' : 'text-gray-400';
+            html += `<div class="flex justify-between text-xs mb-1">
+                <span class="text-gray-400">${key.toUpperCase()}</span>
+                <span class="${color} font-bold">${signalText}</span>
+            </div>`;
+        }
+        html += '</div>';
     }
     
     html += '</div>';
+    
+    if (html === '<div class="space-y-3 text-sm"></div>') {
+        html = '<div class="text-sm text-gray-400 text-center py-4">❌ Aucun signal disponible</div>';
+    }
+    
     container.innerHTML = html;
 }
 
