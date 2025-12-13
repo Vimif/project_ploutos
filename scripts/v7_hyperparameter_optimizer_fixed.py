@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🤌 PLOUTOS V7.1 - Hyperparameter Optimizer (FIXED VERSION)
+🤌 PLOUTOS V7.1 - Hyperparameter Optimizer (FIXED)
 
 Utilise Optuna + vraies données financières (MACD, RSI, Bollinger Bands)
 Pas de données aléatoires.
@@ -265,8 +265,8 @@ def calculate_volatility_features(df):
 
 class OptunaObjective:
     def __init__(self, X_train, y_train, X_val, y_val, expert_type='momentum'):
-        y_train = np.asarray(y_train).flatten()
-        y_val = np.asarray(y_val).flatten()
+        y_train = np.asarray(y_train).flatten()  # CRITICAL: Flatten to 1D
+        y_val = np.asarray(y_val).flatten()      # CRITICAL: Flatten to 1D
         assert X_train.shape[0] == y_train.shape[0]
         assert X_val.shape[0] == y_val.shape[0]
         
@@ -395,7 +395,7 @@ def optimize_expert(expert_type, tickers, trials=50, timeout=3600):
             all_y.append(y)
             logger.info(f"   ✅ {ticker}: {len(X)} samples")
         except Exception as e:
-            logger.warning(f"   ⚠️ {ticker}: {e}")
+            logger.warning(f"   ⚠️  {ticker}: {e}")
     
     if not all_X:
         logger.error("❌ No data!")
@@ -403,6 +403,7 @@ def optimize_expert(expert_type, tickers, trials=50, timeout=3600):
     
     X = np.vstack(all_X)
     y = np.concatenate(all_y)
+    y = y.flatten()  # CRITICAL: Flatten to 1D immediately after concat
     
     logger.info(f"📊 Raw: X={X.shape}, y={y.shape}")
     
