@@ -21,7 +21,7 @@ import torch
 import torch.nn as nn
 import joblib
 from pathlib import Path
-from sklearn.metrics import accuracy_score, precision_score, classification_report
+from sklearn.metrics import accuracy_score
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -161,13 +161,11 @@ def calculate_volatility_features(df):
 # ========== EVALUATION ==========
 
 def load_model(expert_type, device):
-    """Load trained model and scaler. Detect input dimension from state_dict."""
     model_path = Path(f"models/v7_{expert_type}_expert_final.pth")
     scaler_path = Path(f"models/v7_{expert_type}_scaler_final.pkl")
     config_path = Path(f"logs/v7_{expert_type}_optimization_FIXED.json")
     
     if not model_path.exists() or not scaler_path.exists() or not config_path.exists():
-        logger.warning(f"❌ Fichiers manquants pour {expert_type}. Ignoré.")
         return None, None
     
     import json
@@ -178,22 +176,19 @@ def load_model(expert_type, device):
     scaler = joblib.load(scaler_path)
     state_dict = torch.load(model_path, map_location=device)
     
-    # Find the input_norm.weight to get actual input dimension
     input_norm_weight_key = 'input_norm.weight'
     if input_norm_weight_key in state_dict:
         actual_input_dim = state_dict[input_norm_weight_key].shape[0]
     else:
-        logger.error(f"{expert_type}: Cannot find input_norm.weight in state_dict")
         return None, None
     
-    # Rebuild model with correct input dimension
     if expert_type == 'momentum':
         hidden_dims = [params['hidden1'], params['hidden2'], params['hidden3']]
         model = EnhancedMomentumClassifier(actual_input_dim, hidden_dims, params['dropout'])
     elif expert_type == 'reversion':
         hidden_dims = [params['hidden1'], params['hidden2']]
         model = EnhancedReversionModel(actual_input_dim, hidden_dims, params['dropout'])
-    else:  # volatility
+    else:
         hidden_dims = [params['hidden1'], params['hidden2']]
         model = EnhancedVolatilityModel(actual_input_dim, hidden_dims, params['dropout'])
     
@@ -204,7 +199,7 @@ def load_model(expert_type, device):
         logger.info(f"✅ {expert_type.upper()}: input_dim={actual_input_dim}, hidden={hidden_dims}")
         return model, scaler
     except Exception as e:
-        logger.error(f"Erreur lors du load_state_dict pour {expert_type}: {e}")
+        logger.error(f"Erreur load_state_dict {expert_type}: {e}")
         return None, None
 
 def evaluate(tickers):
@@ -225,7 +220,7 @@ def evaluate(tickers):
         logger.error("❌ Aucun modèle chargé !")
         return
 
-    logger.info(f"📉 Téléchargement des données de TEST (6 derniers mois)...\n")
+    logger.info(f"📉 Téléchargement des données...\n")
     
     feature_calculators = {
         'momentum': calculate_momentum_features,
@@ -234,32 +229,40 @@ def evaluate(tickers):
     }
     
     results = []
+    count = 0
     
     for ticker in tickers:
+        print(f"\n>>> {ticker}", flush=True)
         try:
             df = yf.download(ticker, period="6mo", progress=False)
+            print(f"    Downloaded: {len(df)} rows", flush=True)
             if len(df) < 50:
+                print(f"    Skipped (< 50 rows)")
                 continue
             
             for expert_name, model in models.items():
+                print(f"    {expert_name}...", end=" ", flush=True)
                 calc = feature_calculators[expert_name]
                 features = calc(df)
+                print(f"features={features.shape}", end=" ", flush=True)
                 
                 df_aligned = df.loc[features.index]
                 future_returns = df_aligned['Close'].pct_change(5).shift(-5)
                 
-                # FIX: Correct numpy indexing (lignes, colonnes)
                 valid_mask = ~future_returns.isna()
-                X = features.values[valid_mask.values, :]  # Select rows with valid_mask, all columns
+                X = features.values[valid_mask.values, :]
                 y_true = (future_returns[valid_mask] > 0).astype(int).values
                 actual_returns = future_returns[valid_mask].values
                 
+                print(f"X={X.shape}, y={y_true.shape}", end=" ", flush=True)
+                
                 if len(X) < 10:
+                    print("(skip - too few samples)")
                     continue
                 
-                # Check dimensions before scaling
-                if X.shape[1] != model.input_norm.weight.shape[0]:
-                    logger.warning(f"{ticker} - {expert_name}: Shape mismatch: got {X.shape[1]}, expected {model.input_norm.weight.shape[0]}")
+                expected_dim = model.input_norm.weight.shape[0]
+                if X.shape[1] != expected_dim:
+                    print(f"(skip - shape mismatch {X.shape[1]} vs {expected_dim})")
                     continue
                 
                 X_scaled = scalers[expert_name].transform(X)
@@ -282,12 +285,15 @@ def evaluate(tickers):
                     'BuyHold_Return': buy_hold_return,
                     'Outperform': algo_return > buy_hold_return
                 })
+                count += 1
+                print(f"OK (acc={acc:.1%})")
                 
         except Exception as e:
-            logger.debug(f"⚠️  {ticker}: {str(e)[:80]}")
-            pass
+            print(f"ERROR: {e}")
+            import traceback
+            traceback.print_exc()
 
-    # Summary
+    print(f"\n\nTotal results: {count}")
     if results:
         df_res = pd.DataFrame(results)
         print("\n" + "="*80)
@@ -316,11 +322,11 @@ def evaluate(tickers):
             
         print("\n" + "="*80)
     else:
-        logger.error("❌ Aucun résultat généré.")
+        print("❌ No results generated.")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--tickers', default='NVDA,AAPL,MSFT,TSLA,AMZN,GOOGL,META,NFLX,AMD,INTC', help="Tickers de test")
+    parser.add_argument('--tickers', default='NVDA,AAPL,MSFT,TSLA,AMZN,GOOGL,META,NFLX,AMD,INTC')
     args = parser.parse_args()
     
     evaluate(args.tickers.split(','))
