@@ -398,7 +398,7 @@ def generate_smart_ai_response(message: str, ticker: str, context: dict) -> str:
                f"1️⃣ **Toujours** utiliser un stop-loss (-3 à -5%)\n" \
                f"2️⃣ Ne risquez jamais plus de 2% de votre capital par trade\n" \
                f"3️⃣ Attendez la confluence de plusieurs signaux\n" \
-               f"4️⃣ Suivez la tendance ("The trend is your friend")\n" \
+               f"4️⃣ Suivez la tendance (la tendance est votre amie)\n" \
                f"5️⃣ Prenez vos profits progressivement\n\n" \
                f"⚠️ **Ne tradez JAMAIS sous le coup de l'émotion !**"
     
@@ -408,7 +408,7 @@ def generate_smart_ai_response(message: str, ticker: str, context: dict) -> str:
                f"📊 **Indicateurs**: RSI, MACD, tendance, volatilité\n" \
                f"💡 **Conseils**: acheter, vendre, stratégie\n" \
                f"🎯 **Niveaux**: support, résistance\n" \
-               f"📈 **Analyse complète**: tapez "analyse complète"\n\n" \
+               f"📈 **Analyse complète**: tapez 'analyse complète'\n\n" \
                f"Posez-moi une question sur {ticker} !"
 
 
