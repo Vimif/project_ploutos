@@ -88,9 +88,11 @@ class PredictiveModelTester:
     def test_v7_momentum(self, data: Dict[str, pd.DataFrame]) -> Dict:
         """
         Test V7 Enhanced Momentum (68.35% accuracy)
+        Horizon: 5 jours (comme l'entraînement)
         """
         print("\n" + "="*70)
         print("⭐ TEST: V7 ENHANCED MOMENTUM (68.35% accuracy)")
+        print("   Horizon de prédiction: 5 jours")
         print("="*70)
         
         v7 = V7Predictor()
@@ -110,7 +112,7 @@ class PredictiveModelTester:
             
             # Prendre 70% pour historique, 30% pour test
             split_idx = int(len(df) * 0.7)
-            test_days = list(range(split_idx, len(df) - 10, 10))  # Check tous les 10 jours
+            test_days = list(range(split_idx, len(df) - 10, 5))  # Check tous les 5 jours
             
             ticker_preds = []
             
@@ -121,9 +123,9 @@ class PredictiveModelTester:
                 if "error" in result:
                     continue
                 
-                # Vérifier avec les 10 jours suivants
+                # Vérifier avec les 5 jours suivants (HORIZON D'ENTRAÎNEMENT)
                 current_price = df['Close'].iloc[day]
-                future_price = df['Close'].iloc[min(day + 10, len(df) - 1)]
+                future_price = df['Close'].iloc[min(day + 5, len(df) - 1)]
                 
                 actual_direction = 'UP' if future_price > current_price else 'DOWN'
                 predicted = result['prediction']
@@ -160,6 +162,7 @@ class PredictiveModelTester:
         
         metrics = {
             'model': 'V7 Enhanced Momentum',
+            'prediction_horizon': '5 days',
             'overall_accuracy': round(overall_accuracy, 2),
             'correct_predictions': correct,
             'total_predictions': total,
