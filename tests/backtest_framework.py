@@ -8,7 +8,7 @@ Features:
 - Backtesting sur données historiques
 - Comparaison PPO vs V7 vs PPO+V7
 - Métriques de performance détaillées
-- Rapports visuels et JSON
+- Rapports JSON
 - Simulation réaliste des coûts
 
 Auteur: Ploutos AI Team
@@ -25,9 +25,15 @@ import numpy as np
 import yfinance as yf
 from datetime import datetime, timedelta
 from typing import Dict, List, Tuple
-import matplotlib.pyplot as plt
-import seaborn as sns
 from stable_baselines3 import PPO
+
+# Imports optionnels
+try:
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    PLOTTING_AVAILABLE = True
+except ImportError:
+    PLOTTING_AVAILABLE = False
 
 try:
     from src.models.v7_predictor import V7Predictor
@@ -512,10 +518,11 @@ class BacktestFramework:
         print("\n", df.to_string(index=False))
         
         # Meilleur modèle
-        best_model = df.loc[df['Return (%)'].idxmax()]
-        print(f"\n🥇 Meilleur modèle: {best_model['Model']}")
-        print(f"   Return: {best_model['Return (%)']}%")
-        print(f"   Sharpe: {best_model['Sharpe']}")
+        if len(df) > 0:
+            best_model = df.loc[df['Return (%)'].idxmax()]
+            print(f"\n🥇 Meilleur modèle: {best_model['Model']}")
+            print(f"   Return: {best_model['Return (%)']}%")
+            print(f"   Sharpe: {best_model['Sharpe']}")
         
         return df
     
