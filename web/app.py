@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🌐 PLOUTOS WEB DASHBOARD + V7 ENHANCED (AVEC COMPATIBILITÉ)
+🌐 PLOUTOS WEB DASHBOARD + V7 ENHANCED (AVEC COMPATIBILITÉ COMPLÈTE)
 
 Dashboard Web moderne pour monitorer le bot de trading
 
@@ -11,11 +11,11 @@ Features:
 - Health Score et auto-amélioration
 - Historique des trades
 - Alertes et suggestions
-- Compatibilité avec anciens endpoints V7 (redirection automatique)
+- Compatibilité avec anciens endpoints V7 (format 3 experts simulé)
 
 NOTE: Les anciens endpoints /api/v7/analysis et /api/v7/batch redirigent
-      automatiquement vers le nouveau système V7 Enhanced pour éviter
-      de casser le front-end existant.
+      vers V7 Enhanced avec simulation de reversion et volatility pour
+      compatibilité avec le front-end existant.
 
 Auteur: Ploutos AI Team
 Date: Dec 2025
@@ -217,13 +217,13 @@ def api_v7_enhanced_batch():
         return jsonify({'error': str(e)}), 500
 
 
-# ★ V7 COMPATIBILITY ENDPOINTS (ANCIENS - REDIRECTION)
+# ★ V7 COMPATIBILITY ENDPOINTS (ANCIENS - REDIRECTION AVEC 3 EXPERTS SIMULÉS)
 
 @app.route('/api/v7/analysis')
 def api_v7_analysis():
     """
     COMPATIBILITÉ: Ancien endpoint /api/v7/analysis
-    Redirige vers V7 Enhanced avec format compatible
+    Redirige vers V7 Enhanced avec simulation de 3 experts
     """
     ticker = request.args.get('ticker', '').upper()
     
@@ -237,9 +237,20 @@ def api_v7_analysis():
         result = v7_enhanced.predict(ticker, period="3mo")
         
         if "error" not in result:
-            # Format compatible avec l'ancien système V7 Ensemble
+            # Format compatible avec l'ancien système V7 Ensemble (3 experts)
             signal = 'BUY' if result['prediction'] == 'UP' else 'SELL'
             strength = 'STRONG' if result['confidence'] > 0.65 else 'WEAK'
+            
+            momentum_conf = result['confidence'] * 100
+            
+            # Simuler reversion et volatility pour compatibilité
+            # Reversion aligné avec momentum (légèrement inférieur)
+            reversion_pred = result['prediction']
+            reversion_conf = max(50.0, momentum_conf - 5.0)
+            
+            # Volatility basé sur strength
+            volatility_pred = 'HIGH' if strength == 'STRONG' else 'LOW'
+            volatility_conf = momentum_conf if strength == 'STRONG' else (100 - momentum_conf)
             
             return jsonify({
                 'ticker': ticker,
@@ -248,11 +259,19 @@ def api_v7_analysis():
                 'experts': {
                     'momentum': {
                         'prediction': result['prediction'],
-                        'confidence': result['confidence'] * 100
+                        'confidence': momentum_conf
+                    },
+                    'reversion': {
+                        'prediction': reversion_pred,
+                        'confidence': reversion_conf
+                    },
+                    'volatility': {
+                        'prediction': volatility_pred,
+                        'confidence': volatility_conf
                     }
                 },
                 'timestamp': datetime.now().isoformat(),
-                'note': 'Using V7 Enhanced (68.35% accuracy)'
+                'note': 'Using V7 Enhanced (68.35% accuracy) with simulated experts'
             })
         else:
             return jsonify({'error': result['error']}), 400
@@ -473,7 +492,7 @@ if __name__ == '__main__':
     debug = os.getenv('DASHBOARD_DEBUG', 'false').lower() == 'true'
     
     print("\n" + "="*60)
-    print("🌐 PLOUTOS WEB DASHBOARD + V7 ENHANCED (AVEC COMPATIBILITÉ)")
+    print("🌐 PLOUTOS WEB DASHBOARD + V7 ENHANCED (COMPATIBILITÉ TOTALE)")
     print("="*60)
     print(f"\n🚀 Démarrage sur http://{host}:{port}")
     print(f"🔧 Mode debug: {debug}")
@@ -483,8 +502,8 @@ if __name__ == '__main__':
     print("\n✅ Endpoints V7:")
     print("   - /api/v7/enhanced/predict/<ticker> (nouveau)")
     print("   - /api/v7/enhanced/batch (nouveau)")
-    print("   - /api/v7/analysis (ancien, redirigé vers V7 Enhanced)")
-    print("   - /api/v7/batch (ancien, redirigé vers V7 Enhanced)")
+    print("   - /api/v7/analysis (ancien, 3 experts simulés)")
+    print("   - /api/v7/batch (ancien, format compatible)")
     print("\n" + "="*60 + "\n")
     
     app.run(host=host, port=port, debug=debug)
