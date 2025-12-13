@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ploutos Dashboard</title>
+    <title>Ploutos Dashboard V8</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -20,21 +20,6 @@
             50% { opacity: 0.5; }
         }
         .pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
-        
-        /* Jauge Health Score */
-        .gauge {
-            position: relative;
-            width: 200px;
-            height: 100px;
-            overflow: hidden;
-        }
-        .gauge-fill {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            transition: height 1s ease;
-        }
         
         /* Tab styling */
         .tab-button {
@@ -55,6 +40,13 @@
         .signal-buy { background: #10b981; color: white; }
         .signal-sell { background: #ef4444; color: white; }
         .signal-hold { background: #f59e0b; color: white; }
+        
+        /* Confidence bars */
+        .confidence-bar {
+            height: 24px;
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-gray-100">
@@ -64,7 +56,7 @@
         <div class="container mx-auto px-4 py-4 flex justify-between items-center">
             <div class="flex items-center space-x-3">
                 <i class="fas fa-brain text-3xl text-blue-500"></i>
-                <h1 class="text-2xl font-bold">Ploutos Dashboard</h1>
+                <h1 class="text-2xl font-bold">Ploutos Dashboard V8</h1>
             </div>
             <div class="flex items-center space-x-2">
                 <span class="px-3 py-1 bg-green-600 rounded-full text-sm" id="status">
@@ -81,8 +73,11 @@
             <button class="tab-button active px-4 py-3 text-sm font-semibold hover:text-blue-400" data-tab="dashboard">
                 <i class="fas fa-chart-line mr-2"></i>Dashboard
             </button>
+            <button class="tab-button px-4 py-3 text-sm font-semibold hover:text-blue-400" data-tab="v8oracle">
+                <i class="fas fa-crystal-ball mr-2"></i>V8 Oracle
+            </button>
             <button class="tab-button px-4 py-3 text-sm font-semibold hover:text-blue-400" data-tab="v7analysis">
-                <i class="fas fa-sparkles mr-2"></i>Analyse V7
+                <i class="fas fa-sparkles mr-2"></i>V7 Legacy
             </button>
         </div>
     </nav>
@@ -207,43 +202,101 @@
                 
             </div>
             
-            <!-- Self-Improvement Section -->
-            <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
-                <h3 class="text-lg font-bold mb-4">
-                    <i class="fas fa-robot text-cyan-500 mr-2"></i>
-                    Auto-Amélioration IA
-                </h3>
+        </div>
+        
+        <!-- ========== V8 ORACLE TAB ========== -->
+        <div id="v8oracle-tab" class="tab-content hidden">
+            
+            <!-- Search Bar -->
+            <div class="mb-6">
+                <div class="bg-gradient-to-r from-blue-900/50 to-purple-900/50 rounded-lg p-6 shadow-lg border border-blue-700">
+                    <h3 class="text-xl font-bold mb-2">
+                        <i class="fas fa-crystal-ball text-cyan-400 mr-2"></i>
+                        V8 Oracle - Multi-Horizon Predictions
+                    </h3>
+                    <p class="text-sm text-gray-300 mb-4">Analyse court terme (1j), moyen terme (5j) avec confiance calibrée</p>
+                    
+                    <div class="flex gap-2 mb-4">
+                        <input type="text" id="v8-ticker" placeholder="Ticker (ex: NVDA)" 
+                               class="flex-1 px-4 py-3 bg-gray-700 border border-gray-600 rounded text-white placeholder-gray-400 focus:outline-none focus:border-cyan-500">
+                        <select id="v8-risk" class="px-4 py-3 bg-gray-700 border border-gray-600 rounded text-white focus:outline-none focus:border-cyan-500">
+                            <option value="medium">Risk: Medium</option>
+                            <option value="low">Risk: Low</option>
+                            <option value="high">Risk: High</option>
+                        </select>
+                        <button id="v8-predict-btn" class="px-6 py-3 bg-cyan-600 hover:bg-cyan-700 rounded font-semibold">
+                            <i class="fas fa-magic mr-2"></i>Prédire
+                        </button>
+                        <button id="v8-batch-btn" class="px-6 py-3 bg-purple-600 hover:bg-purple-700 rounded font-semibold">
+                            <i class="fas fa-th-large mr-2"></i>Batch
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Multi-Horizon Results -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6" id="v8-horizons">
                 
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    
-                    <!-- Issues -->
-                    <div>
-                        <h4 class="text-sm font-semibold text-gray-400 mb-2">
-                            <i class="fas fa-exclamation-triangle text-yellow-500 mr-1"></i>
-                            Problèmes Détectés
-                        </h4>
-                        <div id="issues-list" class="space-y-2">
-                            <p class="text-gray-500 text-sm">Aucun problème</p>
-                        </div>
+                <!-- Court Terme (1 jour) -->
+                <div class="bg-gray-800 rounded-lg p-6 shadow-lg border-l-4 border-green-500">
+                    <h4 class="text-lg font-bold mb-4">
+                        <i class="fas fa-bolt text-green-400 mr-2"></i>
+                        Court Terme (1j)
+                    </h4>
+                    <div id="v8-intraday" class="text-center text-gray-400">
+                        <p>Sélectionnez un ticker</p>
                     </div>
-                    
-                    <!-- Suggestions -->
-                    <div>
-                        <h4 class="text-sm font-semibold text-gray-400 mb-2">
-                            <i class="fas fa-lightbulb text-yellow-500 mr-1"></i>
-                            Suggestions
-                        </h4>
-                        <div id="suggestions-list" class="space-y-2">
-                            <p class="text-gray-500 text-sm">Aucune suggestion</p>
-                        </div>
+                </div>
+                
+                <!-- Moyen Terme (5 jours) -->
+                <div class="bg-gray-800 rounded-lg p-6 shadow-lg border-l-4 border-blue-500">
+                    <h4 class="text-lg font-bold mb-4">
+                        <i class="fas fa-chart-line text-blue-400 mr-2"></i>
+                        Moyen Terme (5j)
+                    </h4>
+                    <div id="v8-weekly" class="text-center text-gray-400">
+                        <p>Sélectionnez un ticker</p>
                     </div>
-                    
+                </div>
+                
+                <!-- Ensemble -->
+                <div class="bg-gray-800 rounded-lg p-6 shadow-lg border-l-4 border-purple-500">
+                    <h4 class="text-lg font-bold mb-4">
+                        <i class="fas fa-brain text-purple-400 mr-2"></i>
+                        Ensemble
+                    </h4>
+                    <div id="v8-ensemble" class="text-center text-gray-400">
+                        <p>Sélectionnez un ticker</p>
+                    </div>
+                </div>
+                
+            </div>
+            
+            <!-- Recommendation -->
+            <div class="bg-gradient-to-r from-purple-900/50 to-pink-900/50 rounded-lg p-6 shadow-lg border border-purple-700 mb-6">
+                <h4 class="text-lg font-bold mb-4">
+                    <i class="fas fa-thumbs-up text-yellow-400 mr-2"></i>
+                    Recommandation de Trading
+                </h4>
+                <div id="v8-recommendation" class="text-center">
+                    <p class="text-gray-400">Analysez un ticker pour obtenir une recommandation</p>
+                </div>
+            </div>
+            
+            <!-- Batch Results -->
+            <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
+                <h4 class="text-lg font-bold mb-4">
+                    <i class="fas fa-list text-cyan-400 mr-2"></i>
+                    Analyse Batch
+                </h4>
+                <div id="v8-batch-results" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    <p class="text-gray-400">Lancez une analyse batch</p>
                 </div>
             </div>
             
         </div>
         
-        <!-- ========== V7 ANALYSIS TAB ========== -->
+        <!-- ========== V7 LEGACY TAB ========== -->
         <div id="v7analysis-tab" class="tab-content hidden">
             
             <!-- Search Bar -->
@@ -251,11 +304,11 @@
                 <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
                     <h3 class="text-lg font-bold mb-4">
                         <i class="fas fa-sparkles text-yellow-500 mr-2"></i>
-                        V7 Ensemble Predictor
+                        V7 Enhanced Predictor (Legacy)
                     </h3>
                     
                     <div class="flex gap-2 mb-4">
-                        <input type="text" id="v7-ticker" placeholder="Entrez un ticker (ex: NVDA)" 
+                        <input type="text" id="v7-ticker" placeholder="Ticker (ex: NVDA)" 
                                class="flex-1 px-4 py-2 bg-gray-700 border border-gray-600 rounded text-white placeholder-gray-400 focus:outline-none focus:border-blue-500">
                         <button id="v7-search-btn" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded font-semibold">
                             <i class="fas fa-search mr-2"></i>Analyser
@@ -265,24 +318,22 @@
                         </button>
                     </div>
                     
-                    <p class="text-sm text-gray-400">Analyse en temps réel des 3 experts: Momentum, Reversion, Volatility</p>
+                    <p class="text-sm text-gray-400">Analyse V7 avec 3 experts simulés (compatibilité)</p>
                 </div>
             </div>
             
             <!-- Results Grid -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-4" id="v7-results">
-                <!-- Détaillé d'un ticker -->
                 <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
                     <h3 class="text-lg font-bold mb-4">
                         <i class="fas fa-microscope text-blue-500 mr-2"></i>
                         Détail Analyse
                     </h3>
                     <div id="v7-detail" class="text-center text-gray-400">
-                        <p>Sélectionnez un ticker pour l'analyser</p>
+                        <p>Sélectionnez un ticker</p>
                     </div>
                 </div>
                 
-                <!-- Batch Results -->
                 <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
                     <h3 class="text-lg font-bold mb-4">
                         <i class="fas fa-th-large text-purple-500 mr-2"></i>
@@ -298,19 +349,19 @@
             <div class="mt-6 bg-gray-800 rounded-lg p-6 shadow-lg">
                 <h3 class="text-lg font-bold mb-4">
                     <i class="fas fa-brain text-cyan-500 mr-2"></i>
-                    Conf. des Experts
+                    Confiance des Experts
                 </h3>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div class="bg-gray-700 rounded-lg p-4">
-                        <h4 class="font-semibold text-blue-400 mb-2">1. Momentum Expert</h4>
+                        <h4 class="font-semibold text-blue-400 mb-2">1. Momentum</h4>
                         <div id="v7-momentum" class="text-gray-400">-</div>
                     </div>
                     <div class="bg-gray-700 rounded-lg p-4">
-                        <h4 class="font-semibold text-purple-400 mb-2">2. Reversion Expert</h4>
+                        <h4 class="font-semibold text-purple-400 mb-2">2. Reversion</h4>
                         <div id="v7-reversion" class="text-gray-400">-</div>
                     </div>
                     <div class="bg-gray-700 rounded-lg p-4">
-                        <h4 class="font-semibold text-yellow-400 mb-2">3. Volatility Expert</h4>
+                        <h4 class="font-semibold text-yellow-400 mb-2">3. Volatility</h4>
                         <div id="v7-volatility" class="text-gray-400">-</div>
                     </div>
                 </div>
@@ -323,335 +374,12 @@
     <!-- Footer -->
     <footer class="bg-gray-800 mt-8 py-4">
         <div class="container mx-auto px-4 text-center text-gray-400 text-sm">
-            © 2025 Ploutos AI Trading System - Made with ❤️ by AI Factory
+            © 2025 Ploutos V8 Oracle - AI Trading System by AI Factory
         </div>
     </footer>
     
     <!-- JavaScript -->
-    <script>
-        // Configuration
-        const API_BASE = window.location.origin;
-        const REFRESH_INTERVAL = 10000; // 10 secondes
-        
-        // ========== TAB MANAGEMENT ==========
-        document.querySelectorAll('.tab-button').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const tabName = btn.dataset.tab;
-                
-                // Hide all tabs
-                document.querySelectorAll('.tab-content').forEach(tab => {
-                    tab.classList.add('hidden');
-                });
-                
-                // Deactivate all buttons
-                document.querySelectorAll('.tab-button').forEach(b => {
-                    b.classList.remove('active');
-                });
-                
-                // Show selected tab
-                document.getElementById(tabName + '-tab').classList.remove('hidden');
-                btn.classList.add('active');
-            });
-        });
-        
-        // Portfolio Chart
-        let portfolioChart = null;
-        
-        function initCharts() {
-            const ctx = document.getElementById('portfolio-chart').getContext('2d');
-            portfolioChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: [],
-                    datasets: [{
-                        label: 'Portfolio Value',
-                        data: [],
-                        borderColor: 'rgb(59, 130, 246)',
-                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                        tension: 0.4,
-                        fill: true
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    plugins: {
-                        legend: { display: false }
-                    },
-                    scales: {
-                        y: { 
-                            beginAtZero: false,
-                            grid: { color: 'rgba(255, 255, 255, 0.1)' },
-                            ticks: { color: '#9CA3AF' }
-                        },
-                        x: {
-                            grid: { color: 'rgba(255, 255, 255, 0.1)' },
-                            ticks: { color: '#9CA3AF' }
-                        }
-                    }
-                }
-            });
-        }
-        
-        // Format money
-        function formatMoney(value) {
-            return new Intl.NumberFormat('en-US', {
-                style: 'currency',
-                currency: 'USD',
-                minimumFractionDigits: 2
-            }).format(value);
-        }
-        
-        // Format percentage
-        function formatPercent(value) {
-            return (value * 100).toFixed(2) + '%';
-        }
-        
-        // Fetch and update account
-        async function updateAccount() {
-            try {
-                const res = await fetch(`${API_BASE}/api/account`);
-                const data = await res.json();
-                
-                document.getElementById('portfolio-value').textContent = formatMoney(data.portfolio_value);
-                document.getElementById('cash-value').textContent = formatMoney(data.cash);
-                document.getElementById('buying-power').textContent = 'Buying Power: ' + formatMoney(data.buying_power);
-                
-            } catch (error) {
-                console.error('Error fetching account:', error);
-            }
-        }
-        
-        // Fetch and update positions
-        async function updatePositions() {
-            try {
-                const res = await fetch(`${API_BASE}/api/positions`);
-                const positions = await res.json();
-                
-                const container = document.getElementById('positions-list');
-                
-                if (positions.length === 0) {
-                    container.innerHTML = '<p class="text-gray-400 text-sm">Aucune position</p>';
-                    return;
-                }
-                
-                container.innerHTML = positions.map(pos => `
-                    <div class="flex justify-between items-center p-2 bg-gray-700 rounded">
-                        <div>
-                            <span class="font-bold">${pos.symbol}</span>
-                            <span class="text-gray-400 text-sm ml-2">${pos.qty} shares</span>
-                        </div>
-                        <div class="text-right">
-                            <div class="font-bold ${pos.unrealized_pl >= 0 ? 'text-green-500' : 'text-red-500'}">
-                                ${formatMoney(pos.unrealized_pl)}
-                            </div>
-                            <div class="text-xs text-gray-400">
-                                ${formatPercent(pos.unrealized_plpc)}
-                            </div>
-                        </div>
-                    </div>
-                `).join('');
-                
-            } catch (error) {
-                console.error('Error fetching positions:', error);
-            }
-        }
-        
-        // Fetch and update trades
-        async function updateTrades() {
-            try {
-                const res = await fetch(`${API_BASE}/api/trades?days=3`);
-                const trades = await res.json();
-                
-                const container = document.getElementById('trades-list');
-                
-                if (trades.length === 0) {
-                    container.innerHTML = '<p class="text-gray-400 text-sm">Aucun trade</p>';
-                    return;
-                }
-                
-                container.innerHTML = trades.slice(0, 10).map(trade => {
-                    const color = trade.action === 'BUY' ? 'text-green-500' : 'text-red-500';
-                    const icon = trade.action === 'BUY' ? 'fa-arrow-up' : 'fa-arrow-down';
-                    const time = new Date(trade.timestamp).toLocaleString('fr-FR');
-                    
-                    return `
-                        <div class="flex justify-between items-center p-2 bg-gray-700 rounded">
-                            <div class="flex items-center space-x-2">
-                                <i class="fas ${icon} ${color}"></i>
-                                <span class="font-bold">${trade.symbol}</span>
-                                <span class="text-gray-400 text-xs">${time}</span>
-                            </div>
-                            <span class="font-bold">${formatMoney(trade.amount)}</span>
-                        </div>
-                    `;
-                }).join('');
-                
-            } catch (error) {
-                console.error('Error fetching trades:', error);
-            }
-        }
-        
-        // Fetch and update improvement report
-        async function updateImprovement() {
-            try {
-                const res = await fetch(`${API_BASE}/api/improvement`);
-                const report = await res.json();
-                
-                if (!report.metrics) return;
-                
-                // Health Score
-                const health = report.health_score || 0;
-                document.getElementById('health-score').textContent = health.toFixed(1) + '/100';
-                document.getElementById('health-bar').style.width = health + '%';
-                
-                // Metrics
-                const m = report.metrics;
-                document.getElementById('win-rate').textContent = formatPercent(m.win_rate);
-                document.getElementById('total-trades').textContent = m.total_trades + ' trades';
-                document.getElementById('sharpe').textContent = m.sharpe_ratio.toFixed(2);
-                document.getElementById('drawdown').textContent = formatPercent(m.max_drawdown);
-                document.getElementById('profit-factor').textContent = m.profit_factor.toFixed(2);
-                document.getElementById('total-pnl').textContent = formatPercent(m.total_pnl);
-                
-                // Issues
-                const issuesContainer = document.getElementById('issues-list');
-                if (report.issues && report.issues.length > 0) {
-                    issuesContainer.innerHTML = report.issues.map(issue => `
-                        <div class="p-2 bg-yellow-900/30 border border-yellow-700 rounded text-sm">
-                            <span class="font-semibold">[${issue.severity.toUpperCase()}]</span>
-                            ${issue.description}
-                        </div>
-                    `).join('');
-                } else {
-                    issuesContainer.innerHTML = '<p class="text-green-500 text-sm">✅ Aucun problème</p>';
-                }
-                
-                // Suggestions
-                const suggestionsContainer = document.getElementById('suggestions-list');
-                if (report.suggestions && report.suggestions.length > 0) {
-                    suggestionsContainer.innerHTML = report.suggestions.map(sug => `
-                        <div class="p-2 bg-blue-900/30 border border-blue-700 rounded text-sm">
-                            <i class="fas fa-lightbulb text-yellow-400 mr-1"></i>
-                            ${sug.description}
-                        </div>
-                    `).join('');
-                } else {
-                    suggestionsContainer.innerHTML = '<p class="text-gray-500 text-sm">Aucune suggestion</p>';
-                }
-                
-            } catch (error) {
-                console.error('Error fetching improvement:', error);
-            }
-        }
-        
-        // ========== V7 ANALYSIS FUNCTIONS ==========
-        
-        async function analyzeV7Ticker() {
-            const ticker = document.getElementById('v7-ticker').value.trim().toUpperCase();
-            if (!ticker) return;
-            
-            try {
-                const res = await fetch(`${API_BASE}/api/v7/analysis?ticker=${ticker}`);
-                const data = await res.json();
-                
-                if (data.error) {
-                    document.getElementById('v7-detail').innerHTML = `<p class="text-red-500">❌ ${data.error}</p>`;
-                    return;
-                }
-                
-                // Display signal
-                const signalClass = data.signal === 'BUY' ? 'signal-buy' : data.signal === 'SELL' ? 'signal-sell' : 'signal-hold';
-                const fullSignal = `${data.strength} ${data.signal}`;
-                
-                document.getElementById('v7-detail').innerHTML = `
-                    <div class="space-y-4">
-                        <h4 class="text-2xl font-bold">${ticker}</h4>
-                        <div class="signal-badge ${signalClass}">${fullSignal}</div>
-                        
-                        <div class="space-y-2 text-left">
-                            <div class="flex justify-between p-2 bg-gray-700 rounded">
-                                <span>Momentum</span>
-                                <span class="font-bold">${data.experts.momentum.prediction} (${data.experts.momentum.confidence.toFixed(1)}%)</span>
-                            </div>
-                            <div class="flex justify-between p-2 bg-gray-700 rounded">
-                                <span>Reversion</span>
-                                <span class="font-bold">${data.experts.reversion.prediction} (${data.experts.reversion.confidence.toFixed(1)}%)</span>
-                            </div>
-                            <div class="flex justify-between p-2 bg-gray-700 rounded">
-                                <span>Volatility</span>
-                                <span class="font-bold">${data.experts.volatility.prediction} (${data.experts.volatility.confidence.toFixed(1)}%)</span>
-                            </div>
-                        </div>
-                    </div>
-                `;
-                
-                // Update expert confidence
-                document.getElementById('v7-momentum').textContent = `${data.experts.momentum.prediction} - ${data.experts.momentum.confidence.toFixed(1)}%`;
-                document.getElementById('v7-reversion').textContent = `${data.experts.reversion.prediction} - ${data.experts.reversion.confidence.toFixed(1)}%`;
-                document.getElementById('v7-volatility').textContent = `${data.experts.volatility.prediction} - ${data.experts.volatility.confidence.toFixed(1)}%`;
-                
-            } catch (error) {
-                document.getElementById('v7-detail').innerHTML = `<p class="text-red-500">❌ Erreur: ${error.message}</p>`;
-            }
-        }
-        
-        async function analyzeV7Batch() {
-            try {
-                const res = await fetch(`${API_BASE}/api/v7/batch?tickers=NVDA,AAPL,MSFT,GOOGL,AMZN`);
-                const data = await res.json();
-                
-                if (!data.results || data.results.length === 0) {
-                    document.getElementById('v7-batch-results').innerHTML = '<p class="text-red-500">Aucun résultat</p>';
-                    return;
-                }
-                
-                document.getElementById('v7-batch-results').innerHTML = data.results.map(r => {
-                    const signalClass = r.signal === 'BUY' ? 'text-green-500' : r.signal === 'SELL' ? 'text-red-500' : 'text-yellow-500';
-                    return `
-                        <div class="p-3 bg-gray-700 rounded flex justify-between items-center">
-                            <div>
-                                <span class="font-bold">${r.ticker}</span>
-                                <span class="text-gray-400 text-sm ml-2">${r.strength}</span>
-                            </div>
-                            <span class="font-bold ${signalClass}">${r.signal}</span>
-                        </div>
-                    `;
-                }).join('');
-                
-            } catch (error) {
-                document.getElementById('v7-batch-results').innerHTML = `<p class="text-red-500">❌ ${error.message}</p>`;
-            }
-        }
-        
-        // ========== EVENT LISTENERS ==========
-        
-        document.getElementById('v7-search-btn').addEventListener('click', analyzeV7Ticker);
-        document.getElementById('v7-batch-btn').addEventListener('click', analyzeV7Batch);
-        document.getElementById('v7-ticker').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') analyzeV7Ticker();
-        });
-        
-        // Update all data
-        async function updateAll() {
-            await Promise.all([
-                updateAccount(),
-                updatePositions(),
-                updateTrades(),
-                updateImprovement()
-            ]);
-            
-            document.getElementById('last-update').textContent = 
-                'Mis à jour: ' + new Date().toLocaleTimeString('fr-FR');
-        }
-        
-        // Initialize
-        document.addEventListener('DOMContentLoaded', () => {
-            initCharts();
-            updateAll();
-            setInterval(updateAll, REFRESH_INTERVAL);
-        });
-    </script>
+    <script src="/static/dashboard.js"></script>
     
 </body>
 </html>
