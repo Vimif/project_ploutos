@@ -57,7 +57,13 @@ class VolatilityModel(nn.Module):
 class SimpleFeatureExtractor:
     """Simplified momentum features"""
     def extract_features(self, df):
-        df = df.copy()
+        # Ensure df is clean
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+        
+        df = df[['Open', 'High', 'Low', 'Close', 'Volume']].copy()
+        df = df.reset_index(drop=True)
+        
         df['returns'] = df['Close'].pct_change()
         df['sma_20'] = df['Close'].rolling(20).mean()
         df['sma_50'] = df['Close'].rolling(50).mean()
@@ -130,7 +136,12 @@ class SimpleFeatureExtractor:
 class ReversionFeatureExtractor:
     """Mean reversion features"""
     def extract_features(self, df):
-        df = df.copy()
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+        
+        df = df[['Open', 'High', 'Low', 'Close', 'Volume']].copy()
+        df = df.reset_index(drop=True)
+        
         sma_20 = df['Close'].rolling(20).mean()
         std_20 = df['Close'].rolling(20).std()
         upper = sma_20 + 2 * std_20
@@ -160,7 +171,11 @@ class ReversionFeatureExtractor:
 class VolatilityFeatureExtractor:
     """Volatility features"""
     def extract_features(self, df):
-        df = df.copy()
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+        
+        df = df[['Open', 'High', 'Low', 'Close', 'Volume']].copy()
+        df = df.reset_index(drop=True)
         
         high_low = df['High'] - df['Low']
         high_close = np.abs(df['High'] - df['Close'].shift())
@@ -228,7 +243,6 @@ class EnsemblePredictor:
         if df.empty:
             logger.error(f"❌ No data for {ticker}")
             return None
-        df = df.reset_index()
         
         # 1. MOMENTUM
         X_mom, _ = SimpleFeatureExtractor().extract_features(df)
