@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-🚀 PLOUTOS TRADER V2 - VERSION SIMPLIFIÉE
+🚀 PLOUTOS TRADER V2 - VERSION SIMPLIFIÉE + V7 ENHANCED
 
-Bot de trading utilisant le modèle V2 (UniversalTradingEnvV2)
-Sans dépendances complexes (BrainTrader, PortfolioManager, etc.)
+Bot de trading utilisant:
+- Modèle PPO (V2) pour les décisions de trading
+- Modèle V7 Enhanced (68.35% accuracy) pour validation des signaux
 
 Auteur: Ploutos AI Team
 Date: Dec 2025
@@ -45,6 +46,14 @@ except ImportError:
     print("⚠️  AlpacaClient non disponible - Mode simulation seulement")
     ALPACA_TRADING_AVAILABLE = False
 
+# ★ IMPORT V7 PREDICTOR
+try:
+    from src.models.v7_predictor import V7Predictor
+    V7_AVAILABLE = True
+except ImportError:
+    print("⚠️  V7 Predictor non disponible")
+    V7_AVAILABLE = False
+
 # Configuration logging
 logging.basicConfig(
     level=logging.INFO,
@@ -58,26 +67,42 @@ logger = logging.getLogger(__name__)
 
 class SimpleTradingBot:
     """
-    Bot de trading simplifié utilisant le modèle V2
+    Bot de trading simplifié utilisant le modèle V2 + V7 Enhanced
     """
     
-    def __init__(self, model_path='models/autonomous/production.zip', paper_trading=True):
+    def __init__(self, model_path='models/autonomous/production.zip', paper_trading=True, use_v7=True):
         """
         Args:
             model_path: Chemin vers le modèle PPO
             paper_trading: Mode paper trading (True) ou live (False)
+            use_v7: Utiliser V7 pour validation des signaux
         """
         self.model_path = model_path
         self.paper_trading = paper_trading
+        self.use_v7 = use_v7 and V7_AVAILABLE
         
-        # Charger modèle
-        logger.info(f"🧠 Chargement modèle: {model_path}")
+        # Charger modèle PPO
+        logger.info(f"🧠 Chargement modèle PPO: {model_path}")
         try:
             self.model = PPO.load(model_path)
-            logger.info("✅ Modèle chargé")
+            logger.info("✅ Modèle PPO chargé")
         except Exception as e:
             logger.error(f"❌ Erreur chargement modèle: {e}")
             raise
+        
+        # ★ CHARGER V7 PREDICTOR
+        self.v7_predictor = None
+        if self.use_v7:
+            try:
+                self.v7_predictor = V7Predictor()
+                if self.v7_predictor.load("momentum"):
+                    logger.info("✅ V7 Enhanced Predictor chargé (68.35% accuracy)")
+                else:
+                    logger.warning("⚠️  V7 non chargé - désactivé")
+                    self.v7_predictor = None
+            except Exception as e:
+                logger.warning(f"⚠️  Erreur chargement V7: {e}")
+                self.v7_predictor = None
         
         # Charger config
         config_path = model_path.replace('.zip', '.json')
@@ -103,7 +128,7 @@ class SimpleTradingBot:
             except Exception as e:
                 logger.warning(f"⚠️  Alpaca Data non disponible: {e}")
         
-        # ✅ FIX: Client Alpaca Trading avec bon paramètre
+        # Client Alpaca Trading
         self.client = None
         if ALPACA_TRADING_AVAILABLE:
             try:
@@ -133,10 +158,7 @@ class SimpleTradingBot:
                 self.cash = account['cash']
     
     def sync_with_alpaca(self):
-        """
-        ★ SYNCHRONISER POSITIONS ET CASH AVEC ALPACA
-        À appeler AVANT les prédictions
-        """
+        """Synchroniser positions et cash avec Alpaca"""
         if not self.client:
             return
         
@@ -156,16 +178,7 @@ class SimpleTradingBot:
             logger.error(f"❌ Erreur sync Alpaca: {e}")
     
     def get_market_data(self, days=30):
-        """
-        Télécharge données récentes
-        Priorité: 1) Cache, 2) Alpaca, 3) yfinance
-        
-        Args:
-            days: Nombre de jours à charger
-        
-        Returns:
-            dict: Données par ticker
-        """
+        """Télécharge données récentes"""
         logger.info(f"📡 Chargement données ({days} jours)...")
         
         data = {}
@@ -179,18 +192,15 @@ class SimpleTradingBot:
                 try:
                     df = pd.read_csv(cache_file, index_col=0, parse_dates=True)
                     
-                    # Vérifier fraîcheur (pas plus de 7 jours)
                     if not df.empty:
                         last_date = pd.to_datetime(df.index[-1])
                         
-                        # ✅ FIX: Forcer timezone-naive
                         if last_date.tzinfo:
                             last_date = last_date.tz_localize(None)
                         
                         age_days = (datetime.now() - last_date).days
                         
                         if age_days <= 7 and len(df) >= days:
-                            # Garder seulement les derniers jours demandés
                             data[ticker] = df.tail(days)
                             logger.info(f"  ✅ {ticker}: Cache ({len(data[ticker])} jours, age: {age_days}j)")
                             continue
@@ -198,7 +208,6 @@ class SimpleTradingBot:
                 except Exception as e:
                     logger.warning(f"  ⚠️  {ticker}: Erreur lecture cache - {e}")
             
-            # Pas en cache ou trop vieux
             tickers_to_fetch.append(ticker)
         
         # TÉLÉCHARGER LES TICKERS MANQUANTS
@@ -216,7 +225,6 @@ class SimpleTradingBot:
                     data.update(alpaca_data)
                     logger.info(f"✅ Alpaca: {len(alpaca_data)} tickers téléchargés")
                     
-                    # Mettre à jour liste des manquants
                     tickers_to_fetch = [t for t in tickers_to_fetch if t not in alpaca_data]
                     
                 except Exception as e:
@@ -230,7 +238,6 @@ class SimpleTradingBot:
                     df = self._download_with_yfinance(ticker, days)
                     if df is not None and not df.empty:
                         data[ticker] = df
-                        # Sauvegarder en cache
                         try:
                             df.to_csv(f'data_cache/{ticker}.csv')
                         except:
@@ -240,16 +247,7 @@ class SimpleTradingBot:
         return data
     
     def _download_with_yfinance(self, ticker, days):
-        """
-        Télécharge avec yfinance (fallback)
-        
-        Args:
-            ticker: Symbole ticker
-            days: Nombre de jours
-        
-        Returns:
-            DataFrame ou None
-        """
+        """Télécharge avec yfinance (fallback)"""
         try:
             import yfinance as yf
             
@@ -274,30 +272,28 @@ class SimpleTradingBot:
             return None
     
     def get_predictions(self, data):
-        """
-        Génère prédictions avec le modèle
-        
-        Args:
-            data: Données marché
-        
-        Returns:
-            dict: Actions par ticker {ticker: action}
-        """
+        """Génère prédictions avec PPO + V7"""
         logger.info("🔮 Génération prédictions...")
         
         try:
-            # ★ SYNC AVEC ALPACA AVANT PRÉDICTIONS
+            # Sync avec Alpaca
             self.sync_with_alpaca()
             
-            # ✅ FIX: Calculer max_steps adapté aux données
+            # ★ PRÉDICTIONS V7 (si disponible)
+            v7_predictions = {}
+            if self.v7_predictor:
+                logger.info("  🧠 V7 Enhanced predictions...")
+                for ticker in self.tickers:
+                    if ticker in data:
+                        result = self.v7_predictor.predict(ticker, period="3mo")
+                        if "error" not in result:
+                            v7_predictions[ticker] = result
+                            logger.debug(f"    {ticker}: {result['prediction']} ({result['confidence']:.1%})")
+            
+            # Créer env pour PPO
             min_data_length = min(len(df) for df in data.values())
+            max_steps = min(10, max(1, min_data_length - 105))
             
-            # Pour trading live, on n'a besoin que de quelques steps
-            max_steps = min(10, max(1, min_data_length - 105))  # Laisse marge pour random start
-            
-            logger.debug(f"  Data length: {min_data_length}, max_steps: {max_steps}")
-            
-            # Créer env temporaire
             env = UniversalTradingEnvV2(
                 data=data,
                 initial_balance=self.cash,
@@ -317,16 +313,24 @@ class SimpleTradingBot:
                 action = int(actions[i])
                 predicted_action = action_map[action]
                 
-                # ★ FILTRER LES PRÉDICTIONS IMPOSSIBLES
+                # Filtrer actions impossibles
                 current_position = self.positions.get(ticker, 0)
                 
                 if predicted_action == 'SELL' and current_position == 0:
-                    logger.debug(f"  ⚠️  {ticker}: SELL prédit mais pas de position → HOLD")
+                    predicted_action = 'HOLD'
+                elif predicted_action == 'BUY' and current_position > 0:
                     predicted_action = 'HOLD'
                 
-                elif predicted_action == 'BUY' and current_position > 0:
-                    logger.debug(f"  ⚠️  {ticker}: BUY prédit mais déjà en position → HOLD")
-                    predicted_action = 'HOLD'
+                # ★ VALIDATION V7
+                if ticker in v7_predictions and predicted_action == 'BUY':
+                    v7_result = v7_predictions[ticker]
+                    
+                    # Si V7 prédit DOWN avec forte confiance, overrule le BUY
+                    if v7_result['prediction'] == 'DOWN' and v7_result['confidence'] > 0.65:
+                        logger.info(f"  🚫 {ticker}: PPO BUY overruled by V7 DOWN ({v7_result['confidence']:.1%})")
+                        predicted_action = 'HOLD'
+                    elif v7_result['prediction'] == 'UP':
+                        logger.info(f"  ✅ {ticker}: PPO BUY validated by V7 UP ({v7_result['confidence']:.1%})")
                 
                 predictions[ticker] = predicted_action
             
@@ -343,18 +347,11 @@ class SimpleTradingBot:
             return {}
     
     def execute_trades(self, predictions, current_prices):
-        """
-        Exécute les trades
-        
-        Args:
-            predictions: Dict {ticker: action}
-            current_prices: Dict {ticker: price}
-        """
+        """Exécute les trades"""
         logger.info("💼 Exécution trades...")
         
         trades_executed = {'buy': 0, 'sell': 0, 'hold': 0}
         
-        # ★ VÉRIFIER SYNC (normalement déjà fait dans get_predictions)
         if self.client:
             logger.info(f"  Positions actuelles: {len(self.positions)} actives")
         
@@ -367,21 +364,19 @@ class SimpleTradingBot:
             
             try:
                 if action == 'BUY':
-                    # Acheter si on n'a pas de position
                     current_position = self.positions.get(ticker, 0)
                     
                     if current_position == 0:
-                        qty = int((self.cash * 0.1) / price)  # 10% du capital
+                        qty = int((self.cash * 0.1) / price)
                         
                         if qty > 0:
-                            # ★ TRADE RÉEL AVEC ALPACA
                             if self.client:
                                 try:
                                     order = self.client.place_market_order(
                                         symbol=ticker,
                                         qty=qty,
                                         side='buy',
-                                        reason='Prédiction modèle IA'
+                                        reason='PPO + V7 Signal'
                                     )
                                     
                                     if order:
@@ -394,26 +389,22 @@ class SimpleTradingBot:
                                 except Exception as e:
                                     logger.error(f"❌ {ticker}: Erreur BUY - {e}")
                             else:
-                                # Simulation seulement
                                 self.positions[ticker] = qty
                                 self.cash -= qty * price
                                 trades_executed['buy'] += 1
                                 logger.info(f"✅ {ticker}: BUY {qty} @ ${price:.2f} [SIMULATION]")
                     else:
                         trades_executed['hold'] += 1
-                        logger.debug(f"  {ticker}: Déjà en position ({current_position} shares)")
                 
                 elif action == 'SELL':
-                    # Vendre si on a une position
                     current_position = self.positions.get(ticker, 0)
                     
                     if current_position > 0:
-                        # ★ TRADE RÉEL AVEC ALPACA
                         if self.client:
                             try:
                                 success = self.client.close_position(
                                     symbol=ticker,
-                                    reason='Prédiction modèle IA'
+                                    reason='PPO + V7 Signal'
                                 )
                                 
                                 if success:
@@ -426,14 +417,12 @@ class SimpleTradingBot:
                             except Exception as e:
                                 logger.error(f"❌ {ticker}: Erreur SELL - {e}")
                         else:
-                            # Simulation seulement
                             self.cash += current_position * price
                             self.positions[ticker] = 0
                             trades_executed['sell'] += 1
                             logger.info(f"✅ {ticker}: SELL {current_position} @ ${price:.2f} [SIMULATION]")
                     else:
                         trades_executed['hold'] += 1
-                        logger.debug(f"  {ticker}: Pas de position à vendre")
                 
                 else:  # HOLD
                     trades_executed['hold'] += 1
@@ -445,13 +434,11 @@ class SimpleTradingBot:
         
         # Portfolio summary
         if self.client:
-            # Utiliser valeurs Alpaca réelles
             account = self.client.get_account()
             if account:
                 logger.info(f"💰 Portfolio Alpaca: ${account['portfolio_value']:,.2f} (Cash: ${account['cash']:,.2f})")
                 self.cash = account['cash']
         else:
-            # Simulation
             total_value = self.cash + sum(
                 self.positions.get(t, 0) * current_prices.get(t, 0)
                 for t in self.tickers
@@ -459,9 +446,7 @@ class SimpleTradingBot:
             logger.info(f"💰 Portfolio Simulation: ${total_value:,.2f} (Cash: ${self.cash:,.2f})")
     
     def run_cycle(self):
-        """
-        Exécute un cycle de trading complet
-        """
+        """Exécute un cycle de trading complet"""
         logger.info("\n" + "="*70)
         logger.info(f"🔄 CYCLE DE TRADING - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         logger.info("="*70)
@@ -474,7 +459,7 @@ class SimpleTradingBot:
                 logger.warning("⚠️  Pas de données - cycle annulé")
                 return
             
-            # 2. Générer prédictions (avec sync Alpaca intégré)
+            # 2. Générer prédictions
             predictions = self.get_predictions(data)
             
             if not predictions:
@@ -497,18 +482,20 @@ class SimpleTradingBot:
 def main():
     import argparse
     
-    parser = argparse.ArgumentParser(description='Ploutos Trading Bot V2 (Simplifié)')
+    parser = argparse.ArgumentParser(description='Ploutos Trading Bot V2 + V7 Enhanced')
     parser.add_argument('--model', default='models/autonomous/production.zip', help='Chemin modèle')
     parser.add_argument('--paper', action='store_true', help='Mode paper trading')
     parser.add_argument('--interval', type=int, default=60, help='Intervalle cycles (minutes)')
     parser.add_argument('--cycles', type=int, default=None, help='Nombre de cycles (illimité par défaut)')
+    parser.add_argument('--no-v7', action='store_true', help='Désactiver V7')
     
     args = parser.parse_args()
     
     logger.info("\n" + "="*70)
-    logger.info("🚀 PLOUTOS TRADING BOT V2")
+    logger.info("🚀 PLOUTOS TRADING BOT V2 + V7 ENHANCED")
     logger.info("="*70)
-    logger.info(f"🧠 Modèle: {args.model}")
+    logger.info(f"🧠 Modèle PPO: {args.model}")
+    logger.info(f"🎯 V7 Enhanced: {'Activé' if not args.no_v7 else 'Désactivé'}")
     logger.info(f"📊 Mode: {'Paper Trading' if args.paper else 'LIVE TRADING'}")
     logger.info(f"⏱️  Intervalle: {args.interval} min")
     logger.info("="*70)
@@ -521,7 +508,11 @@ def main():
             return
     
     # Initialiser bot
-    bot = SimpleTradingBot(model_path=args.model, paper_trading=args.paper)
+    bot = SimpleTradingBot(
+        model_path=args.model, 
+        paper_trading=args.paper,
+        use_v7=not args.no_v7
+    )
     
     # Boucle principale
     cycle = 0
