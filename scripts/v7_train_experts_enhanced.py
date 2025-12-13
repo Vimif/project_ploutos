@@ -61,7 +61,7 @@ class EnhancedMomentumClassifier(nn.Module):
         if self.use_attention: features = features + self.attention(features) * 0.2
         return self.classifier(features)
 
-# ENHANCED Feature Engineering - SIMPLIFIED
+# ENHANCED Feature Engineering - ROBUST VERSION
 
 def calculate_enhanced_features(df):
     """Calculate 27 reliable features"""
@@ -79,8 +79,12 @@ def calculate_enhanced_features(df):
     features['sma_10'] = df['Close'].rolling(10).mean()
     features['sma_20'] = df['Close'].rolling(20).mean()
     features['sma_50'] = df['Close'].rolling(50).mean()
-    features['ema_12'] = df['Close'].ewm(span=12).mean()
-    features['ema_26'] = df['Close'].ewm(span=26).mean()
+    
+    # === EMA for MACD ===
+    ema12 = df['Close'].ewm(span=12).mean()
+    ema26 = df['Close'].ewm(span=26).mean()
+    features['ema_12'] = ema12
+    features['ema_26'] = ema26
     
     # === VOLATILITY ===
     features['volatility_5'] = df['Close'].pct_change().rolling(5).std()
@@ -96,14 +100,15 @@ def calculate_enhanced_features(df):
     features['rsi'] = 100 - (100 / (1 + rs))
     features['rsi_sma'] = features['rsi'].rolling(14).mean()
     
-    # MACD
-    features['macd'] = features['ema_12'] - features['ema_26']
-    features['signal'] = features['macd'].ewm(span=9).mean()
+    # === MACD ===
+    macd = ema12 - ema26
+    features['macd'] = macd
+    features['signal'] = macd.ewm(span=9).mean()
     features['macd_hist'] = features['macd'] - features['signal']
     
-    # === VOLUME FEATURES ===
-    features['volume_sma20'] = df['Volume'].rolling(20).mean()
-    features['volume_ratio'] = df['Volume'] / features['volume_sma20']
+    # === VOLUME FEATURES (calculate inline) ===
+    vol_sma = df['Volume'].rolling(20).mean()
+    features['volume_ratio'] = df['Volume'] / vol_sma
     
     # === SIMPLE PRICE PATTERNS ===
     features['high_low_range'] = (df['High'] - df['Low']) / df['Close']
