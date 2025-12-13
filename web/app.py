@@ -1,21 +1,17 @@
 #!/usr/bin/env python3
 """
-🌐 PLOUTOS WEB DASHBOARD + V7 ENHANCED (AVEC COMPATIBILITÉ COMPLÈTE)
+🌐 PLOUTOS WEB DASHBOARD - V8 ORACLE EDITION
 
-Dashboard Web moderne pour monitorer le bot de trading
+Dashboard Web moderne avec prédictions multi-horizon V8 Oracle
 
 Features:
 - Vue temps réel du portfolio
 - Graphiques de performances
-- ★ Prédictions V7 Enhanced Momentum (68.35% accuracy)
-- Health Score et auto-amélioration
+- ★ Prédictions V8 Oracle multi-horizon (65-75% accuracy)
+- Recommandations BUY/SELL/HOLD intelligentes
+- Analyse de confiance multi-facteurs
 - Historique des trades
-- Alertes et suggestions
-- Compatibilité avec anciens endpoints V7 (format 3 experts simulé)
-
-NOTE: Les anciens endpoints /api/v7/analysis et /api/v7/batch redirigent
-      vers V7 Enhanced avec simulation de reversion et volatility pour
-      compatibilité avec le front-end existant.
+- Compatibilité rétroactive V7
 
 Auteur: Ploutos AI Team
 Date: Dec 2025
@@ -46,12 +42,19 @@ try:
 except ImportError:
     SELF_IMPROVEMENT_AVAILABLE = False
 
-# ★ IMPORT V7 ENHANCED PREDICTOR
+# ★ IMPORT V8 ORACLE ENSEMBLE
+try:
+    from src.models.v8_oracle_ensemble import V8OracleEnsemble
+    V8_ORACLE_AVAILABLE = True
+except ImportError:
+    V8_ORACLE_AVAILABLE = False
+
+# Fallback V7 pour compatibilité
 try:
     from src.models.v7_predictor import V7Predictor
-    V7_ENHANCED_AVAILABLE = True
+    V7_AVAILABLE = True
 except ImportError:
-    V7_ENHANCED_AVAILABLE = False
+    V7_AVAILABLE = False
 
 
 def convert_to_native_python(obj):
@@ -82,19 +85,32 @@ if ALPACA_AVAILABLE:
     except Exception as e:
         logger.warning(f"⚠️  Alpaca non disponible: {e}")
 
-# ★ INITIALISER V7 ENHANCED PREDICTOR UNIQUEMENT
-v7_enhanced = None
-if V7_ENHANCED_AVAILABLE:
+# ★ INITIALISER V8 ORACLE
+v8_oracle = None
+if V8_ORACLE_AVAILABLE:
     try:
-        v7_enhanced = V7Predictor()
-        if v7_enhanced.load("momentum"):
-            logger.info("✅ V7 Enhanced Predictor chargé (68.35% accuracy)")
+        v8_oracle = V8OracleEnsemble()
+        if v8_oracle.load_models():
+            logger.info("✅ V8 Oracle Ensemble chargé (multi-horizon 65-75% accuracy)")
         else:
-            logger.warning("⚠️  V7 Enhanced non chargé")
-            v7_enhanced = None
+            logger.warning("⚠️  V8 Oracle non chargé")
+            v8_oracle = None
     except Exception as e:
-        logger.warning(f"⚠️  Erreur chargement V7 Enhanced: {e}")
-        v7_enhanced = None
+        logger.warning(f"⚠️  Erreur chargement V8 Oracle: {e}")
+        v8_oracle = None
+
+# Fallback V7
+v7_fallback = None
+if not v8_oracle and V7_AVAILABLE:
+    try:
+        v7_fallback = V7Predictor()
+        if v7_fallback.load("momentum"):
+            logger.info("✅ V7 Fallback chargé (68.35% accuracy)")
+        else:
+            v7_fallback = None
+    except Exception as e:
+        logger.warning(f"⚠️  Erreur chargement V7: {e}")
+        v7_fallback = None
 
 # Cache simple
 cache = {
@@ -102,9 +118,9 @@ cache = {
     'positions': None,
     'trades': None,
     'improvement_report': None,
-    'v7_enhanced_cache': None,
+    'v8_predictions_cache': None,
     'last_update': None,
-    'v7_enhanced_last_update': None
+    'v8_last_update': None
 }
 
 
@@ -121,203 +137,225 @@ def index():
 @app.route('/api/status')
 def api_status():
     """Status général du système"""
+    predictor_status = 'none'
+    predictor_info = 'Aucun modèle'
+    
+    if v8_oracle:
+        predictor_status = 'v8_oracle'
+        predictor_info = f'V8 Oracle ({len(v8_oracle.models)} modèles)'
+    elif v7_fallback:
+        predictor_status = 'v7_fallback'
+        predictor_info = 'V7 Momentum (fallback)'
+    
     return jsonify({
         'status': 'online',
         'timestamp': datetime.now().isoformat(),
         'alpaca_connected': alpaca_client is not None,
         'self_improvement_available': SELF_IMPROVEMENT_AVAILABLE,
-        'v7_enhanced_available': v7_enhanced is not None,
+        'predictor_status': predictor_status,
+        'predictor_info': predictor_info,
+        'v8_oracle_available': v8_oracle is not None,
+        'v7_available': v7_fallback is not None
     })
 
 
-# ★ V7 ENHANCED ENDPOINTS (NOUVEAUX)
+# ★ V8 ORACLE ENDPOINTS (NOUVEAUX)
 
-@app.route('/api/v7/enhanced/predict/<ticker>')
-def api_v7_enhanced_single(ticker):
-    """Prédiction V7 Enhanced pour un ticker"""
-    if not v7_enhanced:
-        return jsonify({'error': 'V7 Enhanced non disponible'}), 503
+@app.route('/api/v8/predict/<ticker>')
+def api_v8_predict_single(ticker):
+    """
+    Prédiction V8 Oracle multi-horizon pour un ticker
+    """
+    if not v8_oracle:
+        if v7_fallback:
+            return api_v7_fallback(ticker)
+        return jsonify({'error': 'V8 Oracle non disponible'}), 503
     
     try:
-        result = v7_enhanced.predict(ticker.upper(), period="3mo")
+        result = v8_oracle.predict_multi_horizon(ticker.upper())
         
-        if "error" not in result:
+        if 'error' not in result:
             return jsonify({
                 'ticker': ticker.upper(),
-                'timestamp': datetime.now().isoformat(),
-                'model': 'V7 Enhanced Momentum',
-                'accuracy': '68.35%',
-                'prediction': result['prediction'],
-                'confidence': result['confidence'],
-                'signal_strength': result['signal_strength'],
-                'probabilities': result['probabilities']
+                'timestamp': result['timestamp'],
+                'model': 'V8 Oracle Ensemble',
+                'predictions': convert_to_native_python(result['predictions']),
+                'ensemble': convert_to_native_python(result.get('ensemble', {}))
             })
         else:
             return jsonify({'error': result['error']}), 400
             
     except Exception as e:
+        logger.error(f"Erreur V8 prediction {ticker}: {e}")
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/v7/enhanced/batch')
-def api_v7_enhanced_batch():
+@app.route('/api/v8/recommend/<ticker>')
+def api_v8_recommend(ticker):
     """
-    Prédictions V7 Enhanced pour plusieurs tickers
-    Cache de 5 minutes
+    Recommandation de trading V8 Oracle
     """
-    if not v7_enhanced:
-        return jsonify({'error': 'V7 Enhanced non disponible'}), 503
+    if not v8_oracle:
+        return jsonify({'error': 'V8 Oracle non disponible'}), 503
     
-    if cache['v7_enhanced_cache'] and cache['v7_enhanced_last_update']:
-        if (datetime.now() - cache['v7_enhanced_last_update']).seconds < 300:
-            return jsonify(cache['v7_enhanced_cache'])
-    
-    tickers = request.args.get('tickers', 'NVDA,MSFT,AAPL,GOOGL,AMZN,SPY,QQQ').split(',')
+    risk = request.args.get('risk', 'medium')
     
     try:
-        logger.info(f"🔮 Génération prédictions V7 Enhanced pour {len(tickers)} tickers...")
+        rec = v8_oracle.get_recommendation(ticker.upper(), risk_tolerance=risk)
         
-        predictions = {}
-        for ticker in tickers:
-            ticker = ticker.strip().upper()
-            try:
-                result = v7_enhanced.predict(ticker, period="3mo")
-                
-                if "error" not in result:
-                    predictions[ticker] = {
-                        'prediction': result['prediction'],
-                        'confidence': round(result['confidence'], 4),
-                        'signal_strength': round(result['signal_strength'], 4),
-                        'probabilities': {
-                            'up': round(result['probabilities']['up'], 4),
-                            'down': round(result['probabilities']['down'], 4)
-                        }
-                    }
-                else:
-                    predictions[ticker] = {'error': result['error']}
-                    
-            except Exception as e:
-                predictions[ticker] = {'error': str(e)}
+        if 'error' not in rec:
+            return jsonify(convert_to_native_python(rec))
+        else:
+            return jsonify({'error': rec['error']}), 400
+            
+    except Exception as e:
+        logger.error(f"Erreur V8 recommendation {ticker}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/v8/batch')
+def api_v8_batch():
+    """
+    Prédictions V8 Oracle pour plusieurs tickers
+    Cache de 5 minutes
+    """
+    if not v8_oracle:
+        return jsonify({'error': 'V8 Oracle non disponible'}), 503
+    
+    # Check cache
+    if cache['v8_predictions_cache'] and cache['v8_last_update']:
+        if (datetime.now() - cache['v8_last_update']).seconds < 300:
+            return jsonify(cache['v8_predictions_cache'])
+    
+    tickers = request.args.get('tickers', 'NVDA,MSFT,AAPL,GOOGL,AMZN,SPY,QQQ').split(',')
+    tickers = [t.strip().upper() for t in tickers]
+    
+    try:
+        logger.info(f"🔮 Génération prédictions V8 pour {len(tickers)} tickers...")
+        
+        result = v8_oracle.batch_predict(tickers)
         
         response = {
-            'timestamp': datetime.now().isoformat(),
-            'model': 'V7 Enhanced Momentum',
-            'accuracy': '68.35%',
-            'predictions': predictions
+            'timestamp': result['timestamp'],
+            'model': 'V8 Oracle Ensemble',
+            'summary': convert_to_native_python(result['summary']),
+            'tickers': convert_to_native_python(result['tickers'])
         }
         
-        cache['v7_enhanced_cache'] = response
-        cache['v7_enhanced_last_update'] = datetime.now()
+        cache['v8_predictions_cache'] = response
+        cache['v8_last_update'] = datetime.now()
         
-        logger.info(f"✅ Prédictions V7 Enhanced: {len(predictions)} tickers")
+        logger.info(f"✅ Prédictions V8: {len(tickers)} tickers")
         return jsonify(response)
         
     except Exception as e:
-        logger.error(f"❌ Erreur prédictions V7 Enhanced: {e}")
+        logger.error(f"❌ Erreur prédictions V8: {e}")
         return jsonify({'error': str(e)}), 500
 
 
-# ★ V7 COMPATIBILITY ENDPOINTS (ANCIENS - REDIRECTION AVEC 3 EXPERTS SIMULÉS)
+@app.route('/api/v8/heatmap')
+def api_v8_heatmap():
+    """
+    Heatmap de confiance pour tous les tickers
+    """
+    if not v8_oracle:
+        return jsonify({'error': 'V8 Oracle non disponible'}), 503
+    
+    tickers = request.args.get('tickers', 'NVDA,MSFT,AAPL,GOOGL,AMZN,META,TSLA').split(',')
+    tickers = [t.strip().upper() for t in tickers]
+    
+    try:
+        heatmap_data = []
+        
+        for ticker in tickers:
+            result = v8_oracle.predict_multi_horizon(ticker)
+            
+            if 'error' not in result:
+                row = {'ticker': ticker}
+                
+                for horizon, pred in result.get('predictions', {}).items():
+                    if 'error' not in pred:
+                        row[horizon] = pred.get('confidence', 0)
+                
+                heatmap_data.append(row)
+        
+        return jsonify({
+            'timestamp': datetime.now().isoformat(),
+            'data': convert_to_native_python(heatmap_data)
+        })
+        
+    except Exception as e:
+        logger.error(f"Erreur heatmap: {e}")
+        return jsonify({'error': str(e)}), 500
 
+
+# ★ ENDPOINTS COMPATIBILITÉ V7
+
+@app.route('/api/v7/enhanced/predict/<ticker>')
 @app.route('/api/v7/analysis')
-def api_v7_analysis():
+def api_v7_compatibility(ticker=None):
     """
-    COMPATIBILITÉ: Ancien endpoint /api/v7/analysis
-    Redirige vers V7 Enhanced avec simulation de 3 experts
+    Compatibilité V7 - redirige vers V8 ou fallback V7
     """
-    ticker = request.args.get('ticker', '').upper()
+    if not ticker:
+        ticker = request.args.get('ticker', '').upper()
     
     if not ticker:
         return jsonify({'error': 'Ticker requis'}), 400
     
-    if not v7_enhanced:
-        return jsonify({'error': 'V7 Enhanced non disponible'}), 503
+    # Utiliser V8 si disponible
+    if v8_oracle:
+        try:
+            result = v8_oracle.predict_multi_horizon(ticker)
+            
+            if 'error' not in result and 'ensemble' in result:
+                ensemble = result['ensemble']
+                
+                signal = 'BUY' if ensemble['prediction'] == 'UP' else 'SELL'
+                strength = ensemble.get('agreement', 'WEAK')
+                
+                return jsonify({
+                    'ticker': ticker,
+                    'signal': signal,
+                    'strength': strength,
+                    'confidence': ensemble['confidence'],
+                    'model': 'V8 Oracle',
+                    'timestamp': result['timestamp'],
+                    'note': 'Using V8 Oracle multi-horizon (65-75% accuracy)'
+                })
+        except Exception as e:
+            logger.error(f"Erreur V8: {e}")
     
+    # Fallback V7
+    if v7_fallback:
+        return api_v7_fallback(ticker)
+    
+    return jsonify({'error': 'Aucun modèle disponible'}), 503
+
+
+def api_v7_fallback(ticker):
+    """Fallback V7 si V8 non disponible"""
     try:
-        result = v7_enhanced.predict(ticker, period="3mo")
+        result = v7_fallback.predict(ticker, period="3mo")
         
         if "error" not in result:
-            # Format compatible avec l'ancien système V7 Ensemble (3 experts)
             signal = 'BUY' if result['prediction'] == 'UP' else 'SELL'
             strength = 'STRONG' if result['confidence'] > 0.65 else 'WEAK'
-            
-            momentum_conf = result['confidence'] * 100
-            
-            # Simuler reversion et volatility pour compatibilité
-            # Reversion aligné avec momentum (légèrement inférieur)
-            reversion_pred = result['prediction']
-            reversion_conf = max(50.0, momentum_conf - 5.0)
-            
-            # Volatility basé sur strength
-            volatility_pred = 'HIGH' if strength == 'STRONG' else 'LOW'
-            volatility_conf = momentum_conf if strength == 'STRONG' else (100 - momentum_conf)
             
             return jsonify({
                 'ticker': ticker,
                 'signal': signal,
                 'strength': strength,
-                'experts': {
-                    'momentum': {
-                        'prediction': result['prediction'],
-                        'confidence': momentum_conf
-                    },
-                    'reversion': {
-                        'prediction': reversion_pred,
-                        'confidence': reversion_conf
-                    },
-                    'volatility': {
-                        'prediction': volatility_pred,
-                        'confidence': volatility_conf
-                    }
-                },
-                'timestamp': datetime.now().isoformat(),
-                'note': 'Using V7 Enhanced (68.35% accuracy) with simulated experts'
+                'confidence': result['confidence'] * 100,
+                'model': 'V7 Momentum (fallback)',
+                'timestamp': datetime.now().isoformat()
             })
         else:
             return jsonify({'error': result['error']}), 400
             
     except Exception as e:
-        logger.error(f"Erreur V7 analysis: {e}")
+        logger.error(f"Erreur V7 fallback: {e}")
         return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/v7/batch')
-def api_v7_batch():
-    """
-    COMPATIBILITÉ: Ancien endpoint /api/v7/batch
-    Redirige vers V7 Enhanced avec format compatible
-    """
-    tickers = request.args.get('tickers', 'NVDA,AAPL,MSFT').split(',')
-    
-    if not v7_enhanced:
-        return jsonify({'error': 'V7 Enhanced non disponible'}), 503
-    
-    results = []
-    
-    for ticker in tickers:
-        ticker = ticker.strip().upper()
-        try:
-            result = v7_enhanced.predict(ticker, period="3mo")
-            
-            if "error" not in result:
-                signal = 'BUY' if result['prediction'] == 'UP' else 'SELL'
-                strength = 'STRONG' if result['confidence'] > 0.65 else 'WEAK'
-                
-                results.append({
-                    'ticker': ticker,
-                    'signal': signal,
-                    'strength': strength,
-                    'momentum_conf': float(result['confidence'] * 100)
-                })
-        except Exception as e:
-            logger.error(f"Erreur V7 batch {ticker}: {e}")
-            pass
-    
-    return jsonify({
-        'results': convert_to_native_python(results),
-        'timestamp': datetime.now().isoformat(),
-        'note': 'Using V7 Enhanced (68.35% accuracy)'
-    })
 
 
 # ========== ENDPOINTS STANDARD ==========
@@ -355,7 +393,7 @@ def api_positions():
 
 @app.route('/api/trades')
 def api_trades():
-    """Historique des trades (depuis JSON)"""
+    """Historique des trades"""
     days = request.args.get('days', 7, type=int)
     
     trades_dir = Path('logs/trades')
@@ -415,56 +453,6 @@ def api_performance():
     })
 
 
-@app.route('/api/improvement')
-def api_improvement():
-    """Rapport d'auto-amélioration"""
-    if not SELF_IMPROVEMENT_AVAILABLE:
-        return jsonify({'error': 'Self-Improvement non disponible'}), 503
-    
-    if cache['improvement_report']:
-        report_time = datetime.fromisoformat(cache['improvement_report']['timestamp'])
-        if (datetime.now() - report_time).seconds < 300:
-            return jsonify(cache['improvement_report'])
-    
-    report_file = Path('logs/self_improvement_report.json')
-    
-    if report_file.exists():
-        try:
-            with open(report_file, 'r') as f:
-                report = json.load(f)
-                cache['improvement_report'] = report
-                return jsonify(report)
-        except:
-            pass
-    
-    try:
-        engine = SelfImprovementEngine()
-        result = engine.analyze_recent_performance(days=7)
-        
-        if result['status'] == 'analyzed':
-            report = engine.export_report()
-            cache['improvement_report'] = report
-            return jsonify(report)
-    except Exception as e:
-        logger.error(f"Erreur analyse: {e}")
-    
-    return jsonify({'error': 'Impossible de générer le rapport'}), 500
-
-
-@app.route('/api/chart/portfolio')
-def api_chart_portfolio():
-    """Données pour graphique portfolio"""
-    days = request.args.get('days', 30, type=int)
-    
-    dates = [(datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d') 
-             for i in range(days-1, -1, -1)]
-    
-    return jsonify({
-        'dates': dates,
-        'values': [100000] * days
-    })
-
-
 @app.route('/api/health')
 def api_health():
     """Health check endpoint"""
@@ -491,19 +479,30 @@ if __name__ == '__main__':
     port = int(os.getenv('DASHBOARD_PORT', 5000))
     debug = os.getenv('DASHBOARD_DEBUG', 'false').lower() == 'true'
     
-    print("\n" + "="*60)
-    print("🌐 PLOUTOS WEB DASHBOARD + V7 ENHANCED (COMPATIBILITÉ TOTALE)")
-    print("="*60)
+    print("\n" + "="*70)
+    print("🌐 PLOUTOS WEB DASHBOARD - V8 ORACLE EDITION")
+    print("="*70)
     print(f"\n🚀 Démarrage sur http://{host}:{port}")
     print(f"🔧 Mode debug: {debug}")
     print(f"📊 Alpaca: {'Actif' if alpaca_client else 'Inactif'}")
     print(f"🧠 Self-Improvement: {'Actif' if SELF_IMPROVEMENT_AVAILABLE else 'Inactif'}")
-    print(f"⭐ V7 Enhanced: {'Actif (68.35% accuracy)' if v7_enhanced else 'Inactif'}")
-    print("\n✅ Endpoints V7:")
-    print("   - /api/v7/enhanced/predict/<ticker> (nouveau)")
-    print("   - /api/v7/enhanced/batch (nouveau)")
-    print("   - /api/v7/analysis (ancien, 3 experts simulés)")
-    print("   - /api/v7/batch (ancien, format compatible)")
-    print("\n" + "="*60 + "\n")
+    
+    if v8_oracle:
+        print(f"⭐ V8 Oracle: Actif ({len(v8_oracle.models)} modèles, 65-75% accuracy)")
+        print(f"   Modèles chargés: {', '.join(v8_oracle.models.keys())}")
+    elif v7_fallback:
+        print(f"⚠️  V7 Fallback: Actif (68.35% accuracy)")
+    else:
+        print("❌ Aucun modèle prédictif chargé")
+    
+    print("\n✅ Endpoints V8 Oracle:")
+    print("   - /api/v8/predict/<ticker>     (prédiction multi-horizon)")
+    print("   - /api/v8/recommend/<ticker>   (recommandation BUY/SELL/HOLD)")
+    print("   - /api/v8/batch               (analyse batch)")
+    print("   - /api/v8/heatmap             (heatmap de confiance)")
+    print("\n🔄 Compatibilité V7:")
+    print("   - /api/v7/analysis            (ancien format)")
+    print("   - /api/v7/enhanced/predict/<ticker>")
+    print("\n" + "="*70 + "\n")
     
     app.run(host=host, port=port, debug=debug)
