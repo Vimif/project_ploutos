@@ -35,6 +35,26 @@
             width: 100%;
             transition: height 1s ease;
         }
+        
+        /* Tab styling */
+        .tab-button {
+            transition: all 0.3s ease;
+        }
+        .tab-button.active {
+            border-bottom: 3px solid #3b82f6;
+        }
+        
+        /* Signal badges */
+        .signal-badge {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 16px;
+        }
+        .signal-buy { background: #10b981; color: white; }
+        .signal-sell { background: #ef4444; color: white; }
+        .signal-hold { background: #f59e0b; color: white; }
     </style>
 </head>
 <body class="bg-gray-900 text-gray-100">
@@ -55,155 +75,247 @@
         </div>
     </header>
     
+    <!-- Navigation Tabs -->
+    <nav class="bg-gray-800 border-b border-gray-700">
+        <div class="container mx-auto px-4 flex space-x-4">
+            <button class="tab-button active px-4 py-3 text-sm font-semibold hover:text-blue-400" data-tab="dashboard">
+                <i class="fas fa-chart-line mr-2"></i>Dashboard
+            </button>
+            <button class="tab-button px-4 py-3 text-sm font-semibold hover:text-blue-400" data-tab="v7analysis">
+                <i class="fas fa-sparkles mr-2"></i>Analyse V7
+            </button>
+        </div>
+    </nav>
+    
     <!-- Main Content -->
     <main class="container mx-auto px-4 py-6">
         
-        <!-- Stats Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <!-- ========== DASHBOARD TAB ========== -->
+        <div id="dashboard-tab" class="tab-content">
             
-            <!-- Portfolio Value -->
-            <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
-                <div class="flex items-center justify-between mb-2">
-                    <h3 class="text-gray-400 text-sm">Portfolio</h3>
-                    <i class="fas fa-wallet text-blue-500"></i>
+            <!-- Stats Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                
+                <!-- Portfolio Value -->
+                <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="text-gray-400 text-sm">Portfolio</h3>
+                        <i class="fas fa-wallet text-blue-500"></i>
+                    </div>
+                    <p class="text-3xl font-bold" id="portfolio-value">-</p>
+                    <p class="text-sm text-green-500 mt-1" id="portfolio-change">-</p>
                 </div>
-                <p class="text-3xl font-bold" id="portfolio-value">-</p>
-                <p class="text-sm text-green-500 mt-1" id="portfolio-change">-</p>
+                
+                <!-- Cash -->
+                <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="text-gray-400 text-sm">Cash</h3>
+                        <i class="fas fa-dollar-sign text-green-500"></i>
+                    </div>
+                    <p class="text-3xl font-bold" id="cash-value">-</p>
+                    <p class="text-sm text-gray-400 mt-1" id="buying-power">-</p>
+                </div>
+                
+                <!-- Win Rate -->
+                <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="text-gray-400 text-sm">Win Rate</h3>
+                        <i class="fas fa-chart-line text-purple-500"></i>
+                    </div>
+                    <p class="text-3xl font-bold" id="win-rate">-</p>
+                    <p class="text-sm text-gray-400 mt-1" id="total-trades">-</p>
+                </div>
+                
+                <!-- Health Score -->
+                <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="text-gray-400 text-sm">Health Score</h3>
+                        <i class="fas fa-heart-pulse text-red-500"></i>
+                    </div>
+                    <p class="text-3xl font-bold" id="health-score">-</p>
+                    <div class="w-full bg-gray-700 rounded-full h-2 mt-2">
+                        <div class="bg-green-500 h-2 rounded-full transition-all duration-500" id="health-bar" style="width: 0%"></div>
+                    </div>
+                </div>
+                
             </div>
             
-            <!-- Cash -->
-            <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
-                <div class="flex items-center justify-between mb-2">
-                    <h3 class="text-gray-400 text-sm">Cash</h3>
-                    <i class="fas fa-dollar-sign text-green-500"></i>
+            <!-- Charts Row -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+                
+                <!-- Portfolio Chart -->
+                <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
+                    <h3 class="text-lg font-bold mb-4">
+                        <i class="fas fa-chart-area text-blue-500 mr-2"></i>
+                        Évolution Portfolio
+                    </h3>
+                    <canvas id="portfolio-chart"></canvas>
                 </div>
-                <p class="text-3xl font-bold" id="cash-value">-</p>
-                <p class="text-sm text-gray-400 mt-1" id="buying-power">-</p>
+                
+                <!-- Performance Metrics -->
+                <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
+                    <h3 class="text-lg font-bold mb-4">
+                        <i class="fas fa-tachometer-alt text-purple-500 mr-2"></i>
+                        Métriques de Performance
+                    </h3>
+                    <div class="space-y-4" id="metrics-list">
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-400">Sharpe Ratio</span>
+                            <span class="font-bold" id="sharpe">-</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-400">Max Drawdown</span>
+                            <span class="font-bold" id="drawdown">-</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-400">Profit Factor</span>
+                            <span class="font-bold" id="profit-factor">-</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-400">Total PnL</span>
+                            <span class="font-bold" id="total-pnl">-</span>
+                        </div>
+                    </div>
+                </div>
+                
             </div>
             
-            <!-- Win Rate -->
-            <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
-                <div class="flex items-center justify-between mb-2">
-                    <h3 class="text-gray-400 text-sm">Win Rate</h3>
-                    <i class="fas fa-chart-line text-purple-500"></i>
+            <!-- Positions & Trades -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+                
+                <!-- Current Positions -->
+                <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
+                    <h3 class="text-lg font-bold mb-4">
+                        <i class="fas fa-briefcase text-yellow-500 mr-2"></i>
+                        Positions Actuelles
+                    </h3>
+                    <div id="positions-list" class="space-y-2">
+                        <p class="text-gray-400 text-sm">Chargement...</p>
+                    </div>
                 </div>
-                <p class="text-3xl font-bold" id="win-rate">-</p>
-                <p class="text-sm text-gray-400 mt-1" id="total-trades">-</p>
+                
+                <!-- Recent Trades -->
+                <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
+                    <h3 class="text-lg font-bold mb-4">
+                        <i class="fas fa-history text-green-500 mr-2"></i>
+                        Trades Récents
+                    </h3>
+                    <div id="trades-list" class="space-y-2 max-h-64 overflow-y-auto">
+                        <p class="text-gray-400 text-sm">Chargement...</p>
+                    </div>
+                </div>
+                
             </div>
             
-            <!-- Health Score -->
+            <!-- Self-Improvement Section -->
             <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
-                <div class="flex items-center justify-between mb-2">
-                    <h3 class="text-gray-400 text-sm">Health Score</h3>
-                    <i class="fas fa-heart-pulse text-red-500"></i>
-                </div>
-                <p class="text-3xl font-bold" id="health-score">-</p>
-                <div class="w-full bg-gray-700 rounded-full h-2 mt-2">
-                    <div class="bg-green-500 h-2 rounded-full transition-all duration-500" id="health-bar" style="width: 0%"></div>
+                <h3 class="text-lg font-bold mb-4">
+                    <i class="fas fa-robot text-cyan-500 mr-2"></i>
+                    Auto-Amélioration IA
+                </h3>
+                
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    
+                    <!-- Issues -->
+                    <div>
+                        <h4 class="text-sm font-semibold text-gray-400 mb-2">
+                            <i class="fas fa-exclamation-triangle text-yellow-500 mr-1"></i>
+                            Problèmes Détectés
+                        </h4>
+                        <div id="issues-list" class="space-y-2">
+                            <p class="text-gray-500 text-sm">Aucun problème</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Suggestions -->
+                    <div>
+                        <h4 class="text-sm font-semibold text-gray-400 mb-2">
+                            <i class="fas fa-lightbulb text-yellow-500 mr-1"></i>
+                            Suggestions
+                        </h4>
+                        <div id="suggestions-list" class="space-y-2">
+                            <p class="text-gray-500 text-sm">Aucune suggestion</p>
+                        </div>
+                    </div>
+                    
                 </div>
             </div>
             
         </div>
         
-        <!-- Charts Row -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+        <!-- ========== V7 ANALYSIS TAB ========== -->
+        <div id="v7analysis-tab" class="tab-content hidden">
             
-            <!-- Portfolio Chart -->
-            <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
-                <h3 class="text-lg font-bold mb-4">
-                    <i class="fas fa-chart-area text-blue-500 mr-2"></i>
-                    Évolution Portfolio
-                </h3>
-                <canvas id="portfolio-chart"></canvas>
-            </div>
-            
-            <!-- Performance Metrics -->
-            <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
-                <h3 class="text-lg font-bold mb-4">
-                    <i class="fas fa-tachometer-alt text-purple-500 mr-2"></i>
-                    Métriques de Performance
-                </h3>
-                <div class="space-y-4" id="metrics-list">
-                    <div class="flex justify-between items-center">
-                        <span class="text-gray-400">Sharpe Ratio</span>
-                        <span class="font-bold" id="sharpe">-</span>
+            <!-- Search Bar -->
+            <div class="mb-6">
+                <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
+                    <h3 class="text-lg font-bold mb-4">
+                        <i class="fas fa-sparkles text-yellow-500 mr-2"></i>
+                        V7 Ensemble Predictor
+                    </h3>
+                    
+                    <div class="flex gap-2 mb-4">
+                        <input type="text" id="v7-ticker" placeholder="Entrez un ticker (ex: NVDA)" 
+                               class="flex-1 px-4 py-2 bg-gray-700 border border-gray-600 rounded text-white placeholder-gray-400 focus:outline-none focus:border-blue-500">
+                        <button id="v7-search-btn" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded font-semibold">
+                            <i class="fas fa-search mr-2"></i>Analyser
+                        </button>
+                        <button id="v7-batch-btn" class="px-6 py-2 bg-purple-600 hover:bg-purple-700 rounded font-semibold">
+                            <i class="fas fa-list mr-2"></i>Batch
+                        </button>
                     </div>
-                    <div class="flex justify-between items-center">
-                        <span class="text-gray-400">Max Drawdown</span>
-                        <span class="font-bold" id="drawdown">-</span>
-                    </div>
-                    <div class="flex justify-between items-center">
-                        <span class="text-gray-400">Profit Factor</span>
-                        <span class="font-bold" id="profit-factor">-</span>
-                    </div>
-                    <div class="flex justify-between items-center">
-                        <span class="text-gray-400">Total PnL</span>
-                        <span class="font-bold" id="total-pnl">-</span>
-                    </div>
+                    
+                    <p class="text-sm text-gray-400">Analyse en temps réel des 3 experts: Momentum, Reversion, Volatility</p>
                 </div>
             </div>
             
-        </div>
-        
-        <!-- Positions & Trades -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-            
-            <!-- Current Positions -->
-            <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
-                <h3 class="text-lg font-bold mb-4">
-                    <i class="fas fa-briefcase text-yellow-500 mr-2"></i>
-                    Positions Actuelles
-                </h3>
-                <div id="positions-list" class="space-y-2">
-                    <p class="text-gray-400 text-sm">Chargement...</p>
-                </div>
-            </div>
-            
-            <!-- Recent Trades -->
-            <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
-                <h3 class="text-lg font-bold mb-4">
-                    <i class="fas fa-history text-green-500 mr-2"></i>
-                    Trades Récents
-                </h3>
-                <div id="trades-list" class="space-y-2 max-h-64 overflow-y-auto">
-                    <p class="text-gray-400 text-sm">Chargement...</p>
-                </div>
-            </div>
-            
-        </div>
-        
-        <!-- Self-Improvement Section -->
-        <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
-            <h3 class="text-lg font-bold mb-4">
-                <i class="fas fa-robot text-cyan-500 mr-2"></i>
-                Auto-Amélioration IA
-            </h3>
-            
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                
-                <!-- Issues -->
-                <div>
-                    <h4 class="text-sm font-semibold text-gray-400 mb-2">
-                        <i class="fas fa-exclamation-triangle text-yellow-500 mr-1"></i>
-                        Problèmes Détectés
-                    </h4>
-                    <div id="issues-list" class="space-y-2">
-                        <p class="text-gray-500 text-sm">Aucun problème</p>
+            <!-- Results Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4" id="v7-results">
+                <!-- Détaillé d'un ticker -->
+                <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
+                    <h3 class="text-lg font-bold mb-4">
+                        <i class="fas fa-microscope text-blue-500 mr-2"></i>
+                        Détail Analyse
+                    </h3>
+                    <div id="v7-detail" class="text-center text-gray-400">
+                        <p>Sélectionnez un ticker pour l'analyser</p>
                     </div>
                 </div>
                 
-                <!-- Suggestions -->
-                <div>
-                    <h4 class="text-sm font-semibold text-gray-400 mb-2">
-                        <i class="fas fa-lightbulb text-yellow-500 mr-1"></i>
-                        Suggestions
-                    </h4>
-                    <div id="suggestions-list" class="space-y-2">
-                        <p class="text-gray-500 text-sm">Aucune suggestion</p>
+                <!-- Batch Results -->
+                <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
+                    <h3 class="text-lg font-bold mb-4">
+                        <i class="fas fa-th-large text-purple-500 mr-2"></i>
+                        Résultats Batch
+                    </h3>
+                    <div id="v7-batch-results" class="space-y-2">
+                        <p class="text-gray-400 text-sm">Lancez une analyse batch</p>
                     </div>
                 </div>
-                
             </div>
+            
+            <!-- Expert Details -->
+            <div class="mt-6 bg-gray-800 rounded-lg p-6 shadow-lg">
+                <h3 class="text-lg font-bold mb-4">
+                    <i class="fas fa-brain text-cyan-500 mr-2"></i>
+                    Conf. des Experts
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="bg-gray-700 rounded-lg p-4">
+                        <h4 class="font-semibold text-blue-400 mb-2">1. Momentum Expert</h4>
+                        <div id="v7-momentum" class="text-gray-400">-</div>
+                    </div>
+                    <div class="bg-gray-700 rounded-lg p-4">
+                        <h4 class="font-semibold text-purple-400 mb-2">2. Reversion Expert</h4>
+                        <div id="v7-reversion" class="text-gray-400">-</div>
+                    </div>
+                    <div class="bg-gray-700 rounded-lg p-4">
+                        <h4 class="font-semibold text-yellow-400 mb-2">3. Volatility Expert</h4>
+                        <div id="v7-volatility" class="text-gray-400">-</div>
+                    </div>
+                </div>
+            </div>
+            
         </div>
         
     </main>
@@ -220,6 +332,27 @@
         // Configuration
         const API_BASE = window.location.origin;
         const REFRESH_INTERVAL = 10000; // 10 secondes
+        
+        // ========== TAB MANAGEMENT ==========
+        document.querySelectorAll('.tab-button').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tabName = btn.dataset.tab;
+                
+                // Hide all tabs
+                document.querySelectorAll('.tab-content').forEach(tab => {
+                    tab.classList.add('hidden');
+                });
+                
+                // Deactivate all buttons
+                document.querySelectorAll('.tab-button').forEach(b => {
+                    b.classList.remove('active');
+                });
+                
+                // Show selected tab
+                document.getElementById(tabName + '-tab').classList.remove('hidden');
+                btn.classList.add('active');
+            });
+        });
         
         // Portfolio Chart
         let portfolioChart = null;
@@ -411,6 +544,93 @@
                 console.error('Error fetching improvement:', error);
             }
         }
+        
+        // ========== V7 ANALYSIS FUNCTIONS ==========
+        
+        async function analyzeV7Ticker() {
+            const ticker = document.getElementById('v7-ticker').value.trim().toUpperCase();
+            if (!ticker) return;
+            
+            try {
+                const res = await fetch(`${API_BASE}/api/v7/analysis?ticker=${ticker}`);
+                const data = await res.json();
+                
+                if (data.error) {
+                    document.getElementById('v7-detail').innerHTML = `<p class="text-red-500">❌ ${data.error}</p>`;
+                    return;
+                }
+                
+                // Display signal
+                const signalClass = data.signal === 'BUY' ? 'signal-buy' : data.signal === 'SELL' ? 'signal-sell' : 'signal-hold';
+                const fullSignal = `${data.strength} ${data.signal}`;
+                
+                document.getElementById('v7-detail').innerHTML = `
+                    <div class="space-y-4">
+                        <h4 class="text-2xl font-bold">${ticker}</h4>
+                        <div class="signal-badge ${signalClass}">${fullSignal}</div>
+                        
+                        <div class="space-y-2 text-left">
+                            <div class="flex justify-between p-2 bg-gray-700 rounded">
+                                <span>Momentum</span>
+                                <span class="font-bold">${data.experts.momentum.prediction} (${data.experts.momentum.confidence.toFixed(1)}%)</span>
+                            </div>
+                            <div class="flex justify-between p-2 bg-gray-700 rounded">
+                                <span>Reversion</span>
+                                <span class="font-bold">${data.experts.reversion.prediction} (${data.experts.reversion.confidence.toFixed(1)}%)</span>
+                            </div>
+                            <div class="flex justify-between p-2 bg-gray-700 rounded">
+                                <span>Volatility</span>
+                                <span class="font-bold">${data.experts.volatility.prediction} (${data.experts.volatility.confidence.toFixed(1)}%)</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                // Update expert confidence
+                document.getElementById('v7-momentum').textContent = `${data.experts.momentum.prediction} - ${data.experts.momentum.confidence.toFixed(1)}%`;
+                document.getElementById('v7-reversion').textContent = `${data.experts.reversion.prediction} - ${data.experts.reversion.confidence.toFixed(1)}%`;
+                document.getElementById('v7-volatility').textContent = `${data.experts.volatility.prediction} - ${data.experts.volatility.confidence.toFixed(1)}%`;
+                
+            } catch (error) {
+                document.getElementById('v7-detail').innerHTML = `<p class="text-red-500">❌ Erreur: ${error.message}</p>`;
+            }
+        }
+        
+        async function analyzeV7Batch() {
+            try {
+                const res = await fetch(`${API_BASE}/api/v7/batch?tickers=NVDA,AAPL,MSFT,GOOGL,AMZN`);
+                const data = await res.json();
+                
+                if (!data.results || data.results.length === 0) {
+                    document.getElementById('v7-batch-results').innerHTML = '<p class="text-red-500">Aucun résultat</p>';
+                    return;
+                }
+                
+                document.getElementById('v7-batch-results').innerHTML = data.results.map(r => {
+                    const signalClass = r.signal === 'BUY' ? 'text-green-500' : r.signal === 'SELL' ? 'text-red-500' : 'text-yellow-500';
+                    return `
+                        <div class="p-3 bg-gray-700 rounded flex justify-between items-center">
+                            <div>
+                                <span class="font-bold">${r.ticker}</span>
+                                <span class="text-gray-400 text-sm ml-2">${r.strength}</span>
+                            </div>
+                            <span class="font-bold ${signalClass}">${r.signal}</span>
+                        </div>
+                    `;
+                }).join('');
+                
+            } catch (error) {
+                document.getElementById('v7-batch-results').innerHTML = `<p class="text-red-500">❌ ${error.message}</p>`;
+            }
+        }
+        
+        // ========== EVENT LISTENERS ==========
+        
+        document.getElementById('v7-search-btn').addEventListener('click', analyzeV7Ticker);
+        document.getElementById('v7-batch-btn').addEventListener('click', analyzeV7Batch);
+        document.getElementById('v7-ticker').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') analyzeV7Ticker();
+        });
         
         // Update all data
         async function updateAll() {
