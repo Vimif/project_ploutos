@@ -240,11 +240,14 @@ def evaluate(tickers):
                     df_aligned = df.loc[features.index]
                     future_returns = df_aligned['Close'].pct_change(5).shift(-5)
                     
-                    # FIX: Use pandas .loc to keep index alignment
+                    # FIX: Reindex features to match future_returns, then filter with valid_mask
+                    features_aligned = features.reindex(future_returns.index)
                     valid_mask = ~future_returns.isna()
-                    features_filtered = features.loc[valid_mask]
-                    X = features_filtered.values
-                    y_true = (future_returns[valid_mask] > 0).astype(int).values
+                    
+                    # Use numpy boolean indexing on aligned data
+                    valid_indices = valid_mask.values
+                    X = features_aligned.values[valid_indices]
+                    y_true = future_returns[valid_mask].values > 0
                     actual_returns = future_returns[valid_mask].values
                     
                     if len(X) < 10:
