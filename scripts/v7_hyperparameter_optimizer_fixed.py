@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🧠 PLOUTOS V7.1 - Hyperparameter Optimizer (FIXED)
+🧠 PLOUTOS V7.1 - Hyperparameter Optimizer (FIXED v2)
 
 Utilise Optuna + vraies données financières (MACD, RSI, Bollinger Bands)
 Pas de données aléatoires.
@@ -206,7 +206,7 @@ def calculate_momentum_features(df):
     return features
 
 def calculate_reversion_features(df):
-    """Calcule les features pour Reversion Expert (REWRITTEN)"""
+    """Calcule les features pour Reversion Expert"""
     features = pd.DataFrame(index=df.index)
     
     close = df['Close'].values
@@ -215,7 +215,7 @@ def calculate_reversion_features(df):
     features['sma_20'] = df['Close'].rolling(20).mean()
     features['sma_50'] = df['Close'].rolling(50).mean()
     
-    # Bollinger Bands - FIXED VERSION
+    # Bollinger Bands
     bb_middle = df['Close'].rolling(20).mean()
     bb_std = df['Close'].rolling(20).std()
     bb_upper = bb_middle + (bb_std * 2)
@@ -225,7 +225,7 @@ def calculate_reversion_features(df):
     features['bb_lower'] = bb_lower
     features['bb_width'] = bb_upper - bb_lower
     
-    # BB Position: normalize price within bands (always 1D)
+    # BB Position: normalize price within bands
     bb_width_safe = features['bb_width'].values + 1e-8
     bb_lower_vals = features['bb_lower'].values
     close_vals = df['Close'].values
@@ -280,8 +280,8 @@ class OptunaObjective:
     def __init__(self, X_train, y_train, X_val, y_val, expert_type='momentum'):
         y_train = np.asarray(y_train).flatten()  # CRITICAL: Flatten to 1D
         y_val = np.asarray(y_val).flatten()      # CRITICAL: Flatten to 1D
-        assert X_train.shape[0] == y_train.shape[0]
-        assert X_val.shape[0] == y_val.shape[0]
+        assert X_train.shape[0] == y_train.shape[0], f"Shapes mismatch: {X_train.shape[0]} != {y_train.shape[0]}"
+        assert X_val.shape[0] == y_val.shape[0], f"Val shapes mismatch: {X_val.shape[0]} != {y_val.shape[0]}"
         
         self.X_train = torch.FloatTensor(X_train)
         self.y_train = torch.LongTensor(y_train)
@@ -392,31 +392,35 @@ def optimize_expert(expert_type, tickers, trials=50, timeout=3600):
             if len(features) < 50:
                 continue
             
-            # Target: Next 5-day return
-            returns_5d = df['Close'].pct_change(5).shift(-5)
-            target = (returns_5d > 0).astype(int)
+            # Target: Create 1D numpy array EXPLICITLY
+            df_aligned = df.loc[features.index]
+            returns_5d = df_aligned['Close'].pct_change(5).shift(-5)
+            target_np = (returns_5d.values > 0).astype(int)  # Force to 1D numpy array
             
-            # Align
-            common_idx = features.index.intersection(target.index)
-            X = features.loc[common_idx].values
-            y = target.loc[common_idx].values
+            # Ensure both are same length
+            X_np = features.values
             
-            if len(X) < 50:
+            if len(X_np) != len(target_np):
+                min_len = min(len(X_np), len(target_np))
+                X_np = X_np[:min_len]
+                target_np = target_np[:min_len]
+            
+            if len(X_np) < 50:
                 continue
             
-            all_X.append(X)
-            all_y.append(y)
-            logger.info(f"   ✅ {ticker}: {len(X)} samples")
+            all_X.append(X_np)
+            all_y.append(target_np)
+            logger.info(f"   ✅ {ticker}: {len(X_np)} samples")
+            
         except Exception as e:
-            logger.warning(f"   ⚠️  {ticker}: {e}")
+            logger.warning(f"   ⚠️  {ticker}: {str(e)[:50]}")
     
     if not all_X:
         logger.error("❌ No data!")
         return None
     
     X = np.vstack(all_X)
-    y = np.concatenate(all_y)
-    y = y.flatten()  # CRITICAL: Flatten to 1D immediately after concat
+    y = np.concatenate(all_y).flatten()
     
     logger.info(f"📊 Raw: X={X.shape}, y={y.shape}")
     
@@ -430,7 +434,7 @@ def optimize_expert(expert_type, tickers, trials=50, timeout=3600):
     logger.info(f"✅ Train: X={X_train.shape}, y={y_train.shape}")
     logger.info(f"📈 Classes: {np.bincount(y_train)}")
     
-    logger.info(f"\n🔌 Optuna: {trials} trials, {timeout}s timeout\n")
+    logger.info(f"\n🔬 Optuna: {trials} trials, {timeout}s timeout\n")
     
     sampler = TPESampler(seed=42)
     pruner = MedianPruner(n_startup_trials=5, n_warmup_steps=2)
@@ -476,7 +480,7 @@ if __name__ == '__main__':
     tickers = args.tickers.split(',')
     
     print("\n" + "="*70)
-    print("🧠 PLOUTOS V7.1 - Hyperparameter Optimizer (FIXED)")
+    print("🧠 PLOUTOS V7.1 - Hyperparameter Optimizer (FIXED v2)")
     print("="*70)
     print(f"🌟 GPU: {torch.cuda.is_available()}")
     print(f"📅 Tickers: {len(tickers)}")
