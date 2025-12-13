@@ -6,11 +6,11 @@ Dashboard Web moderne avec prédictions multi-horizon V8 Oracle
 
 Features:
 - Vue temps réel du portfolio
-- Graphiques de performances
+- Graphiques avancés avec tous les indicateurs techniques
 - ★ Prédictions V8 Oracle multi-horizon (65-75% accuracy)
+- Assistant IA conversationnel pour expliquer les signaux
 - Recommandations BUY/SELL/HOLD intelligentes
-- Analyse de confiance multi-facteurs
-- Historique des trades
+- Heatmap de confiance
 - Compatibilité rétroactive V7
 
 Auteur: Ploutos AI Team
@@ -25,6 +25,8 @@ import json
 import logging
 import pandas as pd
 import numpy as np
+import yfinance as yf
+import ta
 from datetime import datetime, timedelta
 from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS
@@ -65,6 +67,8 @@ def convert_to_native_python(obj):
         return float(obj)
     elif isinstance(obj, (np.int32, np.int64)):
         return int(obj)
+    elif isinstance(obj, pd.Timestamp):
+        return obj.isoformat()
     elif isinstance(obj, dict):
         return {k: convert_to_native_python(v) for k, v in obj.items()}
     elif isinstance(obj, list):
@@ -120,7 +124,8 @@ cache = {
     'improvement_report': None,
     'v8_predictions_cache': None,
     'last_update': None,
-    'v8_last_update': None
+    'v8_last_update': None,
+    'chart_cache': {}
 }
 
 
@@ -132,7 +137,279 @@ def index():
     return render_template('index.html')
 
 
-# ========== API ENDPOINTS ==========
+@app.route('/chart')
+def chart_page():
+    """Page graphique avancé"""
+    return render_template('advanced_chart.html')
+
+
+# ========== CHART DATA ENDPOINTS ==========
+
+@app.route('/api/chart/<ticker>')
+def api_chart_data(ticker):
+    """
+    Données complètes pour graphique avec tous les indicateurs
+    """
+    ticker = ticker.upper()
+    period = request.args.get('period', '3mo')
+    
+    # Cache check
+    cache_key = f"{ticker}_{period}"
+    if cache_key in cache['chart_cache']:
+        cached = cache['chart_cache'][cache_key]
+        if (datetime.now() - cached['timestamp']).seconds < 300:  # 5 min
+            return jsonify(cached['data'])
+    
+    try:
+        # Télécharger données
+        df = yf.download(ticker, period=period, progress=False)
+        
+        if df.empty:
+            return jsonify({'error': 'Aucune donnée trouvée'}), 404
+        
+        # Flatten multi-index columns si nécessaire
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+        
+        # Calculer tous les indicateurs
+        indicators = calculate_all_indicators(df)
+        
+        # Analyse technique
+        analysis = perform_technical_analysis(df, indicators)
+        
+        # Préparer réponse
+        response = {
+            'ticker': ticker,
+            'period': period,
+            'current_price': float(df['Close'].iloc[-1]),
+            'dates': [d.isoformat() for d in df.index],
+            'open': df['Open'].tolist(),
+            'high': df['High'].tolist(),
+            'low': df['Low'].tolist(),
+            'close': df['Close'].tolist(),
+            'volume': df['Volume'].tolist(),
+            'indicators': convert_to_native_python(indicators),
+            'analysis': convert_to_native_python(analysis),
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        # Cache
+        cache['chart_cache'][cache_key] = {
+            'data': response,
+            'timestamp': datetime.now()
+        }
+        
+        return jsonify(response)
+        
+    except Exception as e:
+        logger.error(f"Erreur chart data {ticker}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+def calculate_all_indicators(df: pd.DataFrame) -> dict:
+    """
+    Calcule tous les indicateurs techniques
+    """
+    indicators = {}
+    
+    # SMA
+    indicators['sma_20'] = ta.trend.sma_indicator(df['Close'], window=20).tolist()
+    indicators['sma_50'] = ta.trend.sma_indicator(df['Close'], window=50).tolist()
+    indicators['sma_200'] = ta.trend.sma_indicator(df['Close'], window=200).tolist()
+    
+    # EMA
+    indicators['ema_12'] = ta.trend.ema_indicator(df['Close'], window=12).tolist()
+    indicators['ema_26'] = ta.trend.ema_indicator(df['Close'], window=26).tolist()
+    
+    # Bollinger Bands
+    bb = ta.volatility.BollingerBands(df['Close'])
+    indicators['bb_upper'] = bb.bollinger_hband().tolist()
+    indicators['bb_middle'] = bb.bollinger_mavg().tolist()
+    indicators['bb_lower'] = bb.bollinger_lband().tolist()
+    
+    # RSI
+    indicators['rsi'] = ta.momentum.rsi(df['Close'], window=14).tolist()
+    
+    # MACD
+    macd = ta.trend.MACD(df['Close'])
+    indicators['macd'] = macd.macd().tolist()
+    indicators['macd_signal'] = macd.macd_signal().tolist()
+    indicators['macd_hist'] = macd.macd_diff().tolist()
+    
+    # Stochastic
+    stoch = ta.momentum.StochasticOscillator(df['High'], df['Low'], df['Close'])
+    indicators['stoch_k'] = stoch.stoch().tolist()
+    indicators['stoch_d'] = stoch.stoch_signal().tolist()
+    
+    # ATR
+    indicators['atr'] = ta.volatility.average_true_range(df['High'], df['Low'], df['Close']).tolist()
+    
+    # Volume indicators
+    indicators['volume_sma'] = df['Volume'].rolling(window=20).mean().tolist()
+    
+    return indicators
+
+
+def perform_technical_analysis(df: pd.DataFrame, indicators: dict) -> dict:
+    """
+    Analyse technique complète
+    """
+    last_close = df['Close'].iloc[-1]
+    last_rsi = indicators['rsi'][-1] if indicators['rsi'][-1] == indicators['rsi'][-1] else 50  # NaN check
+    last_macd = indicators['macd'][-1] if indicators['macd'][-1] == indicators['macd'][-1] else 0
+    last_macd_signal = indicators['macd_signal'][-1] if indicators['macd_signal'][-1] == indicators['macd_signal'][-1] else 0
+    
+    # Tendance (SMA)
+    sma_20 = indicators['sma_20'][-1] if indicators['sma_20'][-1] == indicators['sma_20'][-1] else last_close
+    sma_50 = indicators['sma_50'][-1] if indicators['sma_50'][-1] == indicators['sma_50'][-1] else last_close
+    
+    if last_close > sma_20 and last_close > sma_50:
+        trend = 'BULLISH'
+    elif last_close < sma_20 and last_close < sma_50:
+        trend = 'BEARISH'
+    else:
+        trend = 'NEUTRAL'
+    
+    # Signal MACD
+    macd_signal = 'BULLISH' if last_macd > last_macd_signal else 'BEARISH'
+    macd_crossover = abs(last_macd - last_macd_signal) < 0.5
+    
+    # Volatilité (Bollinger)
+    bb_upper = indicators['bb_upper'][-1]
+    bb_lower = indicators['bb_lower'][-1]
+    bb_width = ((bb_upper - bb_lower) / last_close) * 100 if last_close > 0 else 0
+    
+    if bb_width > 5:
+        volatility = 'HIGH'
+    elif bb_width < 2:
+        volatility = 'LOW'
+    else:
+        volatility = 'MEDIUM'
+    
+    # Signal global
+    bullish_signals = 0
+    bearish_signals = 0
+    
+    if trend == 'BULLISH': bullish_signals += 1
+    if trend == 'BEARISH': bearish_signals += 1
+    if last_rsi < 30: bullish_signals += 1
+    if last_rsi > 70: bearish_signals += 1
+    if macd_signal == 'BULLISH': bullish_signals += 1
+    if macd_signal == 'BEARISH': bearish_signals += 1
+    
+    if bullish_signals > bearish_signals:
+        overall_signal = 'BUY'
+        confidence = (bullish_signals / (bullish_signals + bearish_signals)) * 100
+    elif bearish_signals > bullish_signals:
+        overall_signal = 'SELL'
+        confidence = (bearish_signals / (bullish_signals + bearish_signals)) * 100
+    else:
+        overall_signal = 'HOLD'
+        confidence = 50
+    
+    return {
+        'trend': trend,
+        'rsi': float(last_rsi),
+        'macd_signal': macd_signal,
+        'macd_crossover': macd_crossover,
+        'volatility': volatility,
+        'bb_width': float(bb_width),
+        'overall_signal': overall_signal,
+        'confidence': float(confidence),
+        'bullish_signals': bullish_signals,
+        'bearish_signals': bearish_signals
+    }
+
+
+@app.route('/api/ai-chat', methods=['POST'])
+def api_ai_chat():
+    """
+    Assistant IA conversationnel pour expliquer les signaux
+    """
+    data = request.json
+    message = data.get('message', '').lower()
+    ticker = data.get('ticker', '')
+    context = data.get('context', {})
+    
+    # Générer réponse en fonction du message
+    response = generate_ai_response(message, ticker, context)
+    
+    return jsonify({
+        'response': response,
+        'timestamp': datetime.now().isoformat()
+    })
+
+
+def generate_ai_response(message: str, ticker: str, context: dict) -> str:
+    """
+    Génère une réponse intelligente basée sur le contexte
+    """
+    # Mots-clés pour différents types de questions
+    if 'rsi' in message:
+        rsi = context.get('rsi', 50)
+        if rsi > 70:
+            return f"📈 Le RSI de {ticker} est à {rsi:.1f}, en zone de **sur-achat**. Cela signifie que le titre a beaucoup monté récemment et pourrait connaître une correction à court terme. Attention à ne pas acheter au plus haut !"
+        elif rsi < 30:
+            return f"📉 Le RSI de {ticker} est à {rsi:.1f}, en zone de **sur-vente**. Le titre a beaucoup baissé et pourrait rebondir bientôt. C'est potentiellement une opportunité d'achat si la tendance globale est positive."
+        else:
+            return f"🟡 Le RSI de {ticker} est à {rsi:.1f}, en zone **neutre**. Le momentum n'est ni extrêmement haussier ni baissier. Attendez un signal plus clair avant d'agir."
+    
+    elif 'macd' in message:
+        signal = context.get('macd_signal', 'NEUTRAL')
+        crossover = context.get('macd_crossover', False)
+        
+        if crossover:
+            return f"⚡ Un **croisement MACD** vient d'être détecté sur {ticker} ! Signal {signal}. Les croisements MACD sont des signaux forts de changement de tendance. Si la ligne MACD croise au-dessus de la ligne de signal, c'est haussier. Si elle croise en-dessous, c'est baissier."
+        else:
+            return f"📊 Le MACD de {ticker} indique un signal {signal}. Pas de croisement récent détecté. Surveillez les croisements pour identifier les retournements de tendance."
+    
+    elif 'tendance' in message or 'trend' in message:
+        trend = context.get('trend', 'NEUTRAL')
+        
+        if trend == 'BULLISH':
+            return f"🟢 {ticker} est en **tendance haussière** ! Le prix est au-dessus des moyennes mobiles SMA 20 et SMA 50. C'est un signal positif de momentum. Les acheteurs contrôlent le marché."
+        elif trend == 'BEARISH':
+            return f"🔴 {ticker} est en **tendance baissière**. Le prix est sous les moyennes mobiles. Les vendeurs dominent. Prudence si vous êtes long !"
+        else:
+            return f"🟡 {ticker} est en **consolidation**. Le prix oscille autour des moyennes mobiles sans direction claire. Attendez une cassure avant d'entrer en position."
+    
+    elif 'acheter' in message or 'buy' in message:
+        signal = context.get('overall_signal', 'HOLD')
+        confidence = context.get('confidence', 50)
+        
+        if signal == 'BUY':
+            return f"✅ Oui, les indicateurs techniques suggèrent un **signal d'achat** sur {ticker} avec {confidence:.0f}% de confiance. Cependant, faites vos propres recherches et utilisez toujours un stop-loss !"
+        else:
+            return f"⚠️ Les indicateurs ne montrent pas un signal d'achat clair pour {ticker}. Signal actuel: {signal}. Attendez une meilleure opportunité."
+    
+    elif 'vendre' in message or 'sell' in message:
+        signal = context.get('overall_signal', 'HOLD')
+        
+        if signal == 'SELL':
+            return f"🚨 Les indicateurs techniques suggèrent de **vendre** ou de réduire l'exposition sur {ticker}. Plusieurs signaux baissiers sont actifs."
+        else:
+            return f"🛡️ Pas de signal de vente clair pour {ticker}. Signal actuel: {signal}. Gardez vos positions si vous êtes satisfait de votre point d'entrée."
+    
+    elif 'volatilité' in message or 'volatility' in message:
+        volatility = context.get('volatility', 'MEDIUM')
+        bb_width = context.get('bb_width', 0)
+        
+        return f"🌊 La volatilité de {ticker} est **{volatility}** (Bollinger Bands width: {bb_width:.2f}%). " + \
+               ("Marché calme, peu de mouvement." if volatility == 'LOW' else 
+                "Volatilité élevée, grands mouvements de prix !" if volatility == 'HIGH' else
+                "Volatilité normale.")
+    
+    else:
+        # Réponse générale
+        return f"🤖 Je peux vous aider à analyser {ticker} ! Posez-moi des questions sur:\n" + \
+               "- Le **RSI** (sur-achat/sur-vente)\n" + \
+               "- Le **MACD** (momentum)\n" + \
+               "- La **tendance** (direction du marché)\n" + \
+               "- La **volatilité** (mouvement des prix)\n" + \
+               "- Conseils d'**achat/vente**"
+
+
+# ========== API STATUS ==========
 
 @app.route('/api/status')
 def api_status():
@@ -159,13 +436,11 @@ def api_status():
     })
 
 
-# ★ V8 ORACLE ENDPOINTS (NOUVEAUX)
+# ========== V8 ORACLE ENDPOINTS ==========
 
 @app.route('/api/v8/predict/<ticker>')
 def api_v8_predict_single(ticker):
-    """
-    Prédiction V8 Oracle multi-horizon pour un ticker
-    """
+    """Prédiction V8 Oracle multi-horizon"""
     if not v8_oracle:
         if v7_fallback:
             return api_v7_fallback(ticker)
@@ -192,9 +467,7 @@ def api_v8_predict_single(ticker):
 
 @app.route('/api/v8/recommend/<ticker>')
 def api_v8_recommend(ticker):
-    """
-    Recommandation de trading V8 Oracle
-    """
+    """Recommandation V8 Oracle"""
     if not v8_oracle:
         return jsonify({'error': 'V8 Oracle non disponible'}), 503
     
@@ -215,14 +488,10 @@ def api_v8_recommend(ticker):
 
 @app.route('/api/v8/batch')
 def api_v8_batch():
-    """
-    Prédictions V8 Oracle pour plusieurs tickers
-    Cache de 5 minutes
-    """
+    """Prédictions batch V8"""
     if not v8_oracle:
         return jsonify({'error': 'V8 Oracle non disponible'}), 503
     
-    # Check cache
     if cache['v8_predictions_cache'] and cache['v8_last_update']:
         if (datetime.now() - cache['v8_last_update']).seconds < 300:
             return jsonify(cache['v8_predictions_cache'])
@@ -231,8 +500,6 @@ def api_v8_batch():
     tickers = [t.strip().upper() for t in tickers]
     
     try:
-        logger.info(f"🔮 Génération prédictions V8 pour {len(tickers)} tickers...")
-        
         result = v8_oracle.batch_predict(tickers)
         
         response = {
@@ -245,124 +512,17 @@ def api_v8_batch():
         cache['v8_predictions_cache'] = response
         cache['v8_last_update'] = datetime.now()
         
-        logger.info(f"✅ Prédictions V8: {len(tickers)} tickers")
         return jsonify(response)
         
     except Exception as e:
-        logger.error(f"❌ Erreur prédictions V8: {e}")
+        logger.error(f"Erreur V8 batch: {e}")
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/v8/heatmap')
-def api_v8_heatmap():
-    """
-    Heatmap de confiance pour tous les tickers
-    """
-    if not v8_oracle:
-        return jsonify({'error': 'V8 Oracle non disponible'}), 503
-    
-    tickers = request.args.get('tickers', 'NVDA,MSFT,AAPL,GOOGL,AMZN,META,TSLA').split(',')
-    tickers = [t.strip().upper() for t in tickers]
-    
-    try:
-        heatmap_data = []
-        
-        for ticker in tickers:
-            result = v8_oracle.predict_multi_horizon(ticker)
-            
-            if 'error' not in result:
-                row = {'ticker': ticker}
-                
-                for horizon, pred in result.get('predictions', {}).items():
-                    if 'error' not in pred:
-                        row[horizon] = pred.get('confidence', 0)
-                
-                heatmap_data.append(row)
-        
-        return jsonify({
-            'timestamp': datetime.now().isoformat(),
-            'data': convert_to_native_python(heatmap_data)
-        })
-        
-    except Exception as e:
-        logger.error(f"Erreur heatmap: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-# ★ ENDPOINTS COMPATIBILITÉ V7
-
-@app.route('/api/v7/enhanced/predict/<ticker>')
-@app.route('/api/v7/analysis')
-def api_v7_compatibility(ticker=None):
-    """
-    Compatibilité V7 - redirige vers V8 ou fallback V7
-    """
-    if not ticker:
-        ticker = request.args.get('ticker', '').upper()
-    
-    if not ticker:
-        return jsonify({'error': 'Ticker requis'}), 400
-    
-    # Utiliser V8 si disponible
-    if v8_oracle:
-        try:
-            result = v8_oracle.predict_multi_horizon(ticker)
-            
-            if 'error' not in result and 'ensemble' in result:
-                ensemble = result['ensemble']
-                
-                signal = 'BUY' if ensemble['prediction'] == 'UP' else 'SELL'
-                strength = ensemble.get('agreement', 'WEAK')
-                
-                return jsonify({
-                    'ticker': ticker,
-                    'signal': signal,
-                    'strength': strength,
-                    'confidence': ensemble['confidence'],
-                    'model': 'V8 Oracle',
-                    'timestamp': result['timestamp'],
-                    'note': 'Using V8 Oracle multi-horizon (65-75% accuracy)'
-                })
-        except Exception as e:
-            logger.error(f"Erreur V8: {e}")
-    
-    # Fallback V7
-    if v7_fallback:
-        return api_v7_fallback(ticker)
-    
-    return jsonify({'error': 'Aucun modèle disponible'}), 503
-
-
-def api_v7_fallback(ticker):
-    """Fallback V7 si V8 non disponible"""
-    try:
-        result = v7_fallback.predict(ticker, period="3mo")
-        
-        if "error" not in result:
-            signal = 'BUY' if result['prediction'] == 'UP' else 'SELL'
-            strength = 'STRONG' if result['confidence'] > 0.65 else 'WEAK'
-            
-            return jsonify({
-                'ticker': ticker,
-                'signal': signal,
-                'strength': strength,
-                'confidence': result['confidence'] * 100,
-                'model': 'V7 Momentum (fallback)',
-                'timestamp': datetime.now().isoformat()
-            })
-        else:
-            return jsonify({'error': result['error']}), 400
-            
-    except Exception as e:
-        logger.error(f"Erreur V7 fallback: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-# ========== ENDPOINTS STANDARD ==========
+# ========== STANDARD ENDPOINTS ==========
 
 @app.route('/api/account')
 def api_account():
-    """Informations du compte"""
     if not alpaca_client:
         return jsonify({'error': 'Alpaca non disponible'}), 503
     
@@ -381,7 +541,6 @@ def api_account():
 
 @app.route('/api/positions')
 def api_positions():
-    """Positions actuelles"""
     if not alpaca_client:
         return jsonify({'error': 'Alpaca non disponible'}), 503
     
@@ -393,7 +552,6 @@ def api_positions():
 
 @app.route('/api/trades')
 def api_trades():
-    """Historique des trades"""
     days = request.args.get('days', 7, type=int)
     
     trades_dir = Path('logs/trades')
@@ -416,58 +574,9 @@ def api_trades():
     return jsonify(all_trades)
 
 
-@app.route('/api/performance')
-def api_performance():
-    """Statistiques de performance"""
-    days = request.args.get('days', 7, type=int)
-    
-    trades_dir = Path('logs/trades')
-    trades = []
-    
-    for i in range(days):
-        date = datetime.now() - timedelta(days=i)
-        filename = trades_dir / f"trades_{date.strftime('%Y-%m-%d')}.json"
-        
-        if filename.exists():
-            try:
-                with open(filename, 'r') as f:
-                    daily_trades = json.load(f)
-                    trades.extend(daily_trades)
-            except:
-                pass
-    
-    buys = [t for t in trades if t['action'] == 'BUY']
-    sells = [t for t in trades if t['action'] == 'SELL']
-    
-    total_invested = sum(t['amount'] for t in buys)
-    total_proceeds = sum(t['amount'] for t in sells)
-    
-    return jsonify({
-        'total_trades': len(trades),
-        'buy_count': len(buys),
-        'sell_count': len(sells),
-        'total_invested': total_invested,
-        'total_proceeds': total_proceeds,
-        'net_pnl': total_proceeds - total_invested,
-        'days_analyzed': days
-    })
-
-
 @app.route('/api/health')
 def api_health():
-    """Health check endpoint"""
     return jsonify({'status': 'healthy'}), 200
-
-
-# ========== GESTION ERREURS ==========
-
-@app.errorhandler(404)
-def not_found(error):
-    return jsonify({'error': 'Not found'}), 404
-
-@app.errorhandler(500)
-def internal_error(error):
-    return jsonify({'error': 'Internal server error'}), 500
 
 
 # ========== MAIN ==========
@@ -485,7 +594,6 @@ if __name__ == '__main__':
     print(f"\n🚀 Démarrage sur http://{host}:{port}")
     print(f"🔧 Mode debug: {debug}")
     print(f"📊 Alpaca: {'Actif' if alpaca_client else 'Inactif'}")
-    print(f"🧠 Self-Improvement: {'Actif' if SELF_IMPROVEMENT_AVAILABLE else 'Inactif'}")
     
     if v8_oracle:
         print(f"⭐ V8 Oracle: Actif ({len(v8_oracle.models)} modèles, 65-75% accuracy)")
@@ -495,14 +603,15 @@ if __name__ == '__main__':
     else:
         print("❌ Aucun modèle prédictif chargé")
     
-    print("\n✅ Endpoints V8 Oracle:")
-    print("   - /api/v8/predict/<ticker>     (prédiction multi-horizon)")
-    print("   - /api/v8/recommend/<ticker>   (recommandation BUY/SELL/HOLD)")
-    print("   - /api/v8/batch               (analyse batch)")
-    print("   - /api/v8/heatmap             (heatmap de confiance)")
-    print("\n🔄 Compatibilité V7:")
-    print("   - /api/v7/analysis            (ancien format)")
-    print("   - /api/v7/enhanced/predict/<ticker>")
+    print("\n✅ Pages disponibles:")
+    print("   - /                (Dashboard principal)")
+    print("   - /chart           (Graphiques avancés + IA)")
+    
+    print("\n✅ Endpoints API:")
+    print("   - /api/chart/<ticker>          (données graphique)")
+    print("   - /api/ai-chat                 (assistant IA)")
+    print("   - /api/v8/predict/<ticker>     (prédictions V8)")
+    print("   - /api/v8/recommend/<ticker>   (recommandations)")
     print("\n" + "="*70 + "\n")
     
     app.run(host=host, port=port, debug=debug)
