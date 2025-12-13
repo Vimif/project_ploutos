@@ -12,10 +12,17 @@ import logging
 import pandas as pd
 import numpy as np
 import yfinance as yf
-import ta
 from datetime import datetime, timedelta
 from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS
+
+# Import bibliothèque complète d'indicateurs
+try:
+    from web.utils.all_indicators import calculate_complete_indicators, get_indicator_signals
+    COMPLETE_INDICATORS = True
+except:
+    COMPLETE_INDICATORS = False
+    import ta
 
 # Import modules Ploutos
 try:
@@ -25,28 +32,14 @@ except ImportError:
     ALPACA_AVAILABLE = False
 
 try:
-    from core.self_improvement import SelfImprovementEngine
-    SELF_IMPROVEMENT_AVAILABLE = True
-except ImportError:
-    SELF_IMPROVEMENT_AVAILABLE = False
-
-try:
     from src.models.v8_oracle_ensemble import V8OracleEnsemble
     V8_ORACLE_AVAILABLE = True
 except ImportError:
     V8_ORACLE_AVAILABLE = False
 
-try:
-    from src.models.v7_predictor import V7Predictor
-    V7_AVAILABLE = True
-except ImportError:
-    V7_AVAILABLE = False
-
 
 def clean_for_json(obj):
-    """
-    Nettoie les valeurs pour JSON (remplace NaN/Infinity par None)
-    """
+    """Nettoie les valeurs pour JSON (remplace NaN/Infinity par None)"""
     if isinstance(obj, float):
         if np.isnan(obj) or np.isinf(obj):
             return None
@@ -68,56 +61,36 @@ def clean_for_json(obj):
     return obj
 
 
-def convert_to_native_python(obj):
-    """Alias pour rétro-compatibilité"""
-    return clean_for_json(obj)
-
 # Setup
 app = Flask(__name__)
 CORS(app)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialisation clients
+# Initialisation
 alpaca_client = None
 if ALPACA_AVAILABLE:
     try:
         alpaca_client = AlpacaClient(paper_trading=True)
     except Exception as e:
-        logger.warning(f"⚠️  Alpaca non disponible: {e}")
+        logger.warning(f"⚠️  Alpaca: {e}")
 
 v8_oracle = None
 if V8_ORACLE_AVAILABLE:
     try:
         v8_oracle = V8OracleEnsemble()
         if v8_oracle.load_models():
-            logger.info("✅ V8 Oracle Ensemble chargé")
+            logger.info("✅ V8 Oracle chargé")
         else:
             v8_oracle = None
     except Exception as e:
-        logger.warning(f"⚠️  Erreur V8: {e}")
+        logger.warning(f"⚠️  V8: {e}")
         v8_oracle = None
-
-v7_fallback = None
-if not v8_oracle and V7_AVAILABLE:
-    try:
-        v7_fallback = V7Predictor()
-        if v7_fallback.load("momentum"):
-            logger.info("✅ V7 Fallback chargé")
-        else:
-            v7_fallback = None
-    except Exception as e:
-        logger.warning(f"⚠️  Erreur V7: {e}")
-        v7_fallback = None
 
 cache = {
     'account': None,
     'positions': None,
-    'trades': None,
-    'improvement_report': None,
-    'v8_predictions_cache': None,
     'last_update': None,
-    'v8_last_update': None,
     'chart_cache': {}
 }
 
@@ -134,7 +107,7 @@ def chart_page():
     return render_template('advanced_chart.html')
 
 
-# ========== CHART DATA ENDPOINTS ==========
+# ========== CHART DATA ==========
 
 @app.route('/api/chart/<ticker>')
 def api_chart_data(ticker):
@@ -151,13 +124,21 @@ def api_chart_data(ticker):
         df = yf.download(ticker, period=period, progress=False)
         
         if df.empty:
-            return jsonify({'error': 'Aucune donnée trouvée'}), 404
+            return jsonify({'error': 'Aucune donnée'}), 404
         
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
         
-        indicators = calculate_all_indicators(df)
-        analysis = perform_technical_analysis(df, indicators)
+        # Calculer TOUS les indicateurs
+        if COMPLETE_INDICATORS:
+            indicators = calculate_complete_indicators(df)
+            signals = get_indicator_signals(df, indicators)
+        else:
+            indicators = calculate_basic_indicators(df)
+            signals = {'overall': {'recommendation': 'HOLD', 'confidence': 50}}
+        
+        # Quick stats
+        quick_stats = generate_quick_stats(df, indicators, signals)
         
         response = {
             'ticker': ticker,
@@ -170,7 +151,8 @@ def api_chart_data(ticker):
             'close': clean_for_json(df['Close'].values),
             'volume': clean_for_json(df['Volume'].values),
             'indicators': clean_for_json(indicators),
-            'analysis': clean_for_json(analysis),
+            'signals': clean_for_json(signals),
+            'quick_stats': clean_for_json(quick_stats),
             'timestamp': datetime.now().isoformat()
         }
         
@@ -186,119 +168,71 @@ def api_chart_data(ticker):
         return jsonify({'error': str(e)}), 500
 
 
-def calculate_all_indicators(df: pd.DataFrame) -> dict:
+def calculate_basic_indicators(df: pd.DataFrame) -> dict:
+    """Fallback si bibliothèque complète non dispo"""
+    import ta
     indicators = {}
     
-    # SMA
-    indicators['sma_20'] = ta.trend.sma_indicator(df['Close'], window=20).tolist()
-    indicators['sma_50'] = ta.trend.sma_indicator(df['Close'], window=50).tolist()
-    indicators['sma_200'] = ta.trend.sma_indicator(df['Close'], window=200).tolist()
+    # Basiques
+    for p in [20, 50, 200]:
+        indicators[f'sma_{p}'] = ta.trend.sma_indicator(df['Close'], window=p).tolist()
     
-    # EMA
-    indicators['ema_12'] = ta.trend.ema_indicator(df['Close'], window=12).tolist()
-    indicators['ema_26'] = ta.trend.ema_indicator(df['Close'], window=26).tolist()
-    
-    # Bollinger Bands
-    bb = ta.volatility.BollingerBands(df['Close'])
-    indicators['bb_upper'] = bb.bollinger_hband().tolist()
-    indicators['bb_middle'] = bb.bollinger_mavg().tolist()
-    indicators['bb_lower'] = bb.bollinger_lband().tolist()
-    
-    # RSI
     indicators['rsi'] = ta.momentum.rsi(df['Close'], window=14).tolist()
     
-    # MACD
     macd = ta.trend.MACD(df['Close'])
     indicators['macd'] = macd.macd().tolist()
     indicators['macd_signal'] = macd.macd_signal().tolist()
     indicators['macd_hist'] = macd.macd_diff().tolist()
     
-    # Stochastic
+    bb = ta.volatility.BollingerBands(df['Close'])
+    indicators['bb_upper'] = bb.bollinger_hband().tolist()
+    indicators['bb_middle'] = bb.bollinger_mavg().tolist()
+    indicators['bb_lower'] = bb.bollinger_lband().tolist()
+    
     stoch = ta.momentum.StochasticOscillator(df['High'], df['Low'], df['Close'])
     indicators['stoch_k'] = stoch.stoch().tolist()
     indicators['stoch_d'] = stoch.stoch_signal().tolist()
     
-    # ATR
     indicators['atr'] = ta.volatility.average_true_range(df['High'], df['Low'], df['Close']).tolist()
-    
-    # Volume
-    indicators['volume_sma'] = df['Volume'].rolling(window=20).mean().tolist()
+    indicators['adx'] = ta.trend.adx(df['High'], df['Low'], df['Close']).tolist()
+    indicators['obv'] = ta.volume.on_balance_volume(df['Close'], df['Volume']).tolist()
     
     return indicators
 
 
-def perform_technical_analysis(df: pd.DataFrame, indicators: dict) -> dict:
-    last_close = df['Close'].iloc[-1]
+def generate_quick_stats(df: pd.DataFrame, indicators: dict, signals: dict) -> dict:
+    """Génère les stats rapides pour le panneau"""
     
-    # Safe get with NaN check
-    def safe_get(arr, default=50):
+    def safe_get(arr, default=0):
+        if not arr or len(arr) == 0:
+            return default
         val = arr[-1]
-        return float(val) if not (np.isnan(val) or np.isinf(val)) else default
+        if val is None or (isinstance(val, float) and (np.isnan(val) or np.isinf(val))):
+            return default
+        return float(val)
     
-    last_rsi = safe_get(indicators['rsi'])
-    last_macd = safe_get(indicators['macd'], 0)
-    last_macd_signal = safe_get(indicators['macd_signal'], 0)
-    sma_20 = safe_get(indicators['sma_20'], last_close)
-    sma_50 = safe_get(indicators['sma_50'], last_close)
+    current_price = float(df['Close'].iloc[-1])
+    prev_close = float(df['Close'].iloc[-2]) if len(df) > 1 else current_price
+    change = current_price - prev_close
+    change_pct = (change / prev_close * 100) if prev_close != 0 else 0
     
-    # Tendance
-    if last_close > sma_20 and last_close > sma_50:
-        trend = 'BULLISH'
-    elif last_close < sma_20 and last_close < sma_50:
-        trend = 'BEARISH'
-    else:
-        trend = 'NEUTRAL'
-    
-    # MACD
-    macd_signal = 'BULLISH' if last_macd > last_macd_signal else 'BEARISH'
-    macd_crossover = abs(last_macd - last_macd_signal) < 0.5
-    
-    # Volatilité
-    bb_upper = safe_get(indicators['bb_upper'], last_close * 1.02)
-    bb_lower = safe_get(indicators['bb_lower'], last_close * 0.98)
-    bb_width = ((bb_upper - bb_lower) / last_close) * 100 if last_close > 0 else 0
-    
-    if bb_width > 5:
-        volatility = 'HIGH'
-    elif bb_width < 2:
-        volatility = 'LOW'
-    else:
-        volatility = 'MEDIUM'
-    
-    # Signal global
-    bullish_signals = 0
-    bearish_signals = 0
-    
-    if trend == 'BULLISH': bullish_signals += 1
-    if trend == 'BEARISH': bearish_signals += 1
-    if last_rsi < 30: bullish_signals += 1
-    if last_rsi > 70: bearish_signals += 1
-    if macd_signal == 'BULLISH': bullish_signals += 1
-    if macd_signal == 'BEARISH': bearish_signals += 1
-    
-    total_signals = bullish_signals + bearish_signals
-    
-    if bullish_signals > bearish_signals:
-        overall_signal = 'BUY'
-        confidence = (bullish_signals / total_signals) * 100 if total_signals > 0 else 50
-    elif bearish_signals > bullish_signals:
-        overall_signal = 'SELL'
-        confidence = (bearish_signals / total_signals) * 100 if total_signals > 0 else 50
-    else:
-        overall_signal = 'HOLD'
-        confidence = 50
+    # Volume
+    current_volume = float(df['Volume'].iloc[-1])
+    avg_volume = float(df['Volume'].rolling(20).mean().iloc[-1]) if len(df) >= 20 else current_volume
+    volume_ratio = (current_volume / avg_volume) if avg_volume > 0 else 1.0
     
     return {
-        'trend': trend,
-        'rsi': float(last_rsi),
-        'macd_signal': macd_signal,
-        'macd_crossover': bool(macd_crossover),
-        'volatility': volatility,
-        'bb_width': float(bb_width),
-        'overall_signal': overall_signal,
-        'confidence': float(confidence),
-        'bullish_signals': int(bullish_signals),
-        'bearish_signals': int(bearish_signals)
+        'price': current_price,
+        'change': change,
+        'change_pct': change_pct,
+        'high_52w': float(df['High'].tail(252).max()) if len(df) >= 252 else float(df['High'].max()),
+        'low_52w': float(df['Low'].tail(252).min()) if len(df) >= 252 else float(df['Low'].min()),
+        'rsi': safe_get(indicators.get('rsi', []), 50),
+        'adx': safe_get(indicators.get('adx', []), 20),
+        'volume': current_volume,
+        'volume_ratio': volume_ratio,
+        'recommendation': signals.get('overall', {}).get('recommendation', 'HOLD'),
+        'confidence': signals.get('overall', {}).get('confidence', 50)
     }
 
 
@@ -318,67 +252,37 @@ def api_ai_chat():
 
 
 def generate_ai_response(message: str, ticker: str, context: dict) -> str:
+    """Génère réponse IA"""
+    
     if 'rsi' in message:
         rsi = context.get('rsi', 50)
         if rsi > 70:
-            return f"📈 Le RSI de {ticker} est à {rsi:.1f}, en zone de **sur-achat**. Cela signifie que le titre a beaucoup monté récemment et pourrait connaître une correction à court terme. Attention à ne pas acheter au plus haut !"
+            return f"📈 Le RSI de {ticker} est à {rsi:.1f}, en **sur-achat**. Le titre a beaucoup monté et pourrait corriger."
         elif rsi < 30:
-            return f"📉 Le RSI de {ticker} est à {rsi:.1f}, en zone de **sur-vente**. Le titre a beaucoup baissé et pourrait rebondir bientôt. C'est potentiellement une opportunité d'achat si la tendance globale est positive."
+            return f"📉 Le RSI de {ticker} est à {rsi:.1f}, en **sur-vente**. Opportunité d'achat potentielle."
         else:
-            return f"🟡 Le RSI de {ticker} est à {rsi:.1f}, en zone **neutre**. Le momentum n'est ni extrêmement haussier ni baissier. Attendez un signal plus clair avant d'agir."
+            return f"🟡 Le RSI de {ticker} est à {rsi:.1f}, en zone neutre."
     
     elif 'macd' in message:
-        signal = context.get('macd_signal', 'NEUTRAL')
-        crossover = context.get('macd_crossover', False)
-        
-        if crossover:
-            return f"⚡ Un **croisement MACD** vient d'être détecté sur {ticker} ! Signal {signal}. Les croisements MACD sont des signaux forts de changement de tendance."
-        else:
-            return f"📊 Le MACD de {ticker} indique un signal {signal}. Pas de croisement récent détecté."
+        return f"📊 Le MACD est un indicateur de momentum. Regardez les croisements pour identifier les retournements."
     
     elif 'tendance' in message or 'trend' in message:
-        trend = context.get('trend', 'NEUTRAL')
-        
-        if trend == 'BULLISH':
-            return f"🟢 {ticker} est en **tendance haussière** ! Le prix est au-dessus des moyennes mobiles. Les acheteurs contrôlent le marché."
-        elif trend == 'BEARISH':
-            return f"🔴 {ticker} est en **tendance baissière**. Le prix est sous les moyennes mobiles. Les vendeurs dominent."
-        else:
-            return f"🟡 {ticker} est en **consolidation**. Pas de direction claire."
+        return f"📊 Analysez les moyennes mobiles (SMA 20/50/200) et l'ADX pour évaluer la force de la tendance."
     
     elif 'acheter' in message or 'buy' in message:
-        signal = context.get('overall_signal', 'HOLD')
-        confidence = context.get('confidence', 50)
+        rec = context.get('recommendation', 'HOLD')
+        conf = context.get('confidence', 50)
         
-        if signal == 'BUY':
-            return f"✅ Oui, les indicateurs suggèrent un **signal d'achat** sur {ticker} avec {confidence:.0f}% de confiance. Utilisez toujours un stop-loss !"
+        if 'BUY' in rec:
+            return f"✅ Signal d'achat détecté sur {ticker} avec {conf:.0f}% de confiance."
         else:
-            return f"⚠️ Les indicateurs ne montrent pas un signal d'achat clair pour {ticker}. Signal actuel: {signal}."
-    
-    elif 'vendre' in message or 'sell' in message:
-        signal = context.get('overall_signal', 'HOLD')
-        
-        if signal == 'SELL':
-            return f"🚨 Les indicateurs suggèrent de **vendre** ou de réduire l'exposition sur {ticker}."
-        else:
-            return f"🛡️ Pas de signal de vente clair pour {ticker}. Signal actuel: {signal}."
-    
-    elif 'volatilité' in message or 'volatility' in message:
-        volatility = context.get('volatility', 'MEDIUM')
-        bb_width = context.get('bb_width', 0)
-        
-        return f"🌊 La volatilité de {ticker} est **{volatility}** (BB width: {bb_width:.2f}%)."
+            return f"⚠️ Pas de signal d'achat clair. Signal actuel: {rec}."
     
     else:
-        return f"🤖 Je peux vous aider à analyser {ticker} ! Posez-moi des questions sur:\n" + \
-               "- Le **RSI** (sur-achat/sur-vente)\n" + \
-               "- Le **MACD** (momentum)\n" + \
-               "- La **tendance** (direction du marché)\n" + \
-               "- La **volatilité**\n" + \
-               "- Conseils d'**achat/vente**"
+        return f"🤖 Posez-moi des questions sur le RSI, MACD, la tendance, la volatilité ou les conseils d'achat/vente pour {ticker}."
 
 
-# ========== API V8 ORACLE ==========
+# ========== V8 ORACLE ==========
 
 @app.route('/api/v8/predict/<ticker>')
 def api_v8_predict_single(ticker):
@@ -392,7 +296,6 @@ def api_v8_predict_single(ticker):
             return jsonify({
                 'ticker': ticker.upper(),
                 'timestamp': result['timestamp'],
-                'model': 'V8 Oracle Ensemble',
                 'predictions': clean_for_json(result['predictions']),
                 'ensemble': clean_for_json(result.get('ensemble', {}))
             })
@@ -400,7 +303,6 @@ def api_v8_predict_single(ticker):
             return jsonify({'error': result['error']}), 400
             
     except Exception as e:
-        logger.error(f"Erreur V8: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -413,14 +315,8 @@ def api_v8_recommend(ticker):
     
     try:
         rec = v8_oracle.get_recommendation(ticker.upper(), risk_tolerance=risk)
-        
-        if 'error' not in rec:
-            return jsonify(clean_for_json(rec))
-        else:
-            return jsonify({'error': rec['error']}), 400
-            
+        return jsonify(clean_for_json(rec)) if 'error' not in rec else (jsonify({'error': rec['error']}), 400)
     except Exception as e:
-        logger.error(f"Erreur V8: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -429,34 +325,21 @@ def api_v8_batch():
     if not v8_oracle:
         return jsonify({'error': 'V8 Oracle non disponible'}), 503
     
-    if cache['v8_predictions_cache'] and cache['v8_last_update']:
-        if (datetime.now() - cache['v8_last_update']).seconds < 300:
-            return jsonify(cache['v8_predictions_cache'])
-    
-    tickers = request.args.get('tickers', 'NVDA,MSFT,AAPL,GOOGL,AMZN,SPY,QQQ').split(',')
+    tickers = request.args.get('tickers', 'NVDA,MSFT,AAPL').split(',')
     tickers = [t.strip().upper() for t in tickers]
     
     try:
         result = v8_oracle.batch_predict(tickers)
-        
-        response = {
+        return jsonify({
             'timestamp': result['timestamp'],
-            'model': 'V8 Oracle Ensemble',
             'summary': clean_for_json(result['summary']),
             'tickers': clean_for_json(result['tickers'])
-        }
-        
-        cache['v8_predictions_cache'] = response
-        cache['v8_last_update'] = datetime.now()
-        
-        return jsonify(response)
-        
+        })
     except Exception as e:
-        logger.error(f"Erreur V8 batch: {e}")
         return jsonify({'error': str(e)}), 500
 
 
-# ========== STANDARD ENDPOINTS ==========
+# ========== STANDARD ==========
 
 @app.route('/api/account')
 def api_account():
@@ -473,22 +356,19 @@ def api_account():
         cache['last_update'] = datetime.now()
         return jsonify(account)
     
-    return jsonify({'error': 'Impossible de récupérer le compte'}), 500
+    return jsonify({'error': 'Erreur compte'}), 500
 
 
 @app.route('/api/positions')
 def api_positions():
     if not alpaca_client:
         return jsonify({'error': 'Alpaca non disponible'}), 503
-    
-    positions = alpaca_client.get_positions()
-    return jsonify(positions)
+    return jsonify(alpaca_client.get_positions())
 
 
 @app.route('/api/trades')
 def api_trades():
     days = request.args.get('days', 7, type=int)
-    
     trades_dir = Path('logs/trades')
     all_trades = []
     
@@ -498,14 +378,12 @@ def api_trades():
         
         if filename.exists():
             try:
-                with open(filename, 'r') as f:
-                    daily_trades = json.load(f)
-                    all_trades.extend(daily_trades)
+                with open(filename) as f:
+                    all_trades.extend(json.load(f))
             except:
                 pass
     
     all_trades.sort(key=lambda t: t.get('timestamp', ''), reverse=True)
-    
     return jsonify(all_trades)
 
 
@@ -514,34 +392,24 @@ def api_health():
     return jsonify({'status': 'healthy'}), 200
 
 
-@app.route('/api/status')
-def api_status():
-    return jsonify({
-        'status': 'online',
-        'timestamp': datetime.now().isoformat(),
-        'v8_oracle_available': v8_oracle is not None,
-        'alpaca_connected': alpaca_client is not None
-    })
-
-
 if __name__ == '__main__':
     import os
     
     host = os.getenv('DASHBOARD_HOST', '0.0.0.0')
     port = int(os.getenv('DASHBOARD_PORT', 5000))
-    debug = os.getenv('DASHBOARD_DEBUG', 'false').lower() == 'true'
     
     print("\n" + "="*70)
-    print("🌐 PLOUTOS WEB DASHBOARD - V8 ORACLE EDITION")
+    print("🌐 PLOUTOS WEB DASHBOARD - V8 ORACLE")
     print("="*70)
-    print(f"\n🚀 Démarrage sur http://{host}:{port}")
+    print(f"\n🚀 http://{host}:{port}")
+    
+    if COMPLETE_INDICATORS:
+        print("✅ 50+ indicateurs professionnels")
     
     if v8_oracle:
-        print(f"⭐ V8 Oracle: Actif ({len(v8_oracle.models)} modèles)")
+        print(f"⭐ V8 Oracle: {len(v8_oracle.models)} modèles")
     
-    print("\n✅ Pages:")
-    print("   - /       (Dashboard)")
-    print("   - /chart  (Graphiques + IA)")
+    print("\n✅ Pages: / et /chart")
     print("\n" + "="*70 + "\n")
     
-    app.run(host=host, port=port, debug=debug)
+    app.run(host=host, port=port, debug=False)
