@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ploutos - Graphique Avancé & IA</title>
+    <title>Ploutos - Analyse Technique Complète</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -30,6 +30,9 @@
             0%, 100% { opacity: 0.3; }
             50% { opacity: 1; }
         }
+        .indicator-toggle.active {
+            background-color: #3b82f6;
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-white">
@@ -38,7 +41,7 @@
         <div class="max-w-7xl mx-auto flex justify-between items-center">
             <h1 class="text-2xl font-bold">
                 <i class="fas fa-chart-line text-blue-500 mr-2"></i>
-                Ploutos V8 Oracle - Analyse Avancée
+                Ploutos V8 Oracle - Analyse Technique Complète
             </h1>
             <a href="/" class="px-4 py-2 bg-gray-700 rounded hover:bg-gray-600">
                 <i class="fas fa-home mr-2"></i>Dashboard
@@ -53,7 +56,7 @@
                 <div class="flex-1">
                     <label class="block text-sm text-gray-400 mb-2">Ticker</label>
                     <input type="text" id="ticker-input" 
-                           class="w-full px-4 py-2 bg-gray-700 rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
+                           class="w-full px-4 py-2 bg-gray-700 rounded border border-gray-600 focus:border-blue-500 focus:outline-none uppercase"
                            placeholder="Ex: NVDA, AAPL, MSFT" value="NVDA">
                 </div>
                 <div>
@@ -73,64 +76,109 @@
             </div>
         </div>
 
+        <!-- Indicator Toggles -->
+        <div class="bg-gray-800 rounded-lg p-4 mb-4">
+            <h3 class="text-sm font-bold mb-3 text-gray-400">🏛️ INDICATEURS TECHNIQUES</h3>
+            <div class="grid grid-cols-6 gap-2">
+                <button class="indicator-toggle active px-3 py-2 bg-gray-700 rounded text-sm hover:bg-gray-600" data-indicator="sma">
+                    📊 SMA
+                </button>
+                <button class="indicator-toggle px-3 py-2 bg-gray-700 rounded text-sm hover:bg-gray-600" data-indicator="ema">
+                    📈 EMA
+                </button>
+                <button class="indicator-toggle px-3 py-2 bg-gray-700 rounded text-sm hover:bg-gray-600" data-indicator="bb">
+                    🌊 Bollinger
+                </button>
+                <button class="indicator-toggle px-3 py-2 bg-gray-700 rounded text-sm hover:bg-gray-600" data-indicator="ichimoku">
+                    ☁️ Ichimoku
+                </button>
+                <button class="indicator-toggle px-3 py-2 bg-gray-700 rounded text-sm hover:bg-gray-600" data-indicator="sar">
+                    ⭕ SAR
+                </button>
+                <button class="indicator-toggle px-3 py-2 bg-gray-700 rounded text-sm hover:bg-gray-600" data-indicator="vwap">
+                    📊 VWAP
+                </button>
+            </div>
+        </div>
+
         <!-- Grid Layout -->
         <div class="grid grid-cols-3 gap-4">
             <!-- Main Chart (2/3) -->
             <div class="col-span-2">
-                <div class="bg-gray-800 rounded-lg p-4">
-                    <div class="flex justify-between items-center mb-4">
-                        <h2 class="text-xl font-bold"><i class="fas fa-chart-candlestick mr-2"></i>Graphique</h2>
-                        <div class="flex gap-2">
-                            <button class="indicator-toggle px-3 py-1 bg-gray-700 rounded text-sm" data-indicator="sma">
-                                SMA
-                            </button>
-                            <button class="indicator-toggle px-3 py-1 bg-gray-700 rounded text-sm" data-indicator="bb">
-                                Bollinger
-                            </button>
-                            <button class="indicator-toggle px-3 py-1 bg-gray-700 rounded text-sm" data-indicator="volume">
-                                Volume
-                            </button>
-                        </div>
-                    </div>
+                <div class="bg-gray-800 rounded-lg p-4 mb-4">
+                    <h2 class="text-xl font-bold mb-4"><i class="fas fa-chart-candlestick mr-2"></i>Prix & Tendances</h2>
                     <div id="main-chart" style="height: 500px;"></div>
                 </div>
 
-                <!-- Sub Charts -->
-                <div class="grid grid-cols-2 gap-4 mt-4">
+                <!-- Sub Charts Grid -->
+                <div class="grid grid-cols-3 gap-4">
                     <div class="bg-gray-800 rounded-lg p-4">
-                        <h3 class="font-bold mb-2"><i class="fas fa-wave-square mr-2"></i>RSI</h3>
-                        <div id="rsi-chart" style="height: 150px;"></div>
+                        <h3 class="font-bold mb-2 text-sm"><i class="fas fa-wave-square mr-2"></i>RSI (14)</h3>
+                        <div id="rsi-chart" style="height: 120px;"></div>
                     </div>
                     <div class="bg-gray-800 rounded-lg p-4">
-                        <h3 class="font-bold mb-2"><i class="fas fa-signal mr-2"></i>MACD</h3>
-                        <div id="macd-chart" style="height: 150px;"></div>
+                        <h3 class="font-bold mb-2 text-sm"><i class="fas fa-signal mr-2"></i>MACD</h3>
+                        <div id="macd-chart" style="height: 120px;"></div>
+                    </div>
+                    <div class="bg-gray-800 rounded-lg p-4">
+                        <h3 class="font-bold mb-2 text-sm"><i class="fas fa-gauge mr-2"></i>Stochastic</h3>
+                        <div id="stoch-chart" style="height: 120px;"></div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-4 mt-4">
+                    <div class="bg-gray-800 rounded-lg p-4">
+                        <h3 class="font-bold mb-2 text-sm"><i class="fas fa-chart-area mr-2"></i>ADX (Tendance)</h3>
+                        <div id="adx-chart" style="height: 120px;"></div>
+                    </div>
+                    <div class="bg-gray-800 rounded-lg p-4">
+                        <h3 class="font-bold mb-2 text-sm"><i class="fas fa-fire mr-2"></i>ATR (Volatilité)</h3>
+                        <div id="atr-chart" style="height: 120px;"></div>
+                    </div>
+                    <div class="bg-gray-800 rounded-lg p-4">
+                        <h3 class="font-bold mb-2 text-sm"><i class="fas fa-chart-line mr-2"></i>OBV (Volume)</h3>
+                        <div id="obv-chart" style="height: 120px;"></div>
                     </div>
                 </div>
             </div>
 
-            <!-- AI Assistant (1/3) -->
+            <!-- AI Assistant + Indicators (1/3) -->
             <div class="col-span-1">
-                <div class="bg-gray-800 rounded-lg p-4 h-full flex flex-col">
-                    <h2 class="text-xl font-bold mb-4">
+                <!-- Quick Stats -->
+                <div class="bg-gray-800 rounded-lg p-4 mb-4">
+                    <h3 class="font-bold mb-3"><i class="fas fa-gauge-high mr-2"></i>Vue Rapide</h3>
+                    <div id="quick-stats" class="space-y-2 text-sm">
+                        <div class="text-gray-400 text-center py-4">Analysez un ticker...</div>
+                    </div>
+                </div>
+
+                <!-- Indicators Summary -->
+                <div class="bg-gray-800 rounded-lg p-4 mb-4">
+                    <h2 class="text-lg font-bold mb-3">
+                        <i class="fas fa-chart-pie text-blue-500 mr-2"></i>Indicateurs
+                    </h2>
+                    <div id="indicators-summary" class="space-y-2">
+                        <div class="text-sm text-gray-400 text-center py-4">
+                            En attente d'analyse...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AI Assistant -->
+                <div class="bg-gray-800 rounded-lg p-4 flex flex-col" style="height: 400px;">
+                    <h2 class="text-lg font-bold mb-3">
                         <i class="fas fa-robot text-blue-500 mr-2"></i>Assistant IA
                     </h2>
 
-                    <!-- Indicators Summary -->
-                    <div id="indicators-summary" class="mb-4 space-y-2">
-                        <div class="text-sm text-gray-400 text-center py-8">
-                            Analysez un ticker pour voir les indicateurs
-                        </div>
-                    </div>
-
                     <!-- Chat Messages -->
-                    <div id="chat-messages" class="flex-1 overflow-y-auto mb-4 space-y-3 max-h-96">
+                    <div id="chat-messages" class="flex-1 overflow-y-auto mb-3 space-y-2">
                         <div class="chat-message bg-blue-900/30 rounded-lg p-3 border border-blue-500">
                             <div class="flex items-start gap-2">
                                 <i class="fas fa-robot text-blue-400 mt-1"></i>
                                 <div class="flex-1">
                                     <p class="text-sm">
                                         Bonjour ! Je suis votre assistant d'analyse technique. 
-                                        Sélectionnez un ticker et je vous expliquerai tous les signaux en temps réel.
+                                        Sélectionnez un ticker et je vous expliquerai tous les signaux.
                                     </p>
                                 </div>
                             </div>
