@@ -37,8 +37,10 @@ document.querySelectorAll('.tab-button').forEach(btn => {
 let portfolioChart = null;
 
 function initCharts() {
-    const ctx = document.getElementById('portfolio-chart').getContext('2d');
-    portfolioChart = new Chart(ctx, {
+    const ctx = document.getElementById('portfolio-chart');
+    if (!ctx) return;
+    
+    portfolioChart = new Chart(ctx.getContext('2d'), {
         type: 'line',
         data: {
             labels: [],
@@ -94,9 +96,9 @@ async function updateAccount() {
         const data = await res.json();
         
         if (!data.error) {
-            document.getElementById('portfolio-value').textContent = formatMoney(data.portfolio_value);
-            document.getElementById('cash-value').textContent = formatMoney(data.cash);
-            document.getElementById('buying-power').textContent = 'Buying Power: ' + formatMoney(data.buying_power);
+            document.getElementById('portfolio-value').textContent = formatMoney(data.portfolio_value || 0);
+            document.getElementById('cash-value').textContent = formatMoney(data.cash || 0);
+            document.getElementById('buying-power').textContent = 'Buying Power: ' + formatMoney(data.buying_power || 0);
         }
     } catch (error) {
         console.error('Error fetching account:', error);
@@ -109,8 +111,9 @@ async function updatePositions() {
         const positions = await res.json();
         
         const container = document.getElementById('positions-list');
+        if (!container) return;
         
-        if (positions.length === 0) {
+        if (!positions || positions.length === 0) {
             container.innerHTML = '<p class="text-gray-400 text-sm">Aucune position</p>';
             return;
         }
@@ -143,8 +146,9 @@ async function updateTrades() {
         const trades = await res.json();
         
         const container = document.getElementById('trades-list');
+        if (!container) return;
         
-        if (trades.length === 0) {
+        if (!trades || trades.length === 0) {
             container.innerHTML = '<p class="text-gray-400 text-sm">Aucun trade</p>';
             return;
         }
@@ -175,74 +179,92 @@ async function updateTrades() {
 
 async function predictV8Ticker() {
     const ticker = document.getElementById('v8-ticker').value.trim().toUpperCase();
-    if (!ticker) return;
+    if (!ticker) {
+        alert('⚠️  Veuillez entrer un ticker');
+        return;
+    }
     
     try {
         const res = await fetch(`${API_BASE}/api/v8/predict/${ticker}`);
         const data = await res.json();
         
+        console.log('V8 Response:', data); // Debug
+        
         if (data.error) {
             alert('❌ ' + data.error);
+            // Réinitialiser l'affichage
+            document.getElementById('v8-intraday').innerHTML = '<p class="text-red-500">' + data.error + '</p>';
+            document.getElementById('v8-weekly').innerHTML = '<p class="text-red-500">' + data.error + '</p>';
+            document.getElementById('v8-ensemble').innerHTML = '<p class="text-red-500">' + data.error + '</p>';
             return;
         }
         
-        // Afficher prédictions par horizon
-        const predictions = data.predictions;
+        // Vérifier que predictions existe
+        const predictions = data.predictions || {};
         
         // Court terme (intraday)
-        if (predictions.intraday && !predictions.intraday.error) {
-            const p = predictions.intraday;
-            const signalClass = p.prediction === 'UP' ? 'text-green-500' : 'text-red-500';
-            document.getElementById('v8-intraday').innerHTML = `
-                <div class="text-2xl font-bold ${signalClass} mb-2">${p.prediction}</div>
-                <div class="text-sm text-gray-300 mb-3">Confiance: ${p.confidence.toFixed(1)}%</div>
-                <div class="w-full bg-gray-700 rounded-full h-3">
-                    <div class="confidence-bar ${p.prediction === 'UP' ? 'bg-green-500' : 'bg-red-500'}" 
-                         style="width: ${p.confidence}%"></div>
-                </div>
-                <div class="mt-3 text-xs text-gray-400">Prix: $${p.current_price.toFixed(2)}</div>
-            `;
-        } else {
-            document.getElementById('v8-intraday').innerHTML = '<p class="text-red-500">Non disponible</p>';
+        const intradayEl = document.getElementById('v8-intraday');
+        if (intradayEl) {
+            if (predictions.intraday && !predictions.intraday.error) {
+                const p = predictions.intraday;
+                const signalClass = p.prediction === 'UP' ? 'text-green-500' : 'text-red-500';
+                intradayEl.innerHTML = `
+                    <div class="text-2xl font-bold ${signalClass} mb-2">${p.prediction}</div>
+                    <div class="text-sm text-gray-300 mb-3">Confiance: ${p.confidence.toFixed(1)}%</div>
+                    <div class="w-full bg-gray-700 rounded-full h-3">
+                        <div class="confidence-bar ${p.prediction === 'UP' ? 'bg-green-500' : 'bg-red-500'}" 
+                             style="width: ${p.confidence}%"></div>
+                    </div>
+                    <div class="mt-3 text-xs text-gray-400">Prix: $${p.current_price.toFixed(2)}</div>
+                `;
+            } else {
+                intradayEl.innerHTML = '<p class="text-yellow-500">Modèle non entraîné</p>';
+            }
         }
         
         // Moyen terme (weekly)
-        if (predictions.weekly && !predictions.weekly.error) {
-            const p = predictions.weekly;
-            const signalClass = p.prediction === 'UP' ? 'text-green-500' : 'text-red-500';
-            document.getElementById('v8-weekly').innerHTML = `
-                <div class="text-2xl font-bold ${signalClass} mb-2">${p.prediction}</div>
-                <div class="text-sm text-gray-300 mb-3">Confiance: ${p.confidence.toFixed(1)}%</div>
-                <div class="w-full bg-gray-700 rounded-full h-3">
-                    <div class="confidence-bar ${p.prediction === 'UP' ? 'bg-green-500' : 'bg-red-500'}" 
-                         style="width: ${p.confidence}%"></div>
-                </div>
-                <div class="mt-3 text-xs text-gray-400">Horizon: ${p.horizon}</div>
-            `;
-        } else {
-            document.getElementById('v8-weekly').innerHTML = '<p class="text-red-500">Non disponible</p>';
+        const weeklyEl = document.getElementById('v8-weekly');
+        if (weeklyEl) {
+            if (predictions.weekly && !predictions.weekly.error) {
+                const p = predictions.weekly;
+                const signalClass = p.prediction === 'UP' ? 'text-green-500' : 'text-red-500';
+                weeklyEl.innerHTML = `
+                    <div class="text-2xl font-bold ${signalClass} mb-2">${p.prediction}</div>
+                    <div class="text-sm text-gray-300 mb-3">Confiance: ${p.confidence.toFixed(1)}%</div>
+                    <div class="w-full bg-gray-700 rounded-full h-3">
+                        <div class="confidence-bar ${p.prediction === 'UP' ? 'bg-green-500' : 'bg-red-500'}" 
+                             style="width: ${p.confidence}%"></div>
+                    </div>
+                    <div class="mt-3 text-xs text-gray-400">Horizon: ${p.horizon || '5 jours'}</div>
+                `;
+            } else {
+                weeklyEl.innerHTML = '<p class="text-yellow-500">Modèle non entraîné</p>';
+            }
         }
         
         // Ensemble
-        if (data.ensemble && !data.ensemble.error) {
-            const e = data.ensemble;
-            const signalClass = e.prediction === 'UP' ? 'text-green-500' : 'text-red-500';
-            document.getElementById('v8-ensemble').innerHTML = `
-                <div class="text-3xl font-bold ${signalClass} mb-2">${e.prediction}</div>
-                <div class="text-sm text-gray-300 mb-3">Confiance: ${e.confidence.toFixed(1)}%</div>
-                <div class="w-full bg-gray-700 rounded-full h-3 mb-3">
-                    <div class="confidence-bar ${e.prediction === 'UP' ? 'bg-green-500' : 'bg-red-500'}" 
-                         style="width: ${e.confidence}%"></div>
-                </div>
-                <div class="text-xs font-semibold">
-                    Agreement: <span class="${e.agreement === 'STRONG' ? 'text-green-400' : 'text-yellow-400'}">
-                        ${e.agreement}
-                    </span>
-                </div>
-                <div class="text-xs text-gray-400 mt-1">${e.models_used} modèles</div>
-            `;
-        } else {
-            document.getElementById('v8-ensemble').innerHTML = '<p class="text-gray-400">1 modèle seul</p>';
+        const ensembleEl = document.getElementById('v8-ensemble');
+        if (ensembleEl) {
+            if (data.ensemble && !data.ensemble.error) {
+                const e = data.ensemble;
+                const signalClass = e.prediction === 'UP' ? 'text-green-500' : 'text-red-500';
+                ensembleEl.innerHTML = `
+                    <div class="text-3xl font-bold ${signalClass} mb-2">${e.prediction}</div>
+                    <div class="text-sm text-gray-300 mb-3">Confiance: ${e.confidence.toFixed(1)}%</div>
+                    <div class="w-full bg-gray-700 rounded-full h-3 mb-3">
+                        <div class="confidence-bar ${e.prediction === 'UP' ? 'bg-green-500' : 'bg-red-500'}" 
+                             style="width: ${e.confidence}%"></div>
+                    </div>
+                    <div class="text-xs font-semibold">
+                        Agreement: <span class="${e.agreement === 'STRONG' ? 'text-green-400' : 'text-yellow-400'}">
+                            ${e.agreement}
+                        </span>
+                    </div>
+                    <div class="text-xs text-gray-400 mt-1">${e.models_used || 1} modèle(s)</div>
+                `;
+            } else {
+                ensembleEl.innerHTML = '<p class="text-gray-400">1 modèle unique</p>';
+            }
         }
         
         // Recommandation
@@ -260,12 +282,18 @@ async function getV8Recommendation(ticker, risk) {
         const res = await fetch(`${API_BASE}/api/v8/recommend/${ticker}?risk=${risk}`);
         const data = await res.json();
         
-        if (data.error) return;
+        const recEl = document.getElementById('v8-recommendation');
+        if (!recEl) return;
+        
+        if (data.error) {
+            recEl.innerHTML = `<p class="text-red-500">❌ ${data.error}</p>`;
+            return;
+        }
         
         const actionClass = data.action === 'BUY' ? 'signal-buy' : data.action === 'SELL' ? 'signal-sell' : 'signal-hold';
         const strengthIcon = data.strength === 'STRONG' ? 'fa-star' : 'fa-star-half-alt';
         
-        document.getElementById('v8-recommendation').innerHTML = `
+        recEl.innerHTML = `
             <div class="space-y-4">
                 <div>
                     <h5 class="text-2xl font-bold mb-2">${ticker}</h5>
@@ -305,14 +333,16 @@ async function analyzeV8Batch() {
         const res = await fetch(`${API_BASE}/api/v8/batch?tickers=NVDA,MSFT,AAPL,GOOGL,AMZN,META,TSLA`);
         const data = await res.json();
         
+        const container = document.getElementById('v8-batch-results');
+        if (!container) return;
+        
         if (data.error) {
             alert('❌ ' + data.error);
+            container.innerHTML = `<p class="text-red-500">${data.error}</p>`;
             return;
         }
         
-        const container = document.getElementById('v8-batch-results');
-        const tickers = data.tickers;
-        
+        const tickers = data.tickers || {};
         container.innerHTML = '';
         
         for (const [ticker, result] of Object.entries(tickers)) {
@@ -441,18 +471,37 @@ async function analyzeV7Batch() {
 
 // ========== EVENT LISTENERS ==========
 
-// V8 Oracle
-document.getElementById('v8-predict-btn').addEventListener('click', predictV8Ticker);
-document.getElementById('v8-batch-btn').addEventListener('click', analyzeV8Batch);
-document.getElementById('v8-ticker').addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') predictV8Ticker();
-});
-
-// V7 Legacy
-document.getElementById('v7-search-btn').addEventListener('click', analyzeV7Ticker);
-document.getElementById('v7-batch-btn').addEventListener('click', analyzeV7Batch);
-document.getElementById('v7-ticker').addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') analyzeV7Ticker();
+document.addEventListener('DOMContentLoaded', () => {
+    // V8 Oracle
+    const v8PredictBtn = document.getElementById('v8-predict-btn');
+    const v8BatchBtn = document.getElementById('v8-batch-btn');
+    const v8Ticker = document.getElementById('v8-ticker');
+    
+    if (v8PredictBtn) v8PredictBtn.addEventListener('click', predictV8Ticker);
+    if (v8BatchBtn) v8BatchBtn.addEventListener('click', analyzeV8Batch);
+    if (v8Ticker) {
+        v8Ticker.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') predictV8Ticker();
+        });
+    }
+    
+    // V7 Legacy
+    const v7SearchBtn = document.getElementById('v7-search-btn');
+    const v7BatchBtn = document.getElementById('v7-batch-btn');
+    const v7Ticker = document.getElementById('v7-ticker');
+    
+    if (v7SearchBtn) v7SearchBtn.addEventListener('click', analyzeV7Ticker);
+    if (v7BatchBtn) v7BatchBtn.addEventListener('click', analyzeV7Batch);
+    if (v7Ticker) {
+        v7Ticker.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') analyzeV7Ticker();
+        });
+    }
+    
+    // Initialize
+    initCharts();
+    updateAll();
+    setInterval(updateAll, REFRESH_INTERVAL);
 });
 
 // Update all data
@@ -463,13 +512,8 @@ async function updateAll() {
         updateTrades()
     ]);
     
-    document.getElementById('last-update').textContent = 
-        'Mis à jour: ' + new Date().toLocaleTimeString('fr-FR');
+    const lastUpdateEl = document.getElementById('last-update');
+    if (lastUpdateEl) {
+        lastUpdateEl.textContent = 'Mis à jour: ' + new Date().toLocaleTimeString('fr-FR');
+    }
 }
-
-// Initialize
-document.addEventListener('DOMContentLoaded', () => {
-    initCharts();
-    updateAll();
-    setInterval(updateAll, REFRESH_INTERVAL);
-});
