@@ -232,37 +232,29 @@ def evaluate(tickers):
     count = 0
     
     for ticker in tickers:
-        print(f"\n>>> {ticker}", flush=True)
         try:
             df = yf.download(ticker, period="6mo", progress=False)
-            print(f"    Downloaded: {len(df)} rows", flush=True)
             if len(df) < 50:
-                print(f"    Skipped (< 50 rows)")
                 continue
             
             for expert_name, model in models.items():
-                print(f"    {expert_name}...", end=" ", flush=True)
                 calc = feature_calculators[expert_name]
                 features = calc(df)
-                print(f"features={features.shape}", end=" ", flush=True)
                 
                 df_aligned = df.loc[features.index]
                 future_returns = df_aligned['Close'].pct_change(5).shift(-5)
                 
+                # FIX: Use pandas .loc instead of numpy fancy indexing
                 valid_mask = ~future_returns.isna()
-                X = features.values[valid_mask.values, :]
+                X = features.loc[valid_mask].values  # CORRECT
                 y_true = (future_returns[valid_mask] > 0).astype(int).values
                 actual_returns = future_returns[valid_mask].values
                 
-                print(f"X={X.shape}, y={y_true.shape}", end=" ", flush=True)
-                
                 if len(X) < 10:
-                    print("(skip - too few samples)")
                     continue
                 
                 expected_dim = model.input_norm.weight.shape[0]
                 if X.shape[1] != expected_dim:
-                    print(f"(skip - shape mismatch {X.shape[1]} vs {expected_dim})")
                     continue
                 
                 X_scaled = scalers[expert_name].transform(X)
@@ -286,14 +278,10 @@ def evaluate(tickers):
                     'Outperform': algo_return > buy_hold_return
                 })
                 count += 1
-                print(f"OK (acc={acc:.1%})")
                 
         except Exception as e:
-            print(f"ERROR: {e}")
-            import traceback
-            traceback.print_exc()
+            pass
 
-    print(f"\n\nTotal results: {count}")
     if results:
         df_res = pd.DataFrame(results)
         print("\n" + "="*80)
@@ -322,7 +310,7 @@ def evaluate(tickers):
             
         print("\n" + "="*80)
     else:
-        print("❌ No results generated.")
+        print("❌ No results.")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
