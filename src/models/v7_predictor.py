@@ -58,7 +58,7 @@ class EnhancedMomentumClassifier(nn.Module):
 # Feature Engineering (must match training)
 
 def calculate_enhanced_features(df):
-    """Calculate 27 features matching training"""
+    """Calculate 26 features matching training"""
     features = pd.DataFrame(index=df.index)
     
     # Price features
@@ -138,8 +138,8 @@ class V7Predictor:
             # Load scaler
             self.scaler = joblib.load(scaler_path)
             
-            # Load model
-            input_dim = 27  # Number of features
+            # Load model (26 features, not 27!)
+            input_dim = 26
             self.model = EnhancedMomentumClassifier(
                 input_dim=input_dim,
                 hidden_dims=[512, 256, 128],
