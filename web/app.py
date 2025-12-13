@@ -19,6 +19,7 @@ from flask_cors import CORS
 # Import bibliothèque complète d'indicateurs
 try:
     from web.utils.all_indicators import calculate_complete_indicators, get_indicator_signals
+    from web.utils.advanced_ai import AdvancedAIAnalyzer
     COMPLETE_INDICATORS = True
 except:
     COMPLETE_INDICATORS = False
@@ -87,6 +88,9 @@ if V8_ORACLE_AVAILABLE:
         logger.warning(f"⚠️  V8: {e}")
         v8_oracle = None
 
+# Initialiser l'IA avancée
+ai_analyzer = AdvancedAIAnalyzer() if COMPLETE_INDICATORS else None
+
 cache = {
     'account': None,
     'positions': None,
@@ -140,6 +144,33 @@ def api_chart_data(ticker):
         # Quick stats
         quick_stats = generate_quick_stats(df, indicators, signals)
         
+        # 🚀 NOUVEAU : Générer analyse IA complète
+        ai_analysis = None
+        if ai_analyzer:
+            try:
+                # Récupérer prédictions V8 si disponible
+                v8_predictions = None
+                if v8_oracle:
+                    try:
+                        v8_result = v8_oracle.predict_multi_horizon(ticker)
+                        if 'error' not in v8_result:
+                            v8_predictions = v8_result
+                    except:
+                        pass
+                
+                # Générer l'analyse complète
+                data_for_ai = {
+                    'quick_stats': quick_stats,
+                    'signals': signals,
+                    'indicators': indicators
+                }
+                ai_analysis = ai_analyzer.generate_complete_analysis(
+                    ticker, data_for_ai, v8_predictions
+                )
+            except Exception as e:
+                logger.error(f"Erreur génération IA: {e}")
+                ai_analysis = "Analyse IA temporairement indisponible"
+        
         response = {
             'ticker': ticker,
             'period': period,
@@ -153,6 +184,7 @@ def api_chart_data(ticker):
             'indicators': clean_for_json(indicators),
             'signals': clean_for_json(signals),
             'quick_stats': clean_for_json(quick_stats),
+            'ai_analysis': ai_analysis,  # ✨ NOUVEAU
             'timestamp': datetime.now().isoformat()
         }
         
@@ -175,26 +207,32 @@ def calculate_basic_indicators(df: pd.DataFrame) -> dict:
     
     # Basiques
     for p in [20, 50, 200]:
-        indicators[f'sma_{p}'] = ta.trend.sma_indicator(df['Close'], window=p).tolist()
+        if len(df) >= p:
+            indicators[f'sma_{p}'] = ta.trend.sma_indicator(df['Close'], window=p).tolist()
     
-    indicators['rsi'] = ta.momentum.rsi(df['Close'], window=14).tolist()
+    if len(df) >= 14:
+        indicators['rsi'] = ta.momentum.rsi(df['Close'], window=14).tolist()
     
-    macd = ta.trend.MACD(df['Close'])
-    indicators['macd'] = macd.macd().tolist()
-    indicators['macd_signal'] = macd.macd_signal().tolist()
-    indicators['macd_hist'] = macd.macd_diff().tolist()
+    if len(df) >= 26:
+        macd = ta.trend.MACD(df['Close'])
+        indicators['macd'] = macd.macd().tolist()
+        indicators['macd_signal'] = macd.macd_signal().tolist()
+        indicators['macd_hist'] = macd.macd_diff().tolist()
     
-    bb = ta.volatility.BollingerBands(df['Close'])
-    indicators['bb_upper'] = bb.bollinger_hband().tolist()
-    indicators['bb_middle'] = bb.bollinger_mavg().tolist()
-    indicators['bb_lower'] = bb.bollinger_lband().tolist()
+    if len(df) >= 20:
+        bb = ta.volatility.BollingerBands(df['Close'])
+        indicators['bb_upper'] = bb.bollinger_hband().tolist()
+        indicators['bb_middle'] = bb.bollinger_mavg().tolist()
+        indicators['bb_lower'] = bb.bollinger_lband().tolist()
     
-    stoch = ta.momentum.StochasticOscillator(df['High'], df['Low'], df['Close'])
-    indicators['stoch_k'] = stoch.stoch().tolist()
-    indicators['stoch_d'] = stoch.stoch_signal().tolist()
+    if len(df) >= 14:
+        stoch = ta.momentum.StochasticOscillator(df['High'], df['Low'], df['Close'])
+        indicators['stoch_k'] = stoch.stoch().tolist()
+        indicators['stoch_d'] = stoch.stoch_signal().tolist()
+        
+        indicators['atr'] = ta.volatility.average_true_range(df['High'], df['Low'], df['Close']).tolist()
+        indicators['adx'] = ta.trend.adx(df['High'], df['Low'], df['Close']).tolist()
     
-    indicators['atr'] = ta.volatility.average_true_range(df['High'], df['Low'], df['Close']).tolist()
-    indicators['adx'] = ta.trend.adx(df['High'], df['Low'], df['Close']).tolist()
     indicators['obv'] = ta.volume.on_balance_volume(df['Close'], df['Volume']).tolist()
     
     return indicators
@@ -238,12 +276,14 @@ def generate_quick_stats(df: pd.DataFrame, indicators: dict, signals: dict) -> d
 
 @app.route('/api/ai-chat', methods=['POST'])
 def api_ai_chat():
+    """Chat IA avec réponses contextuelles"""
     data = request.json
     message = data.get('message', '').lower()
     ticker = data.get('ticker', '')
     context = data.get('context', {})
     
-    response = generate_ai_response(message, ticker, context)
+    # Réponses intelligentes
+    response = generate_smart_ai_response(message, ticker, context)
     
     return jsonify({
         'response': response,
@@ -251,35 +291,125 @@ def api_ai_chat():
     })
 
 
-def generate_ai_response(message: str, ticker: str, context: dict) -> str:
-    """Génère réponse IA"""
+def generate_smart_ai_response(message: str, ticker: str, context: dict) -> str:
+    """Génère réponse IA intelligente"""
     
+    # Analyse complète
+    if 'analyse' in message or 'complet' in message or 'détail' in message:
+        if ai_analyzer and 'signals' in context:
+            try:
+                return ai_analyzer.generate_complete_analysis(ticker, context, None)
+            except:
+                pass
+    
+    # RSI
     if 'rsi' in message:
         rsi = context.get('rsi', 50)
         if rsi > 70:
-            return f"📈 Le RSI de {ticker} est à {rsi:.1f}, en **sur-achat**. Le titre a beaucoup monté et pourrait corriger."
+            return f"📈 Le RSI de {ticker} est à {rsi:.1f}, en **sur-achat**. \n\n" \
+                   f"Cela signifie que le titre a beaucoup monté récemment et pourrait connaître une correction à court terme. \n\n" \
+                   f"⚠️ **Conseil**: Évitez d'acheter au plus haut. Attendez une baisse pour entrer en position."
         elif rsi < 30:
-            return f"📉 Le RSI de {ticker} est à {rsi:.1f}, en **sur-vente**. Opportunité d'achat potentielle."
+            return f"📉 Le RSI de {ticker} est à {rsi:.1f}, en **sur-vente**. \n\n" \
+                   f"Le titre a beaucoup baissé et pourrait rebondir bientôt. \n\n" \
+                   f"💡 **Opportunité**: Si la tendance globale est positive, c'est un bon point d'entrée."
         else:
-            return f"🟡 Le RSI de {ticker} est à {rsi:.1f}, en zone neutre."
+            return f"🟡 Le RSI de {ticker} est à {rsi:.1f}, en zone **neutre**. \n\n" \
+                   f"Le momentum n'est ni extrêmement haussier ni baissier. Attendez un signal plus clair."
     
+    # MACD
     elif 'macd' in message:
-        return f"📊 Le MACD est un indicateur de momentum. Regardez les croisements pour identifier les retournements."
+        return f"📊 Le **MACD** (Moving Average Convergence Divergence) est un indicateur de momentum. \n\n" \
+               f"🔍 **Comment l'utiliser**: \n" \
+               f"- Croisement MACD > Signal = **Signal d'achat**\n" \
+               f"- Croisement MACD < Signal = **Signal de vente**\n" \
+               f"- Histogram positif = Momentum haussier\n" \
+               f"- Histogram négatif = Momentum baissier"
     
+    # Tendance
     elif 'tendance' in message or 'trend' in message:
-        return f"📊 Analysez les moyennes mobiles (SMA 20/50/200) et l'ADX pour évaluer la force de la tendance."
+        return f"📈 Pour évaluer la **tendance** de {ticker}: \n\n" \
+               f"1. **SMA 20/50/200**: Si le prix est au-dessus → Tendance haussière\n" \
+               f"2. **ADX > 25**: Tendance forte (peu importe la direction)\n" \
+               f"3. **MACD**: Confirme la direction du momentum\n\n" \
+               f"💡 Combinez plusieurs indicateurs pour plus de fiabilité !"
     
-    elif 'acheter' in message or 'buy' in message:
+    # Acheter
+    elif 'acheter' in message or 'buy' in message or 'achat' in message:
         rec = context.get('recommendation', 'HOLD')
         conf = context.get('confidence', 50)
         
         if 'BUY' in rec:
-            return f"✅ Signal d'achat détecté sur {ticker} avec {conf:.0f}% de confiance."
+            return f"✅ **Signal d'achat détecté** sur {ticker} avec {conf:.0f}% de confiance !\n\n" \
+                   f"📋 **Plan d'action**: \n" \
+                   f"1. Entrez en position progressive (25-50% d'abord)\n" \
+                   f"2. Placez un stop-loss à -4% du prix d'entrée\n" \
+                   f"3. Objectif +8 à +12%\n" \
+                   f"4. Surveillez le volume pour confirmation\n\n" \
+                   f"⚠️ Toujours utiliser un stop-loss !"
         else:
-            return f"⚠️ Pas de signal d'achat clair. Signal actuel: {rec}."
+            return f"⚠️ Les indicateurs ne montrent **pas de signal d'achat clair** pour {ticker}.\n\n" \
+                   f"Signal actuel: **{rec}** ({conf:.0f}% confiance)\n\n" \
+                   f"💡 **Conseil**: Attendez une meilleure opportunité. La patience paie en bourse !"
     
+    # Vendre
+    elif 'vendre' in message or 'sell' in message or 'vente' in message:
+        rec = context.get('recommendation', 'HOLD')
+        
+        if 'SELL' in rec:
+            return f"🚨 **Signal de vente détecté** sur {ticker} !\n\n" \
+                   f"📋 **Actions recommandées**: \n" \
+                   f"1. Sortez de vos positions longues\n" \
+                   f"2. Prenez vos profits si vous êtes en gain\n" \
+                   f"3. Coupez vos pertes si vous êtes en perte (stop-loss)\n\n" \
+                   f"💡 Mieux vaut sortir trop tôt que trop tard !"
+        else:
+            return f"🛡️ Pas de signal de vente clair pour {ticker}.\n\n" \
+                   f"Signal actuel: **{rec}**\n\n" \
+                   f"Gardez vos positions si vous êtes satisfait de votre point d'entrée."
+    
+    # Volatilité
+    elif 'volatilité' in message or 'volatility' in message or 'risque' in message:
+        return f"🌊 La **volatilité** mesure l'amplitude des mouvements de prix.\n\n" \
+               f"📊 **Indicateurs de volatilité**:\n" \
+               f"- **ATR** (Average True Range): Amplitude moyenne\n" \
+               f"- **Bollinger Bands**: Bandes de volatilité\n" \
+               f"- **Bollinger Width**: Largeur des bandes\n\n" \
+               f"💡 Forte volatilité = Plus de risque ET plus d'opportunités"
+    
+    # Niveau / Support / Résistance
+    elif 'niveau' in message or 'support' in message or 'résistance' in message:
+        price = context.get('price', 0)
+        high_52w = context.get('high_52w', price)
+        low_52w = context.get('low_52w', price)
+        
+        return f"🎯 **Niveaux clés pour {ticker}**:\n\n" \
+               f"📈 **Résistances**:\n" \
+               f"- Plus haut 52s: **{high_52w:.2f}$**\n" \
+               f"- Prix actuel + 5%: **{price * 1.05:.2f}$**\n\n" \
+               f"📉 **Supports**:\n" \
+               f"- Prix actuel - 5%: **{price * 0.95:.2f}$**\n" \
+               f"- Plus bas 52s: **{low_52w:.2f}$**\n\n" \
+               f"💡 Surveillez les cassures de ces niveaux avec volume !"
+    
+    # Stratégie
+    elif 'stratégie' in message or 'comment' in message or 'conseil' in message:
+        return f"📚 **Guide de trading pour débutants**:\n\n" \
+               f"1️⃣ **Toujours** utiliser un stop-loss (-3 à -5%)\n" \
+               f"2️⃣ Ne risquez jamais plus de 2% de votre capital par trade\n" \
+               f"3️⃣ Attendez la confluence de plusieurs signaux\n" \
+               f"4️⃣ Suivez la tendance ("The trend is your friend")\n" \
+               f"5️⃣ Prenez vos profits progressivement\n\n" \
+               f"⚠️ **Ne tradez JAMAIS sous le coup de l'émotion !**"
+    
+    # Default
     else:
-        return f"🤖 Posez-moi des questions sur le RSI, MACD, la tendance, la volatilité ou les conseils d'achat/vente pour {ticker}."
+        return f"🤖 Je suis l'**assistant IA Ploutos V8** ! Je peux vous aider avec:\n\n" \
+               f"📊 **Indicateurs**: RSI, MACD, tendance, volatilité\n" \
+               f"💡 **Conseils**: acheter, vendre, stratégie\n" \
+               f"🎯 **Niveaux**: support, résistance\n" \
+               f"📈 **Analyse complète**: tapez "analyse complète"\n\n" \
+               f"Posez-moi une question sur {ticker} !"
 
 
 # ========== V8 ORACLE ==========
@@ -316,25 +446,6 @@ def api_v8_recommend(ticker):
     try:
         rec = v8_oracle.get_recommendation(ticker.upper(), risk_tolerance=risk)
         return jsonify(clean_for_json(rec)) if 'error' not in rec else (jsonify({'error': rec['error']}), 400)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/v8/batch')
-def api_v8_batch():
-    if not v8_oracle:
-        return jsonify({'error': 'V8 Oracle non disponible'}), 503
-    
-    tickers = request.args.get('tickers', 'NVDA,MSFT,AAPL').split(',')
-    tickers = [t.strip().upper() for t in tickers]
-    
-    try:
-        result = v8_oracle.batch_predict(tickers)
-        return jsonify({
-            'timestamp': result['timestamp'],
-            'summary': clean_for_json(result['summary']),
-            'tickers': clean_for_json(result['tickers'])
-        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -405,6 +516,9 @@ if __name__ == '__main__':
     
     if COMPLETE_INDICATORS:
         print("✅ 50+ indicateurs professionnels")
+    
+    if ai_analyzer:
+        print("🤖 IA avancée activée (analyse multi-facteurs)")
     
     if v8_oracle:
         print(f"⭐ V8 Oracle: {len(v8_oracle.models)} modèles")
