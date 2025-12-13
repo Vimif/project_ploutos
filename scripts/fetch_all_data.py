@@ -40,14 +40,9 @@ def fetch_data():
             try:
                 logger.info(f"   ⬇️ Downloading {symbol}...")
                 
-                # Download with explicit parameters
-                df = yf.download(
-                    symbol, 
-                    start=start_date, 
-                    end=end_date, 
-                    progress=False,
-                    auto_adjust=False  # Don't auto-adjust, we want raw OHLC
-                )
+                # Download with minimal parameters
+                ticker = yf.Ticker(symbol)
+                df = ticker.history(start=start_date, end=end_date)
                 
                 if df is None or df.empty:
                     logger.warning(f"   ⚠️ No data for {symbol}")
@@ -56,27 +51,25 @@ def fetch_data():
                 # Reset index to make Date a column
                 df = df.reset_index()
                 
-                # Make sure we have the right columns
-                # yfinance returns: Date, Open, High, Low, Close, Adj Close, Volume
-                df_clean = pd.DataFrame()
-                df_clean['Date'] = pd.to_datetime(df['Date'])
-                df_clean['Open'] = pd.to_numeric(df['Open'], errors='coerce')
-                df_clean['High'] = pd.to_numeric(df['High'], errors='coerce')
-                df_clean['Low'] = pd.to_numeric(df['Low'], errors='coerce')
-                df_clean['Close'] = pd.to_numeric(df['Close'], errors='coerce')
-                df_clean['Volume'] = pd.to_numeric(df['Volume'], errors='coerce')
-                df_clean['Ticker'] = symbol
-                df_clean['Sector'] = sector
+                # Rename columns to standard names
+                df.columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume', 'Dividends', 'Stock Splits']
+                
+                # Keep only OHLCV
+                df = df[['Date', 'Open', 'High', 'Low', 'Close', 'Volume']].copy()
+                
+                # Add metadata
+                df['Ticker'] = symbol
+                df['Sector'] = sector
                 
                 # Remove any NaN rows
-                df_clean = df_clean.dropna()
+                df = df.dropna()
                 
-                if len(df_clean) == 0:
+                if len(df) == 0:
                     logger.warning(f"   ⚠️ No valid data for {symbol}")
                     continue
                 
-                all_data.append(df_clean)
-                logger.info(f"   ✅ {symbol}: {len(df_clean)} rows")
+                all_data.append(df)
+                logger.info(f"   ✅ {symbol}: {len(df)} rows")
                 
             except Exception as e:
                 logger.error(f"   ❌ Error fetching {symbol}: {type(e).__name__}: {e}")
