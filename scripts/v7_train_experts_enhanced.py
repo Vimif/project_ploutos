@@ -104,12 +104,16 @@ def calculate_enhanced_features(df):
     features['volume_trend'] = df['Volume'].rolling(5).mean() / df['Volume'].rolling(20).mean()
     features['price_volume'] = df['Close'] * df['Volume']
     
-    # === PRICE PATTERNS ===
+    # === PRICE PATTERNS (FIXED) ===
     features['high_low_ratio'] = df['High'] / df['Low']
     features['close_open_ratio'] = df['Close'] / df['Open']
     features['body_size'] = abs(df['Close'] - df['Open']) / df['Open']
-    features['upper_shadow'] = (df['High'] - df[['Close', 'Open']].max(axis=1)) / df['Open']
-    features['lower_shadow'] = (df[['Close', 'Open']].min(axis=1) - df['Low']) / df['Open']
+    
+    # Shadow calculations - fixed
+    candle_top = pd.concat([df['Close'], df['Open']], axis=1).max(axis=1)
+    candle_bottom = pd.concat([df['Close'], df['Open']], axis=1).min(axis=1)
+    features['upper_shadow'] = (df['High'] - candle_top) / df['Open']
+    features['lower_shadow'] = (candle_bottom - df['Low']) / df['Open']
     
     # === BOLLINGER BANDS ===
     bb_ma = df['Close'].rolling(20).mean()
