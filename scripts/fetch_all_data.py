@@ -39,31 +39,34 @@ def fetch_data():
         for symbol in symbols:
             try:
                 logger.info(f"   ⬇️ Downloading {symbol}...")
-                df = yf.download(symbol, start=start_date, end=end_date, progress=False, auto_adjust=True)
+                df = yf.download(symbol, start=start_date, end=end_date, progress=False)
                 
-                if df.empty:
+                if df is None or df.empty:
                     logger.warning(f"   ⚠️ No data for {symbol}")
                     continue
                 
                 # Reset index to get Date column
-                df = df.reset_index()
+                if not isinstance(df.index, pd.DatetimeIndex):
+                    df = df.reset_index()
+                else:
+                    df = df.reset_index()
                 
-                # Standardize columns
-                df.columns = [c.lower() for c in df.columns]
-                rename_map = {'date': 'Date', 'open': 'Open', 'high': 'High', 
-                              'low': 'Low', 'close': 'Close', 'volume': 'Volume'}
-                df = df.rename(columns=rename_map)
+                # Standardize columns - handle different naming conventions
+                df.columns = [str(c).lower().strip() for c in df.columns]
                 
-                # Add metadata
-                df['Ticker'] = symbol
-                df['Sector'] = sector
+                # Create standard column names
+                df_clean = pd.DataFrame()
+                df_clean['Date'] = df['date'] if 'date' in df.columns else df.index
+                df_clean['Open'] = df['open']
+                df_clean['High'] = df['high']
+                df_clean['Low'] = df['low']
+                df_clean['Close'] = df['close']
+                df_clean['Volume'] = df['volume']
+                df_clean['Ticker'] = symbol
+                df_clean['Sector'] = sector
                 
-                # Keep only essential columns
-                cols = ['Date', 'Ticker', 'Sector', 'Open', 'High', 'Low', 'Close', 'Volume']
-                df = df[cols]
-                
-                all_data.append(df)
-                logger.info(f"   ✅ {symbol}: {len(df)} rows")
+                all_data.append(df_clean)
+                logger.info(f"   ✅ {symbol}: {len(df_clean)} rows")
                 
             except Exception as e:
                 logger.error(f"   ❌ Error fetching {symbol}: {e}")
@@ -74,7 +77,7 @@ def fetch_data():
 
     # Merge all
     final_df = pd.concat(all_data, ignore_index=True)
-    final_df = final_df.sort_values(['Ticker', 'Date'])
+    final_df = final_df.sort_values(['Ticker', 'Date']).reset_index(drop=True)
     
     # Save
     os.makedirs('data', exist_ok=True)
@@ -84,6 +87,7 @@ def fetch_data():
     logger.info(f"🎉 SUCCESS! Data saved to {OUTPUT_FILE}")
     logger.info(f"📊 Total Rows: {len(final_df)}")
     logger.info(f"📈 Tickers: {final_df['Ticker'].nunique()}")
+    logger.info(f"📊 Date Range: {final_df['Date'].min()} to {final_df['Date'].max()}")
     logger.info("="*50)
 
 if __name__ == '__main__':
