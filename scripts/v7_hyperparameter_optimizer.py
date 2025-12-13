@@ -344,7 +344,11 @@ def optimize_expert(expert_type, tickers, trials=50, timeout=3600):
     y_train, y_val = y[:split_idx], y[split_idx:]
     
     logger.info(f"✅ Data loaded: {len(X_train)} train, {len(X_val)} val")
-    logger.info(f"📈 Classe distribution: {np.bincount(y_train)}")
+    
+    # FIX: Flatten y_train before counting (handles 2D array issue)
+    y_train_flat = np.asarray(y_train).flatten()
+    class_dist = np.bincount(y_train_flat.astype(int))
+    logger.info(f"📈 Classe distribution: {class_dist}")
     
     # Optuna study
     logger.info(f"\n🔌 Démarrage optimisation Optuna ({trials} trials)...\n")
