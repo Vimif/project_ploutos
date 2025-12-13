@@ -44,7 +44,7 @@ class AttentionBlock(nn.Module):
         return self.to_out(out).squeeze(1)
 
 class EnhancedMomentumClassifier(nn.Module):
-    def __init__(self, input_dim, hidden_dims, dropout, use_attention=False):
+    def __init__(self, input_dim, hidden_dims, dropout, use_attention=True):
         super().__init__()
         self.input_norm = nn.BatchNorm1d(input_dim)
         layers = []
@@ -55,10 +55,10 @@ class EnhancedMomentumClassifier(nn.Module):
         self.main_stack = nn.Sequential(*layers)
         self.use_attention = use_attention
         if use_attention: self.attention = AttentionBlock(hidden_dims[-1], num_heads=4)
-        self.classifier = nn.Sequential(nn.Linear(hidden_dims[-1], 32), nn.ReLU(), nn.Dropout(0.2), nn.Linear(32, 2))
+        self.classifier = nn.Sequential(nn.Linear(hidden_dims[-1], 64), nn.ReLU(), nn.Dropout(0.3), nn.Linear(64, 2))
     def forward(self, x):
         features = self.main_stack(self.input_norm(x))
-        if self.use_attention: features = features + self.attention(features) * 0.1
+        if self.use_attention: features = features + self.attention(features) * 0.2
         return self.classifier(features)
 
 # Feature Engineering
@@ -160,20 +160,21 @@ def train_expert(expert_type, tickers, epochs):
         torch.FloatTensor(X_train_scaled), 
         torch.LongTensor(y_train)
     )
-    train_loader = DataLoader(train_dataset, batch_size=512, shuffle=True)
+    train_loader = DataLoader(train_dataset, batch_size=256, shuffle=True)
 
     # 4. Model, Loss, Optimizer
     input_dim = X_train_scaled.shape[1]
-    model = EnhancedMomentumClassifier(input_dim, [128, 64], 0.3, use_attention=False)
+    model = EnhancedMomentumClassifier(input_dim, [256, 128, 64], 0.4, use_attention=True)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-5)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=10)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=1e-4)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=20, T_mult=2)
 
     # 5. Training Loop
     logger.info(f"\nStarting training on {device}...\n")
     best_acc = 0.0
+    patience_counter = 0
     for epoch in range(epochs):
         model.train()
         total_loss = 0
@@ -197,15 +198,26 @@ def train_expert(expert_type, tickers, epochs):
             _, predicted = torch.max(test_outputs, 1)
             accuracy = (predicted == torch.LongTensor(y_test).to(device)).float().mean().item()
 
-        scheduler.step(accuracy)
+        scheduler.step()
         
         if accuracy > best_acc:
             best_acc = accuracy
+            patience_counter = 0
+            # Save best model
+            Path("models").mkdir(exist_ok=True)
+            torch.save(model.state_dict(), f"models/v7_{expert_type}_expert_best.pth")
+        else:
+            patience_counter += 1
 
         if (epoch + 1) % 10 == 0:
-            logger.info(f"Epoch {epoch+1}/{epochs}, Loss: {total_loss/len(train_loader):.4f}, Val Acc: {accuracy:.4f}, Best: {best_acc:.4f}")
+            logger.info(f"Epoch {epoch+1}/{epochs}, Loss: {total_loss/len(train_loader):.4f}, Val Acc: {accuracy:.4f}, Best: {best_acc:.4f}, Patience: {patience_counter}")
+        
+        # Early stopping
+        if patience_counter >= 50:
+            logger.info(f"Early stopping at epoch {epoch+1}")
+            break
 
-    # 6. Save Model and Scaler
+    # 6. Save Final Model and Scaler
     Path("models").mkdir(exist_ok=True)
     torch.save(model.state_dict(), f"models/v7_{expert_type}_expert_final.pth")
     joblib.dump(scaler, f"models/v7_{expert_type}_scaler_final.pkl")
@@ -214,7 +226,7 @@ def train_expert(expert_type, tickers, epochs):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--expert", type=str, default="momentum", help="Expert to train")
-    parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs")
+    parser.add_argument("--epochs", type=int, default=200, help="Number of training epochs")
     args = parser.parse_args()
 
     tickers = ["NVDA", "MSFT", "AAPL", "GOOGL", "AMZN", "SPY", "QQQ", "XOM", "JPM"]
