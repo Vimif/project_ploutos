@@ -97,32 +97,29 @@ def train_expert(expert_type, tickers, epochs):
             if len(df) < 252: 
                 continue
 
-            # Calculate features (without dropna yet)
+            # Calculate features
             features = calculate_momentum_features(df)
             
             # Calculate future returns (5-day forward return)
             future_returns = df['Close'].pct_change(5).shift(-5)
             
-            # Align by truncating last 5 rows (where future_returns will be NaN)
+            # Align by truncating last 5 rows
             features = features[:-5]
             future_returns = future_returns[:-5]
             
-            # Now dropna on features
-            valid_idx = features.dropna().index
-            X = features.loc[valid_idx]
-            y = (future_returns.loc[valid_idx] > 0).astype(int)
+            # Dropna and convert to numpy immediately to avoid index issues
+            features_clean = features.dropna()
+            future_returns_clean = future_returns.loc[features_clean.index]
             
-            # Final cleanup
-            valid_mask = ~(y.isna() | X.isna().any(axis=1))
-            X = X[valid_mask]
-            y = y[valid_mask]
+            X = features_clean.values
+            y = (future_returns_clean > 0).astype(int).values.flatten()
             
             if len(X) < 100:
                 logger.warning(f"Not enough samples for {ticker}: {len(X)}")
                 continue
             
-            all_X.append(X.values)
-            all_y.append(y.values.flatten())
+            all_X.append(X)
+            all_y.append(y)
             logger.info(f"Loaded {ticker}: {len(X)} samples")
             
         except Exception as e:
@@ -135,11 +132,6 @@ def train_expert(expert_type, tickers, epochs):
     
     X = np.concatenate(all_X, axis=0)
     y = np.concatenate(all_y, axis=0)
-    
-    # FINAL CLEANUP: Remove any remaining NaN rows
-    nan_mask = ~np.isnan(X).any(axis=1)
-    X = X[nan_mask]
-    y = y[nan_mask]
     
     logger.info(f"\nFinal data shapes: X={X.shape}, y={y.shape}")
     logger.info(f"NaN in X: {np.isnan(X).any()}, NaN in y: {np.isnan(y).any()}")
