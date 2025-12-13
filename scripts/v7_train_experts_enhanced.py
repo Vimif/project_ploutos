@@ -22,7 +22,7 @@ warnings.filterwarnings('ignore')
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Model Definitions (same as before)
+# Model Definitions
 
 class AttentionBlock(nn.Module):
     def __init__(self, dim, num_heads=4):
@@ -61,10 +61,10 @@ class EnhancedMomentumClassifier(nn.Module):
         if self.use_attention: features = features + self.attention(features) * 0.2
         return self.classifier(features)
 
-# ENHANCED Feature Engineering
+# ENHANCED Feature Engineering - SIMPLIFIED
 
 def calculate_enhanced_features(df):
-    """Calculate 30+ advanced features"""
+    """Calculate 27 reliable features"""
     features = pd.DataFrame(index=df.index)
     
     # === PRICE FEATURES ===
@@ -72,6 +72,7 @@ def calculate_enhanced_features(df):
     features['log_returns'] = np.log(df['Close'] / df['Close'].shift(1))
     features['returns_5d'] = df['Close'].pct_change(5)
     features['returns_10d'] = df['Close'].pct_change(10)
+    features['returns_20d'] = df['Close'].pct_change(20)
     
     # === MOVING AVERAGES ===
     features['sma_5'] = df['Close'].rolling(5).mean()
@@ -83,6 +84,7 @@ def calculate_enhanced_features(df):
     
     # === VOLATILITY ===
     features['volatility_5'] = df['Close'].pct_change().rolling(5).std()
+    features['volatility_10'] = df['Close'].pct_change().rolling(10).std()
     features['volatility_20'] = df['Close'].pct_change().rolling(20).std()
     features['atr'] = (df['High'] - df['Low']).rolling(14).mean()
     
@@ -100,27 +102,12 @@ def calculate_enhanced_features(df):
     features['macd_hist'] = features['macd'] - features['signal']
     
     # === VOLUME FEATURES ===
-    features['volume_ratio'] = df['Volume'] / df['Volume'].rolling(20).mean()
-    features['volume_trend'] = df['Volume'].rolling(5).mean() / df['Volume'].rolling(20).mean()
-    features['price_volume'] = df['Close'] * df['Volume']
+    features['volume_sma20'] = df['Volume'].rolling(20).mean()
+    features['volume_ratio'] = df['Volume'] / features['volume_sma20']
     
-    # === PRICE PATTERNS (FIXED) ===
-    features['high_low_ratio'] = df['High'] / df['Low']
-    features['close_open_ratio'] = df['Close'] / df['Open']
-    features['body_size'] = abs(df['Close'] - df['Open']) / df['Open']
-    
-    # Shadow calculations - use numpy for element-wise operations
-    candle_top = np.maximum(df['Close'].values, df['Open'].values)
-    candle_bottom = np.minimum(df['Close'].values, df['Open'].values)
-    features['upper_shadow'] = (df['High'].values - candle_top) / df['Open'].values
-    features['lower_shadow'] = (candle_bottom - df['Low'].values) / df['Open'].values
-    
-    # === BOLLINGER BANDS ===
-    bb_ma = df['Close'].rolling(20).mean()
-    bb_std = df['Close'].rolling(20).std()
-    features['bb_upper'] = bb_ma + (2 * bb_std)
-    features['bb_lower'] = bb_ma - (2 * bb_std)
-    features['bb_position'] = (df['Close'] - features['bb_lower']) / (features['bb_upper'] - features['bb_lower'])
+    # === SIMPLE PRICE PATTERNS ===
+    features['high_low_range'] = (df['High'] - df['Low']) / df['Close']
+    features['close_open_diff'] = (df['Close'] - df['Open']) / df['Open']
     
     # === MOMENTUM ===
     features['momentum_5'] = df['Close'] - df['Close'].shift(5)
