@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """
-🌐 PLOUTOS WEB DASHBOARD
+🌐 PLOUTOS WEB DASHBOARD + V7 ENHANCED
 
 Dashboard Web moderne pour monitorer le bot de trading
 
 Features:
 - Vue temps réel du portfolio
 - Graphiques de performances
+- ★ Prédictions V7 Enhanced Momentum (68.35% accuracy)
+- V7 Ensemble (Momentum + Reversion + Volatility)
 - Health Score et auto-amélioration
 - Historique des trades
 - Alertes et suggestions
-- Analyse V7 Ensemble
 
 Auteur: Ploutos AI Team
 Date: Dec 2025
@@ -43,7 +44,14 @@ try:
 except ImportError:
     SELF_IMPROVEMENT_AVAILABLE = False
 
-# ========== V7 ENSEMBLE MODELS ==========
+# ★ IMPORT V7 ENHANCED PREDICTOR
+try:
+    from src.models.v7_predictor import V7Predictor
+    V7_ENHANCED_AVAILABLE = True
+except ImportError:
+    V7_ENHANCED_AVAILABLE = False
+
+# ========== V7 ENSEMBLE MODELS (ancien système) ==========
 
 class RobustMomentumClassifier(torch.nn.Module):
     def __init__(self, input_dim=28):
@@ -242,11 +250,25 @@ if ALPACA_AVAILABLE:
     except Exception as e:
         logger.warning(f"⚠️  Alpaca non disponible: {e}")
 
-# V7 Models Cache
+# ★ INITIALISER V7 ENHANCED PREDICTOR
+v7_enhanced = None
+if V7_ENHANCED_AVAILABLE:
+    try:
+        v7_enhanced = V7Predictor()
+        if v7_enhanced.load("momentum"):
+            logger.info("✅ V7 Enhanced Predictor chargé (68.35% accuracy)")
+        else:
+            logger.warning("⚠️  V7 Enhanced non chargé")
+            v7_enhanced = None
+    except Exception as e:
+        logger.warning(f"⚠️  Erreur chargement V7 Enhanced: {e}")
+        v7_enhanced = None
+
+# V7 Ensemble Models Cache (ancien système)
 v7_models_cache = {}
 
 def load_v7_models():
-    """Charge les 3 modèles V7 en cache"""
+    """Charge les 3 modèles V7 Ensemble en cache"""
     global v7_models_cache
     
     if v7_models_cache:
@@ -283,11 +305,11 @@ def load_v7_models():
             'vol': {'model': vol_model, 'scaler': vol_scaler, 'meta': vol_meta}
         }
         
-        logger.info("✅ V7 Models loaded successfully")
+        logger.info("✅ V7 Ensemble Models loaded successfully")
         return v7_models_cache
         
     except Exception as e:
-        logger.error(f"❌ Erreur chargement V7: {e}")
+        logger.error(f"❌ Erreur chargement V7 Ensemble: {e}")
         return None
 
 # Cache simple
@@ -296,7 +318,9 @@ cache = {
     'positions': None,
     'trades': None,
     'improvement_report': None,
-    'last_update': None
+    'v7_enhanced_cache': None,
+    'last_update': None,
+    'v7_enhanced_last_update': None
 }
 
 
@@ -318,163 +342,101 @@ def api_status():
         'timestamp': datetime.now().isoformat(),
         'alpaca_connected': alpaca_client is not None,
         'self_improvement_available': SELF_IMPROVEMENT_AVAILABLE,
-        'v7_models_available': bool(v7_models_cache)
+        'v7_enhanced_available': v7_enhanced is not None,
+        'v7_ensemble_available': bool(v7_models_cache)
     })
 
 
-@app.route('/api/account')
-def api_account():
-    """Informations du compte"""
-    if not alpaca_client:
-        return jsonify({'error': 'Alpaca non disponible'}), 503
-    
-    # Cache 30 secondes
-    if cache['account'] and cache['last_update']:
-        if (datetime.now() - cache['last_update']).seconds < 30:
-            return jsonify(cache['account'])
-    
-    account = alpaca_client.get_account()
-    if account:
-        cache['account'] = account
-        cache['last_update'] = datetime.now()
-        return jsonify(account)
-    
-    return jsonify({'error': 'Impossible de récupérer le compte'}), 500
+# ★ V7 ENHANCED ENDPOINTS (nouveau système)
 
-
-@app.route('/api/positions')
-def api_positions():
-    """Positions actuelles"""
-    if not alpaca_client:
-        return jsonify({'error': 'Alpaca non disponible'}), 503
+@app.route('/api/v7/enhanced/predict/<ticker>')
+def api_v7_enhanced_single(ticker):
+    """Prédiction V7 Enhanced pour un ticker"""
+    if not v7_enhanced:
+        return jsonify({'error': 'V7 Enhanced non disponible'}), 503
     
-    positions = alpaca_client.get_positions()
-    cache['positions'] = positions
-    
-    return jsonify(positions)
-
-
-@app.route('/api/trades')
-def api_trades():
-    """Historique des trades (depuis JSON)"""
-    days = request.args.get('days', 7, type=int)
-    
-    trades_dir = Path('logs/trades')
-    all_trades = []
-    
-    for i in range(days):
-        date = datetime.now() - timedelta(days=i)
-        filename = trades_dir / f"trades_{date.strftime('%Y-%m-%d')}.json"
+    try:
+        result = v7_enhanced.predict(ticker.upper(), period="3mo")
         
-        if filename.exists():
-            try:
-                with open(filename, 'r') as f:
-                    daily_trades = json.load(f)
-                    all_trades.extend(daily_trades)
-            except:
-                pass
-    
-    # Trier par date décroissante
-    all_trades.sort(key=lambda t: t.get('timestamp', ''), reverse=True)
-    
-    return jsonify(all_trades)
+        if "error" not in result:
+            return jsonify({
+                'ticker': ticker.upper(),
+                'timestamp': datetime.now().isoformat(),
+                'model': 'V7 Enhanced Momentum',
+                'accuracy': '68.35%',
+                'prediction': result['prediction'],
+                'confidence': result['confidence'],
+                'signal_strength': result['signal_strength'],
+                'probabilities': result['probabilities']
+            })
+        else:
+            return jsonify({'error': result['error']}), 400
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/performance')
-def api_performance():
-    """Statistiques de performance"""
-    days = request.args.get('days', 7, type=int)
-    
-    trades_dir = Path('logs/trades')
-    trades = []
-    
-    for i in range(days):
-        date = datetime.now() - timedelta(days=i)
-        filename = trades_dir / f"trades_{date.strftime('%Y-%m-%d')}.json"
-        
-        if filename.exists():
-            try:
-                with open(filename, 'r') as f:
-                    daily_trades = json.load(f)
-                    trades.extend(daily_trades)
-            except:
-                pass
-    
-    # Calculer stats basiques
-    buys = [t for t in trades if t['action'] == 'BUY']
-    sells = [t for t in trades if t['action'] == 'SELL']
-    
-    total_invested = sum(t['amount'] for t in buys)
-    total_proceeds = sum(t['amount'] for t in sells)
-    
-    return jsonify({
-        'total_trades': len(trades),
-        'buy_count': len(buys),
-        'sell_count': len(sells),
-        'total_invested': total_invested,
-        'total_proceeds': total_proceeds,
-        'net_pnl': total_proceeds - total_invested,
-        'days_analyzed': days
-    })
-
-
-@app.route('/api/improvement')
-def api_improvement():
-    """Rapport d'auto-amélioration"""
-    if not SELF_IMPROVEMENT_AVAILABLE:
-        return jsonify({'error': 'Self-Improvement non disponible'}), 503
+@app.route('/api/v7/enhanced/batch')
+def api_v7_enhanced_batch():
+    """
+    Prédictions V7 Enhanced pour plusieurs tickers
+    Cache de 5 minutes
+    """
+    if not v7_enhanced:
+        return jsonify({'error': 'V7 Enhanced non disponible'}), 503
     
     # Cache 5 minutes
-    if cache['improvement_report']:
-        report_time = datetime.fromisoformat(cache['improvement_report']['timestamp'])
-        if (datetime.now() - report_time).seconds < 300:
-            return jsonify(cache['improvement_report'])
+    if cache['v7_enhanced_cache'] and cache['v7_enhanced_last_update']:
+        if (datetime.now() - cache['v7_enhanced_last_update']).seconds < 300:
+            return jsonify(cache['v7_enhanced_cache'])
     
-    # Charger dernier rapport
-    report_file = Path('logs/self_improvement_report.json')
+    # Tickers principaux
+    tickers = request.args.get('tickers', 'NVDA,MSFT,AAPL,GOOGL,AMZN,SPY,QQQ').split(',')
     
-    if report_file.exists():
-        try:
-            with open(report_file, 'r') as f:
-                report = json.load(f)
-                cache['improvement_report'] = report
-                return jsonify(report)
-        except:
-            pass
-    
-    # Sinon, générer nouveau rapport
     try:
-        engine = SelfImprovementEngine()
-        result = engine.analyze_recent_performance(days=7)
+        logger.info(f"🔮 Génération prédictions V7 Enhanced pour {len(tickers)} tickers...")
         
-        if result['status'] == 'analyzed':
-            report = engine.export_report()
-            cache['improvement_report'] = report
-            return jsonify(report)
+        predictions = {}
+        for ticker in tickers:
+            ticker = ticker.strip().upper()
+            try:
+                result = v7_enhanced.predict(ticker, period="3mo")
+                
+                if "error" not in result:
+                    predictions[ticker] = {
+                        'prediction': result['prediction'],
+                        'confidence': round(result['confidence'], 4),
+                        'signal_strength': round(result['signal_strength'], 4),
+                        'probabilities': {
+                            'up': round(result['probabilities']['up'], 4),
+                            'down': round(result['probabilities']['down'], 4)
+                        }
+                    }
+                else:
+                    predictions[ticker] = {'error': result['error']}
+                    
+            except Exception as e:
+                predictions[ticker] = {'error': str(e)}
+        
+        response = {
+            'timestamp': datetime.now().isoformat(),
+            'model': 'V7 Enhanced Momentum',
+            'accuracy': '68.35%',
+            'predictions': predictions
+        }
+        
+        cache['v7_enhanced_cache'] = response
+        cache['v7_enhanced_last_update'] = datetime.now()
+        
+        logger.info(f"✅ Prédictions V7 Enhanced: {len(predictions)} tickers")
+        return jsonify(response)
+        
     except Exception as e:
-        logger.error(f"Erreur analyse: {e}")
-    
-    return jsonify({'error': 'Impossible de générer le rapport'}), 500
+        logger.error(f"❌ Erreur prédictions V7 Enhanced: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/chart/portfolio')
-def api_chart_portfolio():
-    """Données pour graphique portfolio"""
-    days = request.args.get('days', 30, type=int)
-    
-    # TODO: Implémenter historique portfolio depuis logs
-    # Pour l'instant, retourner données factices
-    
-    dates = [(datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d') 
-             for i in range(days-1, -1, -1)]
-    
-    return jsonify({
-        'dates': dates,
-        'values': [100000] * days  # Placeholder
-    })
-
-
-# ========== V7 ENSEMBLE ENDPOINTS ==========
+# ========== V7 ENSEMBLE ENDPOINTS (ancien système) ==========
 
 @app.route('/api/v7/analysis')
 def api_v7_analysis():
@@ -487,7 +449,7 @@ def api_v7_analysis():
     # Charger modèles
     models = load_v7_models()
     if not models:
-        return jsonify({'error': 'V7 Models non disponibles'}), 503
+        return jsonify({'error': 'V7 Ensemble non disponible'}), 503
     
     try:
         # Télécharger données
@@ -545,18 +507,18 @@ def api_v7_analysis():
         })
         
     except Exception as e:
-        logger.error(f"Erreur V7: {e}")
+        logger.error(f"Erreur V7 Ensemble: {e}")
         return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/v7/batch')
 def api_v7_batch():
-    """Analyse plusieurs tickers en batch"""
+    """Analyse plusieurs tickers en batch (V7 Ensemble)"""
     tickers = request.args.get('tickers', 'NVDA,AAPL,MSFT').split(',')
     
     models = load_v7_models()
     if not models:
-        return jsonify({'error': 'V7 Models non disponibles'}), 503
+        return jsonify({'error': 'V7 Ensemble non disponible'}), 503
     
     results = []
     
@@ -567,7 +529,6 @@ def api_v7_batch():
             if df.empty:
                 continue
             
-            # Même logique que /api/v7/analysis
             X_mom, _ = SimpleFeatureExtractor().extract_features(df)
             X_mom_scaled = models['mom']['scaler'].transform(X_mom[-1:])
             with torch.no_grad():
@@ -600,13 +561,158 @@ def api_v7_batch():
                 'momentum_conf': float(mom_conf * 100)
             })
         except Exception as e:
-            logger.error(f"Erreur V7 batch {ticker}: {e}")
+            logger.error(f"Erreur V7 Ensemble batch {ticker}: {e}")
             pass
     
-    # Convertir tout en types Python natifs
     results = convert_to_native_python(results)
     
     return jsonify({'results': results, 'timestamp': datetime.now().isoformat()})
+
+
+# ========== STANDARD ENDPOINTS ==========
+
+@app.route('/api/account')
+def api_account():
+    """Informations du compte"""
+    if not alpaca_client:
+        return jsonify({'error': 'Alpaca non disponible'}), 503
+    
+    # Cache 30 secondes
+    if cache['account'] and cache['last_update']:
+        if (datetime.now() - cache['last_update']).seconds < 30:
+            return jsonify(cache['account'])
+    
+    account = alpaca_client.get_account()
+    if account:
+        cache['account'] = account
+        cache['last_update'] = datetime.now()
+        return jsonify(account)
+    
+    return jsonify({'error': 'Impossible de récupérer le compte'}), 500
+
+
+@app.route('/api/positions')
+def api_positions():
+    """Positions actuelles"""
+    if not alpaca_client:
+        return jsonify({'error': 'Alpaca non disponible'}), 503
+    
+    positions = alpaca_client.get_positions()
+    cache['positions'] = positions
+    
+    return jsonify(positions)
+
+
+@app.route('/api/trades')
+def api_trades():
+    """Historique des trades (depuis JSON)"""
+    days = request.args.get('days', 7, type=int)
+    
+    trades_dir = Path('logs/trades')
+    all_trades = []
+    
+    for i in range(days):
+        date = datetime.now() - timedelta(days=i)
+        filename = trades_dir / f"trades_{date.strftime('%Y-%m-%d')}.json"
+        
+        if filename.exists():
+            try:
+                with open(filename, 'r') as f:
+                    daily_trades = json.load(f)
+                    all_trades.extend(daily_trades)
+            except:
+                pass
+    
+    all_trades.sort(key=lambda t: t.get('timestamp', ''), reverse=True)
+    
+    return jsonify(all_trades)
+
+
+@app.route('/api/performance')
+def api_performance():
+    """Statistiques de performance"""
+    days = request.args.get('days', 7, type=int)
+    
+    trades_dir = Path('logs/trades')
+    trades = []
+    
+    for i in range(days):
+        date = datetime.now() - timedelta(days=i)
+        filename = trades_dir / f"trades_{date.strftime('%Y-%m-%d')}.json"
+        
+        if filename.exists():
+            try:
+                with open(filename, 'r') as f:
+                    daily_trades = json.load(f)
+                    trades.extend(daily_trades)
+            except:
+                pass
+    
+    buys = [t for t in trades if t['action'] == 'BUY']
+    sells = [t for t in trades if t['action'] == 'SELL']
+    
+    total_invested = sum(t['amount'] for t in buys)
+    total_proceeds = sum(t['amount'] for t in sells)
+    
+    return jsonify({
+        'total_trades': len(trades),
+        'buy_count': len(buys),
+        'sell_count': len(sells),
+        'total_invested': total_invested,
+        'total_proceeds': total_proceeds,
+        'net_pnl': total_proceeds - total_invested,
+        'days_analyzed': days
+    })
+
+
+@app.route('/api/improvement')
+def api_improvement():
+    """Rapport d'auto-amélioration"""
+    if not SELF_IMPROVEMENT_AVAILABLE:
+        return jsonify({'error': 'Self-Improvement non disponible'}), 503
+    
+    if cache['improvement_report']:
+        report_time = datetime.fromisoformat(cache['improvement_report']['timestamp'])
+        if (datetime.now() - report_time).seconds < 300:
+            return jsonify(cache['improvement_report'])
+    
+    report_file = Path('logs/self_improvement_report.json')
+    
+    if report_file.exists():
+        try:
+            with open(report_file, 'r') as f:
+                report = json.load(f)
+                cache['improvement_report'] = report
+                return jsonify(report)
+        except:
+            pass
+    
+    try:
+        engine = SelfImprovementEngine()
+        result = engine.analyze_recent_performance(days=7)
+        
+        if result['status'] == 'analyzed':
+            report = engine.export_report()
+            cache['improvement_report'] = report
+            return jsonify(report)
+    except Exception as e:
+        logger.error(f"Erreur analyse: {e}")
+    
+    return jsonify({'error': 'Impossible de générer le rapport'}), 500
+
+
+@app.route('/api/chart/portfolio')
+def api_chart_portfolio():
+    """Données pour graphique portfolio"""
+    days = request.args.get('days', 30, type=int)
+    
+    dates = [(datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d') 
+             for i in range(days-1, -1, -1)]
+    
+    return jsonify({
+        'dates': dates,
+        'values': [100000] * days
+    })
 
 
 @app.route('/api/health')
@@ -635,16 +741,17 @@ if __name__ == '__main__':
     port = int(os.getenv('DASHBOARD_PORT', 5000))
     debug = os.getenv('DASHBOARD_DEBUG', 'false').lower() == 'true'
     
-    # Pre-load V7 models
+    # Pre-load V7 Ensemble models
     load_v7_models()
     
     print("\n" + "="*60)
-    print("🌐 PLOUTOS WEB DASHBOARD")
+    print("🌐 PLOUTOS WEB DASHBOARD + V7 ENHANCED")
     print("="*60)
     print(f"\n🚀 Démarrage sur http://{host}:{port}")
     print(f"🔧 Mode debug: {debug}")
     print(f"📊 Alpaca: {'Actif' if alpaca_client else 'Inactif'}")
     print(f"🧠 Self-Improvement: {'Actif' if SELF_IMPROVEMENT_AVAILABLE else 'Inactif'}")
+    print(f"⭐ V7 Enhanced: {'Actif (68.35% accuracy)' if v7_enhanced else 'Inactif'}")
     print(f"🤖 V7 Ensemble: {'Actif' if v7_models_cache else 'Inactif'}")
     print("\n" + "="*60 + "\n")
     
