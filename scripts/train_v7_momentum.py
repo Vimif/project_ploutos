@@ -280,7 +280,7 @@ def main():
     logger.info(f"\n⚙️  Training...\n")
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=10, verbose=False)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=10)
     
     best_f1 = 0
     patience_counter = 0
