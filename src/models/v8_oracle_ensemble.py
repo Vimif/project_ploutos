@@ -23,6 +23,13 @@ from typing import Dict, List
 from datetime import datetime
 import json
 
+# Import model loader pour chemins absolus
+try:
+    from src.models.v8_model_loader import get_model_path
+    MODEL_LOADER_AVAILABLE = True
+except:
+    MODEL_LOADER_AVAILABLE = False
+
 try:
     from src.models.v8_lightgbm_intraday import V8LightGBMIntraday
     LIGHTGBM_AVAILABLE = True
@@ -51,7 +58,7 @@ class V8OracleEnsemble:
         
     def load_models(self) -> bool:
         """
-        Charge tous les modèles disponibles
+        Charge tous les modèles disponibles avec chemins absolus
         """
         print("\n🔥 Chargement des modèles V8 Oracle...")
         
@@ -61,25 +68,41 @@ class V8OracleEnsemble:
         if LIGHTGBM_AVAILABLE:
             try:
                 self.models['intraday'] = V8LightGBMIntraday()
-                if self.models['intraday'].load():
+                
+                # Utiliser model_loader si disponible
+                if MODEL_LOADER_AVAILABLE:
+                    model_path = get_model_path('v8_lightgbm_intraday.pkl')
+                    success = self.models['intraday'].load(model_path)
+                else:
+                    success = self.models['intraday'].load()
+                
+                if success:
                     print("✅ LightGBM Intraday (1 jour) chargé")
                     loaded += 1
                 else:
                     del self.models['intraday']
-            except:
-                pass
+            except Exception as e:
+                print(f"⚠️  LightGBM Intraday: {e}")
         
         # XGBoost Weekly
         if XGBOOST_AVAILABLE:
             try:
                 self.models['weekly'] = V8XGBoostWeekly()
-                if self.models['weekly'].load():
+                
+                # Utiliser model_loader si disponible
+                if MODEL_LOADER_AVAILABLE:
+                    model_path = get_model_path('v8_xgboost_weekly.pkl')
+                    success = self.models['weekly'].load(model_path)
+                else:
+                    success = self.models['weekly'].load()
+                
+                if success:
                     print("✅ XGBoost Weekly (5 jours) chargé")
                     loaded += 1
                 else:
                     del self.models['weekly']
-            except:
-                pass
+            except Exception as e:
+                print(f"⚠️  XGBoost Weekly: {e}")
         
         print(f"\n🎯 {loaded} modèle(s) chargé(s)\n")
         return loaded > 0
