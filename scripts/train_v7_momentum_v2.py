@@ -1,0 +1,409 @@
+#!/usr/bin/env python3
+"""
+Ploutos V7 - Momentum Predictor V2 (Improved)
+Binary Classification with class balancing and enriched features
+
+Improvements:
+- Class weight balancing
+- Market regime features
+- Correlation features
+- Better hyperparameters
+- Enhanced architecture
+
+Usage:
+    python scripts/train_v7_momentum_v2.py --data data/historical_daily.csv --output models/v7_momentum_v2 --epochs 200
+"""
+
+import os
+import sys
+import logging
+import argparse
+import json
+import pickle
+from pathlib import Path
+from datetime import datetime
+
+import pandas as pd
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset, WeightedRandomSampler
+
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, confusion_matrix
+
+# Setup logging
+os.makedirs('logs', exist_ok=True)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('logs/train_v7_momentum_v2.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+
+class AdvancedMomentumFeatureExtractor:
+    """Extract 40+ advanced features for momentum prediction"""
+    
+    def calculate_rsi(self, prices, period=14):
+        delta = prices.diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+        rs = gain / loss
+        rsi = 100 - (100 / (1 + rs))
+        return rsi.fillna(50)
+    
+    def calculate_macd(self, prices):
+        exp1 = prices.ewm(span=12, adjust=False).mean()
+        exp2 = prices.ewm(span=26, adjust=False).mean()
+        macd = exp1 - exp2
+        signal = macd.ewm(span=9, adjust=False).mean()
+        histogram = macd - signal
+        return macd, signal, histogram
+    
+    def extract_features(self, df):
+        """Extract 40+ features from OHLCV data"""
+        df = df.copy()
+        
+        # === PRICE FEATURES (6) ===
+        df['returns'] = df['Close'].pct_change()
+        df['sma_20'] = df['Close'].rolling(20).mean()
+        df['sma_50'] = df['Close'].rolling(50).mean()
+        df['price_position'] = (df['Close'] - df['sma_20']) / (df['sma_20'] + 1e-6)
+        df['high_low_ratio'] = (df['High'] - df['Low']) / df['Close']
+        df['close_open_ratio'] = (df['Close'] - df['Open']) / (df['Open'] + 1e-6)
+        
+        # === MOMENTUM FEATURES (12) ===
+        df['rsi_14'] = self.calculate_rsi(df['Close'], 14)
+        df['rsi_7'] = self.calculate_rsi(df['Close'], 7)
+        macd, signal, hist = self.calculate_macd(df['Close'])
+        df['macd'] = macd
+        df['macd_signal'] = signal
+        df['macd_histogram'] = hist
+        df['momentum_10'] = df['Close'] - df['Close'].shift(10)
+        df['momentum_5'] = df['Close'] - df['Close'].shift(5)
+        df['rate_of_change'] = (df['Close'] - df['Close'].shift(1)) / (df['Close'].shift(1) + 1e-6)
+        df['stoch_k'] = ((df['Close'] - df['Low'].rolling(14).min()) / 
+                         (df['High'].rolling(14).max() - df['Low'].rolling(14).min() + 1e-6)) * 100
+        df['stoch_d'] = df['stoch_k'].rolling(3).mean()
+        
+        # === VOLATILITY FEATURES (7) ===
+        df['volatility_20'] = df['returns'].rolling(20).std()
+        df['volatility_5'] = df['returns'].rolling(5).std()
+        df['atr'] = (df['High'] - df['Low']).rolling(14).mean()
+        df['atr_ratio'] = df['atr'] / (df['Close'] + 1e-6)
+        upper = df['Close'].rolling(20).mean() + df['Close'].rolling(20).std() * 2
+        lower = df['Close'].rolling(20).mean() - df['Close'].rolling(20).std() * 2
+        df['bb_position'] = (df['Close'] - lower) / (upper - lower + 1e-6)
+        df['bb_width'] = (upper - lower) / (df['Close'] + 1e-6)
+        
+        # === VOLUME FEATURES (6) ===
+        df['volume_sma'] = df['Volume'].rolling(20).mean()
+        df['volume_ratio'] = df['Volume'] / (df['volume_sma'] + 1e-6)
+        df['price_volume_trend'] = df['Close'].pct_change() * df['Volume']
+        df['obv'] = (np.sign(df['Close'].diff()) * df['Volume']).cumsum()
+        df['obv_sma'] = df['obv'].rolling(20).mean()
+        df['obv_momentum'] = df['obv'] - df['obv'].shift(5)
+        
+        # === TREND FEATURES (5) ===
+        df['ema_12'] = df['Close'].ewm(span=12, adjust=False).mean()
+        df['ema_26'] = df['Close'].ewm(span=26, adjust=False).mean()
+        df['ema_ratio'] = df['ema_12'] / (df['ema_26'] + 1e-6)
+        df['trend_strength'] = (df['Close'] - df['Close'].rolling(20).min()) / \
+                               (df['Close'].rolling(20).max() - df['Close'].rolling(20).min() + 1e-6)
+        df['trend_direction'] = np.where(df['ema_12'] > df['ema_26'], 1, -1)
+        
+        # === MARKET REGIME (4) ===
+        df['volatility_regime'] = df['volatility_20'].rolling(20).std()  # Vol of Vol
+        df['momentum_regime'] = df['rsi_14'].rolling(20).mean()  # Average RSI
+        df['volume_trend'] = df['volume_ratio'].rolling(10).mean()
+        df['price_trend'] = df['returns'].rolling(10).sum()  # Cumul returns 10d
+        
+        # === CROSS-FEATURES (3) ===
+        df['rsi_macd_alignment'] = np.where((df['rsi_14'] > 50) & (df['macd_histogram'] > 0), 1,
+                                           np.where((df['rsi_14'] <= 50) & (df['macd_histogram'] <= 0), -1, 0))
+        df['bb_rsi_signal'] = np.where((df['bb_position'] > 0.8) & (df['rsi_14'] > 70), 1,
+                                       np.where((df['bb_position'] < 0.2) & (df['rsi_14'] < 30), -1, 0))
+        df['volume_confirmation'] = np.where(df['volume_ratio'] > 1.2, 1, 0)
+        
+        feature_cols = [
+            'returns', 'sma_20', 'sma_50', 'price_position', 'high_low_ratio', 'close_open_ratio',
+            'rsi_14', 'rsi_7', 'macd', 'macd_signal', 'macd_histogram', 'momentum_10', 'momentum_5',
+            'rate_of_change', 'stoch_k', 'stoch_d',
+            'volatility_20', 'volatility_5', 'atr', 'atr_ratio', 'bb_position', 'bb_width',
+            'volume_sma', 'volume_ratio', 'price_volume_trend', 'obv', 'obv_sma', 'obv_momentum',
+            'ema_12', 'ema_26', 'ema_ratio', 'trend_strength', 'trend_direction',
+            'volatility_regime', 'momentum_regime', 'volume_trend', 'price_trend',
+            'rsi_macd_alignment', 'bb_rsi_signal', 'volume_confirmation'
+        ]
+        
+        # Target: 1 if price goes UP tomorrow, 0 if DOWN
+        df['target'] = (df['Close'].shift(-1) > df['Close']).astype(int)
+        
+        df = df.dropna()
+        
+        X = df[feature_cols].values
+        y = df['target'].values
+        
+        logger.info(f"✅ Features extracted: {X.shape[0]} samples, {X.shape[1]} features")
+        logger.info(f"📊 UP: {np.sum(y)} ({np.sum(y)/len(y)*100:.1f}%) | DOWN: {len(y) - np.sum(y)} ({(1-np.sum(y)/len(y))*100:.1f}%)")
+        
+        return X, y, feature_cols
+
+
+class EnhancedMomentumClassifier(nn.Module):
+    """Enhanced neural network for binary classification"""
+    
+    def __init__(self, input_dim=38):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(input_dim, 256),
+            nn.ReLU(),
+            nn.BatchNorm1d(256),
+            nn.Dropout(0.4),
+            
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.BatchNorm1d(128),
+            nn.Dropout(0.3),
+            
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.BatchNorm1d(64),
+            nn.Dropout(0.2),
+            
+            nn.Linear(64, 32),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            
+            nn.Linear(32, 2),  # 2 classes: DOWN or UP
+        )
+    
+    def forward(self, x):
+        return self.net(x)
+
+
+def train_epoch(model, train_loader, criterion, optimizer, device):
+    model.train()
+    total_loss = 0.0
+    all_preds = []
+    all_targets = []
+    
+    for X_batch, y_batch in train_loader:
+        X_batch = X_batch.to(device)
+        y_batch = y_batch.to(device)
+        
+        logits = model(X_batch)
+        loss = criterion(logits, y_batch)
+        
+        optimizer.zero_grad()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        optimizer.step()
+        
+        total_loss += loss.item()
+        preds = torch.argmax(logits, dim=1).cpu().numpy()
+        all_preds.extend(preds)
+        all_targets.extend(y_batch.cpu().numpy())
+    
+    return total_loss / len(train_loader), accuracy_score(all_targets, all_preds)
+
+
+def evaluate(model, test_loader, criterion, device):
+    model.eval()
+    total_loss = 0.0
+    all_preds = []
+    all_targets = []
+    all_probs = []
+    
+    with torch.no_grad():
+        for X_batch, y_batch in test_loader:
+            X_batch = X_batch.to(device)
+            y_batch = y_batch.to(device)
+            
+            logits = model(X_batch)
+            loss = criterion(logits, y_batch)
+            total_loss += loss.item()
+            
+            probs = torch.softmax(logits, dim=1)[:, 1].cpu().numpy()
+            all_probs.extend(probs)
+            preds = torch.argmax(logits, dim=1).cpu().numpy()
+            all_preds.extend(preds)
+            all_targets.extend(y_batch.cpu().numpy())
+    
+    try:
+        auc = roc_auc_score(all_targets, all_probs)
+    except:
+        auc = 0.5
+    
+    return {
+        'loss': total_loss / len(test_loader),
+        'accuracy': accuracy_score(all_targets, all_preds),
+        'precision': precision_score(all_targets, all_preds, zero_division=0),
+        'recall': recall_score(all_targets, all_preds, zero_division=0),
+        'f1': f1_score(all_targets, all_preds, zero_division=0),
+        'auc': auc,
+        'predictions': np.array(all_preds),
+        'targets': np.array(all_targets),
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--data', default='data/historical_daily.csv')
+    parser.add_argument('--output', default='models/v7_momentum_v2')
+    parser.add_argument('--epochs', type=int, default=200)
+    parser.add_argument('--batch_size', type=int, default=32)
+    parser.add_argument('--test_split', type=float, default=0.2)
+    args = parser.parse_args()
+    
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    output_dir = Path(args.output)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    logger.info("="*70)
+    logger.info("🚀 PLOUTOS V7 - MOMENTUM PREDICTOR V2 (IMPROVED)")
+    logger.info("="*70)
+    logger.info(f"Device: {device}\n")
+    
+    # Load data
+    logger.info("📊 Loading data...")
+    df = pd.read_csv(args.data)
+    if 'Ticker' in df.columns:
+        ticker = df['Ticker'].iloc[0]
+        df = df[df['Ticker'] == ticker].copy()
+        logger.info(f"Ticker: {ticker}")
+    df = df[['Open', 'High', 'Low', 'Close', 'Volume']].reset_index(drop=True)
+    
+    # Extract features
+    logger.info("\n📈 Extracting advanced features...")
+    extractor = AdvancedMomentumFeatureExtractor()
+    X, y, feature_cols = extractor.extract_features(df)
+    
+    # Normalize
+    logger.info("\n🔧 Normalizing features...")
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    
+    # Save scaler
+    with open(output_dir / 'scaler.pkl', 'wb') as f:
+        pickle.dump(scaler, f)
+    logger.info(f"✅ Scaler saved")
+    
+    # Split
+    logger.info(f"\n📋 Splitting data (80/20)...")
+    split_idx = int(len(X) * (1 - args.test_split))
+    X_train, X_test = X_scaled[:split_idx], X_scaled[split_idx:]
+    y_train, y_test = y[:split_idx], y[split_idx:]
+    logger.info(f"Train: {len(X_train)} | Test: {len(X_test)}")
+    
+    # Class weights for balancing
+    logger.info("\n⚡ Calculating class weights...")
+    class_weights = torch.FloatTensor([
+        len(y_train) / (2 * np.sum(y_train == 0)),
+        len(y_train) / (2 * np.sum(y_train == 1))
+    ])
+    logger.info(f"Class weights: DOWN={class_weights[0]:.3f}, UP={class_weights[1]:.3f}")
+    
+    # DataLoaders with weighted sampler
+    sample_weights = class_weights[y_train].numpy()
+    sampler = WeightedRandomSampler(sample_weights, len(sample_weights), replacement=True)
+    
+    train_loader = DataLoader(
+        TensorDataset(torch.FloatTensor(X_train), torch.LongTensor(y_train)),
+        batch_size=args.batch_size, sampler=sampler
+    )
+    test_loader = DataLoader(
+        TensorDataset(torch.FloatTensor(X_test), torch.LongTensor(y_test)),
+        batch_size=args.batch_size
+    )
+    
+    # Create model
+    logger.info(f"\n🧠 Creating enhanced model...")
+    model = EnhancedMomentumClassifier(input_dim=X_scaled.shape[1]).to(device)
+    logger.info(f"Parameters: {sum(p.numel() for p in model.parameters())}")
+    
+    # Training
+    logger.info(f"\n⚙️  Training...\n")
+    criterion = nn.CrossEntropyLoss(weight=class_weights.to(device))
+    optimizer = optim.Adam(model.parameters(), lr=0.0005, weight_decay=1e-5)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
+    
+    best_f1 = 0
+    patience_counter = 0
+    best_metrics = None
+    
+    for epoch in range(args.epochs):
+        train_loss, train_acc = train_epoch(model, train_loader, criterion, optimizer, device)
+        test_metrics = evaluate(model, test_loader, criterion, device)
+        
+        scheduler.step()
+        
+        if test_metrics['f1'] > best_f1:
+            best_f1 = test_metrics['f1']
+            patience_counter = 0
+            best_metrics = test_metrics
+            torch.save(model.state_dict(), output_dir / 'best_model.pth')
+        else:
+            patience_counter += 1
+        
+        if (epoch + 1) % 20 == 0:
+            logger.info(f"Epoch {epoch+1:3d}: Train Loss={train_loss:.4f} Acc={train_acc:.3f} | "
+                       f"Test Acc={test_metrics['accuracy']:.3f} F1={test_metrics['f1']:.3f} AUC={test_metrics['auc']:.3f}")
+        
+        if patience_counter > 30:
+            logger.info(f"Early stopping at epoch {epoch+1}")
+            break
+    
+    # Load best model and final evaluation
+    logger.info("\n" + "="*70)
+    logger.info("📊 FINAL RESULTS (V2 IMPROVED)")
+    logger.info("="*70)
+    
+    model.load_state_dict(torch.load(output_dir / 'best_model.pth'))
+    final_metrics = evaluate(model, test_loader, criterion, device)
+    
+    logger.info(f"\nAccuracy:  {final_metrics['accuracy']:.3f} (Expected: > 55%)")
+    logger.info(f"Precision: {final_metrics['precision']:.3f}")
+    logger.info(f"Recall:    {final_metrics['recall']:.3f}")
+    logger.info(f"F1-Score:  {final_metrics['f1']:.3f} (Expected: > 0.55)")
+    logger.info(f"AUC-ROC:   {final_metrics['auc']:.3f} (Expected: > 0.55)")
+    
+    cm = confusion_matrix(final_metrics['targets'], final_metrics['predictions'])
+    logger.info(f"\nConfusion Matrix:\n[[TN={cm[0,0]:3d}  FP={cm[0,1]:3d}]\n [FN={cm[1,0]:3d}  TP={cm[1,1]:3d}]]")
+    
+    # Save metadata
+    metadata = {
+        'model_type': 'EnhancedMomentumClassifier',
+        'version': 'v2',
+        'input_dim': X_scaled.shape[1],
+        'feature_columns': feature_cols,
+        'train_samples': len(X_train),
+        'test_samples': len(X_test),
+        'class_weights': {'down': float(class_weights[0]), 'up': float(class_weights[1])},
+        'metrics': {
+            'accuracy': float(final_metrics['accuracy']),
+            'precision': float(final_metrics['precision']),
+            'recall': float(final_metrics['recall']),
+            'f1': float(final_metrics['f1']),
+            'auc': float(final_metrics['auc']),
+        },
+        'timestamp': datetime.now().isoformat(),
+    }
+    
+    with open(output_dir / 'metadata.json', 'w') as f:
+        json.dump(metadata, f, indent=2)
+    
+    # Save model
+    torch.save(model.state_dict(), output_dir / 'final_model.pth')
+    
+    logger.info(f"\n✅ Model saved to {output_dir}")
+    logger.info("="*70)
+
+
+if __name__ == '__main__':
+    main()
