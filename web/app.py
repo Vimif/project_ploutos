@@ -214,6 +214,20 @@ class VolatilityFeatureExtractor:
         df = df.dropna()
         return df[cols].values, cols
 
+def convert_to_native_python(obj):
+    """Convertit les types numpy en types Python natifs pour JSON"""
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, (np.float32, np.float64)):
+        return float(obj)
+    elif isinstance(obj, (np.int32, np.int64)):
+        return int(obj)
+    elif isinstance(obj, dict):
+        return {k: convert_to_native_python(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_to_native_python(item) for item in obj]
+    return obj
+
 # Setup
 app = Flask(__name__)
 CORS(app)
@@ -583,10 +597,14 @@ def api_v7_batch():
                 'ticker': ticker,
                 'signal': signal,
                 'strength': strength,
-                'momentum_conf': mom_conf * 100
+                'momentum_conf': float(mom_conf * 100)
             })
-        except:
+        except Exception as e:
+            logger.error(f"Erreur V7 batch {ticker}: {e}")
             pass
+    
+    # Convertir tout en types Python natifs
+    results = convert_to_native_python(results)
     
     return jsonify({'results': results, 'timestamp': datetime.now().isoformat()})
 
