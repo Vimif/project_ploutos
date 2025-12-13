@@ -206,7 +206,7 @@ def calculate_momentum_features(df):
     return features
 
 def calculate_reversion_features(df):
-    """Calcule les features pour Reversion Expert"""
+    """Calcule les features pour Reversion Expert (FIX)"""
     features = pd.DataFrame(index=df.index)
     
     # SMA
@@ -219,10 +219,11 @@ def calculate_reversion_features(df):
     features['bb_upper'] = bb_middle + (bb_std * 2)
     features['bb_lower'] = bb_middle - (bb_std * 2)
     features['bb_width'] = features['bb_upper'] - features['bb_lower']
-    features['bb_position'] = (df['Close'] - features['bb_lower']) / features['bb_width']
+    # FIX: Use .values to avoid pandas assignment issue
+    features['bb_position'] = ((df['Close'].values - features['bb_lower'].values) / (features['bb_width'].values + 1e-8))
     
     # Z-score
-    features['z_score'] = (df['Close'] - features['sma_20']) / bb_std
+    features['z_score'] = (df['Close'] - features['sma_20']) / (bb_std + 1e-8)
     
     # RSI
     delta = df['Close'].diff()
@@ -291,19 +292,19 @@ class OptunaObjective:
             h2 = trial.suggest_int('hidden2', 64, 256, step=64)
             h3 = trial.suggest_int('hidden3', 32, 128, step=32)
             hidden_dims = [h1, h2, h3]
-            model = EnhancedMomentumClassifier(input_dim=input_dim, hidden_dims=hidden_dims, dropout=dropout)
+            model = EnhancedMomentumClassifier(input_dim, hidden_dims, dropout)
         elif self.expert_type == 'reversion':
             input_dim = self.X_train.shape[1]
             h1 = trial.suggest_int('hidden1', 64, 256, step=64)
             h2 = trial.suggest_int('hidden2', 32, 128, step=32)
             hidden_dims = [h1, h2]
-            model = EnhancedReversionModel(input_dim=input_dim, hidden_dims=hidden_dims, dropout=dropout)
+            model = EnhancedReversionModel(input_dim, hidden_dims, dropout)
         else:  # volatility
             input_dim = self.X_train.shape[1]
             h1 = trial.suggest_int('hidden1', 32, 128, step=32)
             h2 = trial.suggest_int('hidden2', 16, 64, step=16)
             hidden_dims = [h1, h2]
-            model = EnhancedVolatilityModel(input_dim=input_dim, hidden_dims=hidden_dims, dropout=dropout)
+            model = EnhancedVolatilityModel(input_dim, hidden_dims, dropout)
         
         model = model.to(self.device)
         
