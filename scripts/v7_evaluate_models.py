@@ -1,15 +1,6 @@
 #!/usr/bin/env python3
 """
 🧠 PLOUTOS V7.3 - Model Evaluator (The Audit)
-
-Ce script teste les modèles entraînés sur des données récentes (Out-of-Sample)
-pour vérifier leur performance réelle avant intégration dans le PPO.
-
-Commande:
-    python scripts/v7_evaluate_models.py
-
-Auteur: Ploutos AI Team
-Date: Dec 2025
 """
 
 import argparse
@@ -23,6 +14,9 @@ import joblib
 from pathlib import Path
 from sklearn.metrics import accuracy_score
 import warnings
+import sys
+import traceback
+
 warnings.filterwarnings('ignore')
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
@@ -230,6 +224,7 @@ def evaluate(tickers):
     
     results = []
     count = 0
+    first_error_printed = False
     
     for ticker in tickers:
         try:
@@ -238,49 +233,60 @@ def evaluate(tickers):
                 continue
             
             for expert_name, model in models.items():
-                calc = feature_calculators[expert_name]
-                features = calc(df)
-                
-                df_aligned = df.loc[features.index]
-                future_returns = df_aligned['Close'].pct_change(5).shift(-5)
-                
-                # FIX: Use pandas .loc instead of numpy fancy indexing
-                valid_mask = ~future_returns.isna()
-                X = features.loc[valid_mask].values  # CORRECT
-                y_true = (future_returns[valid_mask] > 0).astype(int).values
-                actual_returns = future_returns[valid_mask].values
-                
-                if len(X) < 10:
+                try:
+                    calc = feature_calculators[expert_name]
+                    features = calc(df)
+                    
+                    df_aligned = df.loc[features.index]
+                    future_returns = df_aligned['Close'].pct_change(5).shift(-5)
+                    
+                    valid_mask = ~future_returns.isna()
+                    X = features.loc[valid_mask].values
+                    y_true = (future_returns[valid_mask] > 0).astype(int).values
+                    actual_returns = future_returns[valid_mask].values
+                    
+                    if len(X) < 10:
+                        continue
+                    
+                    expected_dim = model.input_norm.weight.shape[0]
+                    if X.shape[1] != expected_dim:
+                        continue
+                    
+                    X_scaled = scalers[expert_name].transform(X)
+                    X_tensor = torch.FloatTensor(X_scaled).to(device)
+                    
+                    with torch.no_grad():
+                        logits = model(X_tensor)
+                        probs = torch.softmax(logits, dim=1)
+                        predictions = torch.argmax(probs, dim=1).cpu().numpy()
+                    
+                    acc = accuracy_score(y_true, predictions)
+                    algo_return = np.sum(actual_returns[predictions == 1])
+                    buy_hold_return = np.sum(actual_returns)
+                    
+                    results.append({
+                        'Ticker': ticker,
+                        'Expert': expert_name,
+                        'Accuracy': acc,
+                        'Algo_Return': algo_return,
+                        'BuyHold_Return': buy_hold_return,
+                        'Outperform': algo_return > buy_hold_return
+                    })
+                    count += 1
+                    
+                except Exception as e:
+                    if not first_error_printed:
+                        print(f"\nERROR in {ticker} - {expert_name}:", file=sys.stderr)
+                        traceback.print_exc(file=sys.stderr)
+                        first_error_printed = True
                     continue
-                
-                expected_dim = model.input_norm.weight.shape[0]
-                if X.shape[1] != expected_dim:
-                    continue
-                
-                X_scaled = scalers[expert_name].transform(X)
-                X_tensor = torch.FloatTensor(X_scaled).to(device)
-                
-                with torch.no_grad():
-                    logits = model(X_tensor)
-                    probs = torch.softmax(logits, dim=1)
-                    predictions = torch.argmax(probs, dim=1).cpu().numpy()
-                
-                acc = accuracy_score(y_true, predictions)
-                algo_return = np.sum(actual_returns[predictions == 1])
-                buy_hold_return = np.sum(actual_returns)
-                
-                results.append({
-                    'Ticker': ticker,
-                    'Expert': expert_name,
-                    'Accuracy': acc,
-                    'Algo_Return': algo_return,
-                    'BuyHold_Return': buy_hold_return,
-                    'Outperform': algo_return > buy_hold_return
-                })
-                count += 1
                 
         except Exception as e:
-            pass
+            if not first_error_printed:
+                print(f"\nERROR downloading {ticker}:", file=sys.stderr)
+                traceback.print_exc(file=sys.stderr)
+                first_error_printed = True
+            continue
 
     if results:
         df_res = pd.DataFrame(results)
