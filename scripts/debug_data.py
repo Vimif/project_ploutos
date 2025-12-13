@@ -24,39 +24,45 @@ def calculate_momentum_features(df):
     features['momentum_20'] = df['Close'] - df['Close'].shift(20)
     return features.dropna()
 
-df = yf.download("NVDA", period="5y", progress=False)
-features = calculate_momentum_features(df)
+print("=== TESTING CONCATENATION ===")
+tickers = ["NVDA", "MSFT", "AAPL"]
+all_X = []
+all_y = []
 
-print("\n=== DIAGNOSTIC DES FEATURES ===")
-print(f"Shape: {features.shape}")
+for ticker in tickers:
+    df = yf.download(ticker, period="5y", progress=False)
+    features = calculate_momentum_features(df)
+    future_returns = df['Close'].pct_change(5).shift(-5)
+    common_index = features.index.intersection(future_returns.index)
+    X = features.loc[common_index]
+    y = (future_returns.loc[common_index] > 0).astype(int)
+    valid_mask = ~(y.isna() | X.isna().any(axis=1))
+    X = X[valid_mask]
+    y = y[valid_mask]
+    
+    print(f"\n{ticker}:")
+    print(f"  Shape: {X.shape}")
+    print(f"  NaN per column: {X.isna().sum()}")
+    print(f"  Total rows with NaN: {X.isna().any(axis=1).sum()}")
+    
+    all_X.append(X.values)
+    all_y.append(y.values.flatten())
+
+print("\n=== AFTER CONCATENATION ===")
+X_concat = np.concatenate(all_X, axis=0)
+y_concat = np.concatenate(all_y, axis=0)
+
+print(f"Shape: {X_concat.shape}")
+print(f"Total NaN count: {np.isnan(X_concat).sum()}")
+print(f"Rows with NaN: {np.isnan(X_concat).any(axis=1).sum()}")
 print(f"\nNaN count per column:")
-print(features.isna().sum())
-print(f"\nInf count per column:")
-print(np.isinf(features).sum())
-print(f"\nStats:")
-print(features.describe())
+for i in range(X_concat.shape[1]):
+    nan_count = np.isnan(X_concat[:, i]).sum()
+    print(f"  Column {i}: {nan_count} NaN")
 
-# Check for problematic values
-if features.isna().any().any():
-    print("\n⚠️ WARNING: NaN detected in features!")
-    print(features[features.isna().any(axis=1)].head())
-
-if np.isinf(features.values).any():
-    print("\n⚠️ WARNING: Inf detected in features!")
-    print(features[np.isinf(features).any(axis=1)].head())
-
-print("\n=== CHECKING LABELS ===")
-future_returns = df['Close'].pct_change(5).shift(-5)
-common_index = features.index.intersection(future_returns.index)
-X = features.loc[common_index]
-y = (future_returns.loc[common_index] > 0).astype(int)
-valid_mask = ~y.isna()
-X = X[valid_mask]
-y = y[valid_mask]
-
-print(f"X shape: {X.shape}")
-print(f"y shape: {y.shape}")
-print(f"NaN in X: {X.isna().any().any()}")
-print(f"NaN in y: {y.isna().any()}")
-print(f"Inf in X: {np.isinf(X.values).any()}")
-print(f"\nClass balance: {np.bincount(y.values.flatten())}")
+print(f"\n=== AFTER NaN REMOVAL ===")
+nan_mask = ~np.isnan(X_concat).any(axis=1)
+X_clean = X_concat[nan_mask]
+y_clean = y_concat[nan_mask]
+print(f"Final shape: X={X_clean.shape}, y={y_clean.shape}")
+print(f"NaN in X: {np.isnan(X_clean).any()}")
