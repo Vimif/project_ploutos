@@ -1,5 +1,5 @@
 /**
- * PLOUTOS ADVANCED CHART - JavaScript V2
+ * PLOUTOS ADVANCED CHART - JavaScript V3
  * Compatible avec la nouvelle API (quick_stats + signals)
  */
 
@@ -23,6 +23,8 @@ async function analyzeStock() {
     try {
         const res = await fetch(`${API_BASE}/api/chart/${ticker}?period=${period}`);
         const data = await res.json();
+        
+        console.log('📊 API Response:', data); // DEBUG
         
         if (data.error) {
             addAIMessage(`❌ Erreur: ${data.error}`, 'ai');
@@ -397,16 +399,24 @@ function formatVolume(vol) {
     return vol.toFixed(0);
 }
 
-// ========== INDICATORS SUMMARY (FIXÉ) ==========
+// ========== INDICATORS SUMMARY (VERSION DEBUG) ==========
 
 function updateIndicatorsSummary(data) {
-    const signals = data.signals || {};
+    const signals = data.signals;
     const container = document.getElementById('indicators-summary');
     
+    console.log('🔍 Signals reçus:', signals); // DEBUG
+    
+    if (!signals || typeof signals !== 'object') {
+        container.innerHTML = '<div class="text-sm text-gray-400 text-center py-4">⚠️ Pas de signaux (signals manquant)</div>';
+        return;
+    }
+    
     let html = '<div class="space-y-3 text-sm">';
+    let hasAnySignal = false;
     
     // Trend
-    if (signals.trend && Object.keys(signals.trend).length > 0) {
+    if (signals.trend && typeof signals.trend === 'object' && Object.keys(signals.trend).length > 0) {
         html += '<div><div class="font-bold text-blue-400 mb-2">📈 Tendance</div>';
         for (const [key, val] of Object.entries(signals.trend)) {
             const signalText = val.signal || 'UNKNOWN';
@@ -416,12 +426,13 @@ function updateIndicatorsSummary(data) {
                 <span class="text-gray-400">${key.toUpperCase()}</span>
                 <span class="${color} font-bold">${signalText}</span>
             </div>`;
+            hasAnySignal = true;
         }
         html += '</div>';
     }
     
     // Momentum
-    if (signals.momentum && Object.keys(signals.momentum).length > 0) {
+    if (signals.momentum && typeof signals.momentum === 'object' && Object.keys(signals.momentum).length > 0) {
         html += '<div><div class="font-bold text-purple-400 mb-2">⚡ Momentum</div>';
         for (const [key, val] of Object.entries(signals.momentum)) {
             const signalText = val.signal || 'UNKNOWN';
@@ -431,12 +442,13 @@ function updateIndicatorsSummary(data) {
                 <span class="text-gray-400">${key.toUpperCase()}</span>
                 <span class="${color} font-bold">${signalText}</span>
             </div>`;
+            hasAnySignal = true;
         }
         html += '</div>';
     }
     
     // Volatility
-    if (signals.volatility && Object.keys(signals.volatility).length > 0) {
+    if (signals.volatility && typeof signals.volatility === 'object' && Object.keys(signals.volatility).length > 0) {
         html += '<div><div class="font-bold text-orange-400 mb-2">🌊 Volatilité</div>';
         for (const [key, val] of Object.entries(signals.volatility)) {
             const signalText = val.signal || 'UNKNOWN';
@@ -446,12 +458,13 @@ function updateIndicatorsSummary(data) {
                 <span class="text-gray-400">${key.toUpperCase()}</span>
                 <span class="${color} font-bold">${signalText}</span>
             </div>`;
+            hasAnySignal = true;
         }
         html += '</div>';
     }
     
     // Volume
-    if (signals.volume && Object.keys(signals.volume).length > 0) {
+    if (signals.volume && typeof signals.volume === 'object' && Object.keys(signals.volume).length > 0) {
         html += '<div><div class="font-bold text-cyan-400 mb-2">📊 Volume</div>';
         for (const [key, val] of Object.entries(signals.volume)) {
             const signalText = val.signal || 'UNKNOWN';
@@ -461,13 +474,15 @@ function updateIndicatorsSummary(data) {
                 <span class="text-gray-400">${key.toUpperCase()}</span>
                 <span class="${color} font-bold">${signalText}</span>
             </div>`;
+            hasAnySignal = true;
         }
         html += '</div>';
     }
     
     html += '</div>';
     
-    if (html === '<div class="space-y-3 text-sm"></div>') {
+    if (!hasAnySignal) {
+        console.warn('⚠️ Aucun signal trouvé dans:', signals);
         html = '<div class="text-sm text-gray-400 text-center py-4">❌ Aucun signal disponible</div>';
     }
     
