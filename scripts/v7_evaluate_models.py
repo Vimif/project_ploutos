@@ -27,7 +27,6 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # ========== DEFINITIONS DES CLASSES (Copie stricte pour charger les poids) ==========
-# Idéalement, ces classes devraient être dans un fichier 'src/models.py' partagé
 
 class AttentionBlock(nn.Module):
     def __init__(self, dim, num_heads=4):
@@ -160,6 +159,7 @@ def calculate_volatility_features(df):
 # ========== EVALUATION ==========
 
 def load_model(expert_type, device):
+    """Load trained model and scaler. Detect input dimension from state_dict."""
     model_path = Path(f"models/v7_{expert_type}_expert_final.pth")
     scaler_path = Path(f"models/v7_{expert_type}_scaler_final.pkl")
     config_path = Path(f"logs/v7_{expert_type}_optimization_FIXED.json")
@@ -168,59 +168,46 @@ def load_model(expert_type, device):
         logger.warning(f"❌ Fichiers manquants pour {expert_type}. Ignoré.")
         return None, None
     
-    # Load config to get architecture
     import json
     with open(config_path, 'r') as f:
         config = json.load(f)
         params = config['best_params']
     
-    # Re-instantiate architecture based on config
     scaler = joblib.load(scaler_path)
+    state_dict = torch.load(model_path, map_location=device)
     
-    # Dummy input to get dimensions (c'est un peu hacky mais ça marche)
-    if expert_type == 'momentum':
-        # input_dim 28 (approx, depends on feature eng)
-        dummy_input_dim = 13 # Momentum features count
-        hidden_dims = [params['hidden1'], params['hidden2'], params['hidden3']]
-        model = EnhancedMomentumClassifier(dummy_input_dim, hidden_dims, params['dropout'])
-    elif expert_type == 'reversion':
-        dummy_input_dim = 9 # Reversion features count
-        hidden_dims = [params['hidden1'], params['hidden2']]
-        model = EnhancedReversionModel(dummy_input_dim, hidden_dims, params['dropout'])
+    # Find the input_norm.weight to get actual input dimension
+    input_norm_weight_key = 'input_norm.weight'
+    if input_norm_weight_key in state_dict:
+        actual_input_dim = state_dict[input_norm_weight_key].shape[0]
     else:
-        dummy_input_dim = 6 # Volatility features count
+        logger.error(f"{expert_type}: Cannot find input_norm.weight in state_dict")
+        return None, None
+    
+    # Rebuild model with correct input dimension
+    if expert_type == 'momentum':
+        hidden_dims = [params['hidden1'], params['hidden2'], params['hidden3']]
+        model = EnhancedMomentumClassifier(actual_input_dim, hidden_dims, params['dropout'])
+    elif expert_type == 'reversion':
         hidden_dims = [params['hidden1'], params['hidden2']]
-        model = EnhancedVolatilityModel(dummy_input_dim, hidden_dims, params['dropout'])
-        
+        model = EnhancedReversionModel(actual_input_dim, hidden_dims, params['dropout'])
+    else:  # volatility
+        hidden_dims = [params['hidden1'], params['hidden2']]
+        model = EnhancedVolatilityModel(actual_input_dim, hidden_dims, params['dropout'])
+    
     try:
-        # Load weights
-        state_dict = torch.load(model_path, map_location=device)
-        
-        # Check input dimension mismatch safely
-        first_layer_weight = list(state_dict.items())[1][1] # weight of first linear layer
-        actual_input_dim = first_layer_weight.shape[1]
-        
-        if actual_input_dim != dummy_input_dim:
-            # Re-create model with correct dimension
-            if expert_type == 'momentum':
-                 model = EnhancedMomentumClassifier(actual_input_dim, hidden_dims, params['dropout'])
-            elif expert_type == 'reversion':
-                 model = EnhancedReversionModel(actual_input_dim, hidden_dims, params['dropout'])
-            else:
-                 model = EnhancedVolatilityModel(actual_input_dim, hidden_dims, params['dropout'])
-        
         model.load_state_dict(state_dict)
         model.to(device)
         model.eval()
+        logger.info(f"✅ {expert_type.upper()}: input_dim={actual_input_dim}, hidden={hidden_dims}")
         return model, scaler
-        
     except Exception as e:
-        logger.error(f"Erreur chargement {expert_type}: {e}")
+        logger.error(f"Erreur lors du load_state_dict pour {expert_type}: {e}")
         return None, None
 
 def evaluate(tickers):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    logger.info(f"🧪 Démarrage de l'évaluation sur {device}...")
+    logger.info(f"🧪 Démarrage de l'évaluation sur {device}...\n")
     
     experts = ['momentum', 'reversion', 'volatility']
     models = {}
@@ -231,13 +218,12 @@ def evaluate(tickers):
         if m:
             models[expert] = m
             scalers[expert] = s
-            logger.info(f"✅ {expert.upper()} chargé.")
             
     if not models:
         logger.error("❌ Aucun modèle chargé !")
         return
 
-    logger.info("📉 Téléchargement des données de TEST (6 derniers mois)...")
+    logger.info(f"📉 Téléchargement des données de TEST (6 derniers mois)...\n")
     
     feature_calculators = {
         'momentum': calculate_momentum_features,
@@ -249,27 +235,25 @@ def evaluate(tickers):
     
     for ticker in tickers:
         try:
-            # Download recent data for validation
             df = yf.download(ticker, period="6mo", progress=False)
-            if len(df) < 50: continue
+            if len(df) < 50:
+                continue
             
             for expert_name, model in models.items():
                 calc = feature_calculators[expert_name]
                 features = calc(df)
                 
-                # Target: returns in 5 days
                 df_aligned = df.loc[features.index]
                 future_returns = df_aligned['Close'].pct_change(5).shift(-5)
                 
-                # Filter valid rows (remove last 5 NaNs)
                 valid_mask = ~future_returns.isna()
                 X = features.values[valid_mask]
                 y_true = (future_returns[valid_mask] > 0).astype(int).values
                 actual_returns = future_returns[valid_mask].values
                 
-                if len(X) < 10: continue
+                if len(X) < 10:
+                    continue
                 
-                # Predict
                 X_scaled = scalers[expert_name].transform(X)
                 X_tensor = torch.FloatTensor(X_scaled).to(device)
                 
@@ -277,14 +261,8 @@ def evaluate(tickers):
                     logits = model(X_tensor)
                     probs = torch.softmax(logits, dim=1)
                     predictions = torch.argmax(probs, dim=1).cpu().numpy()
-                    confidence = probs[:, 1].cpu().numpy() # Prob of going UP
                 
-                # Metrics
                 acc = accuracy_score(y_true, predictions)
-                
-                # Simulate Trading (Simple Strategy)
-                # Buy if Pred=1, Sell/Hold if Pred=0
-                # Strategy Return = Sum(Actual Return where Pred=1)
                 algo_return = np.sum(actual_returns[predictions == 1])
                 buy_hold_return = np.sum(actual_returns)
                 
@@ -298,22 +276,21 @@ def evaluate(tickers):
                 })
                 
         except Exception as e:
-            logger.warning(f"⚠️ Erreur sur {ticker}: {e}")
+            logger.debug(f"⚠️  Erreur sur {ticker}: {str(e)[:80]}")
 
     # Summary
     if results:
         df_res = pd.DataFrame(results)
-        print("\n" + "="*70)
+        print("\n" + "="*80)
         print("🏆 RÉSULTATS DE L'ÉVALUATION (6 derniers mois)")
-        print("="*70)
+        print("="*80)
         
-        # Group by Expert
         summary = df_res.groupby('Expert').agg({
             'Accuracy': 'mean',
             'Algo_Return': 'mean',
             'BuyHold_Return': 'mean',
-            'Outperform': 'mean' # % of times it beat Buy&Hold
-        })
+            'Outperform': 'mean'
+        }).round(4)
         
         print("\n📊 MOYENNES PAR EXPERT :")
         print(summary)
@@ -322,9 +299,12 @@ def evaluate(tickers):
         for expert in summary.index:
             acc = summary.loc[expert, 'Accuracy']
             out = summary.loc[expert, 'Outperform']
-            print(f"   - {expert.upper()}: Précision {acc:.1%} | Bat le marché {out:.1%} du temps")
+            algo_ret = summary.loc[expert, 'Algo_Return']
+            buy_hold = summary.loc[expert, 'BuyHold_Return']
+            edge = algo_ret - buy_hold
+            print(f"   {expert.upper():12} | Précision: {acc:6.1%} | Surperf: {out:6.1%} | Edge: {edge:+.2%}")
             
-        print("\n" + "="*70)
+        print("\n" + "="*80)
     else:
         logger.error("❌ Aucun résultat généré.")
 
