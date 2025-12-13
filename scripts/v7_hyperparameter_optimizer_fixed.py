@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 """
-🧠 PLOUTOS V7.1 - Hyperparameter Optimizer (FINAL WORKING VERSION)
+🧠 PLOUTOS V7.1 - Hyperparameter Optimizer (FIXED v5 - Explicit Flattening)
 
 Utilise Optuna + vraies données financières (MACD, RSI, Bollinger Bands)
-Fonction reversion simplifiée et fonctionnelle avec .values fix.
+Force .flatten() partout pour éviter "Expected 1D array, got (N,)"
 
 Commande:
     python scripts/v7_hyperparameter_optimizer_fixed.py --expert momentum --trials 50
-    python scripts/v7_hyperparameter_optimizer_fixed.py --expert reversion --trials 50
-    python scripts/v7_hyperparameter_optimizer_fixed.py --expert volatility --trials 50
 
 Auteur: Ploutos AI Team
 Date: Dec 2025
@@ -197,22 +195,34 @@ def calculate_momentum_features(df):
     return features
 
 def calculate_reversion_features(df):
-    """Calcule les features pour Reversion Expert (FIXED avec .values)"""
+    """Calcule les features pour Reversion Expert (FIXED avec .values.flatten() explicit)"""
     features = pd.DataFrame(index=df.index)
-    features['sma_20'] = df['Close'].rolling(20).mean()
-    features['sma_50'] = df['Close'].rolling(50).mean()
     
-    # Use .values to avoid pandas shape mismatch
-    features['dist_sma20'] = (df['Close'].values - features['sma_20'].values)
-    features['dist_sma50'] = (df['Close'].values - features['sma_50'].values)
+    # 1. Ensure CLOSE is 1D
+    close = df['Close'].values.flatten()
     
-    delta = df['Close'].diff()
+    # 2. Manual Rolling (safe)
+    sma_20 = pd.Series(close).rolling(20).mean().values
+    sma_50 = pd.Series(close).rolling(50).mean().values
+    
+    features['sma_20'] = sma_20
+    features['sma_50'] = sma_50
+    
+    # 3. Distance (1D - 1D)
+    features['dist_sma20'] = close - sma_20
+    features['dist_sma50'] = close - sma_50
+    
+    # 4. RSI
+    delta = pd.Series(close).diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
     rs = gain / loss
-    features['rsi'] = 100 - (100 / (1 + rs))
-    features['volatility'] = df['Close'].pct_change().rolling(20).std()
-    features['returns'] = df['Close'].pct_change()
+    features['rsi'] = (100 - (100 / (1 + rs))).values
+    
+    # 5. Volatility
+    features['volatility'] = pd.Series(close).pct_change().rolling(20).std().values
+    features['returns'] = pd.Series(close).pct_change().values
+    
     features = features.dropna()
     return features
 
@@ -351,16 +361,27 @@ def optimize_expert(expert_type, tickers, trials=50, timeout=3600):
             if len(features) < 50:
                 continue
             
+            # 1. Align features and df
             df_aligned = df.loc[features.index]
-            returns_5d = df_aligned['Close'].pct_change(5).shift(-5)
-            target_np = (returns_5d.values > 0).astype(int)
             
+            # 2. Target calculation (explicit .flatten())
+            returns_5d = df_aligned['Close'].pct_change(5).shift(-5)
+            target = (returns_5d > 0).astype(int).fillna(0) # FillNa to be safe
+            target_np = target.values.flatten()
+            
+            # 3. Features extraction (explicit .flatten() check not needed for X, but values yes)
             X_np = features.values
             
+            # 4. Check alignment
             if len(X_np) != len(target_np):
+                logger.warning(f"   ⚠️ {ticker} shape mismatch: X={X_np.shape}, y={target_np.shape} - Trimming...")
                 min_len = min(len(X_np), len(target_np))
                 X_np = X_np[:min_len]
                 target_np = target_np[:min_len]
+            
+            # 5. Sanity check: remove last 5 rows because target is shifted -5 (they are NaN/0)
+            X_np = X_np[:-5]
+            target_np = target_np[:-5]
             
             if len(X_np) < 50:
                 continue
@@ -370,7 +391,7 @@ def optimize_expert(expert_type, tickers, trials=50, timeout=3600):
             logger.info(f"   ✅ {ticker}: {len(X_np)} samples")
             
         except Exception as e:
-            logger.warning(f"   ⚠️  {ticker}: {str(e)[:50]}")
+            logger.warning(f"   ⚠️  {ticker}: {str(e)[:100]}")
     
     if not all_X:
         logger.error("❌ No data!")
@@ -437,7 +458,7 @@ if __name__ == '__main__':
     tickers = args.tickers.split(',')
     
     print("\n" + "="*70)
-    print("🧠 PLOUTOS V7.1 - Hyperparameter Optimizer (FIXED)")
+    print("🧠 PLOUTOS V7.1 - Hyperparameter Optimizer (FIXED v5)")
     print("="*70)
     print(f"🌟 GPU: {torch.cuda.is_available()}")
     print(f"📅 Tickers: {len(tickers)}")
