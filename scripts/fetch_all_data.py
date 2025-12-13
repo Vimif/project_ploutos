@@ -39,37 +39,47 @@ def fetch_data():
         for symbol in symbols:
             try:
                 logger.info(f"   ⬇️ Downloading {symbol}...")
-                df = yf.download(symbol, start=start_date, end=end_date, progress=False)
+                
+                # Download with explicit parameters
+                df = yf.download(
+                    symbol, 
+                    start=start_date, 
+                    end=end_date, 
+                    progress=False,
+                    auto_adjust=False  # Don't auto-adjust, we want raw OHLC
+                )
                 
                 if df is None or df.empty:
                     logger.warning(f"   ⚠️ No data for {symbol}")
                     continue
                 
-                # Reset index to get Date column
-                if not isinstance(df.index, pd.DatetimeIndex):
-                    df = df.reset_index()
-                else:
-                    df = df.reset_index()
+                # Reset index to make Date a column
+                df = df.reset_index()
                 
-                # Standardize columns - handle different naming conventions
-                df.columns = [str(c).lower().strip() for c in df.columns]
-                
-                # Create standard column names
+                # Make sure we have the right columns
+                # yfinance returns: Date, Open, High, Low, Close, Adj Close, Volume
                 df_clean = pd.DataFrame()
-                df_clean['Date'] = df['date'] if 'date' in df.columns else df.index
-                df_clean['Open'] = df['open']
-                df_clean['High'] = df['high']
-                df_clean['Low'] = df['low']
-                df_clean['Close'] = df['close']
-                df_clean['Volume'] = df['volume']
+                df_clean['Date'] = pd.to_datetime(df['Date'])
+                df_clean['Open'] = pd.to_numeric(df['Open'], errors='coerce')
+                df_clean['High'] = pd.to_numeric(df['High'], errors='coerce')
+                df_clean['Low'] = pd.to_numeric(df['Low'], errors='coerce')
+                df_clean['Close'] = pd.to_numeric(df['Close'], errors='coerce')
+                df_clean['Volume'] = pd.to_numeric(df['Volume'], errors='coerce')
                 df_clean['Ticker'] = symbol
                 df_clean['Sector'] = sector
+                
+                # Remove any NaN rows
+                df_clean = df_clean.dropna()
+                
+                if len(df_clean) == 0:
+                    logger.warning(f"   ⚠️ No valid data for {symbol}")
+                    continue
                 
                 all_data.append(df_clean)
                 logger.info(f"   ✅ {symbol}: {len(df_clean)} rows")
                 
             except Exception as e:
-                logger.error(f"   ❌ Error fetching {symbol}: {e}")
+                logger.error(f"   ❌ Error fetching {symbol}: {type(e).__name__}: {e}")
 
     if not all_data:
         logger.error("❌ No data fetched!")
@@ -88,6 +98,7 @@ def fetch_data():
     logger.info(f"📊 Total Rows: {len(final_df)}")
     logger.info(f"📈 Tickers: {final_df['Ticker'].nunique()}")
     logger.info(f"📊 Date Range: {final_df['Date'].min()} to {final_df['Date'].max()}")
+    logger.info(f"📊 Sectors: {', '.join(final_df['Sector'].unique())}")
     logger.info("="*50)
 
 if __name__ == '__main__':
