@@ -159,7 +159,7 @@ class PortfolioTracker:
             current_price = current_prices.get(ticker)
             
             if current_price is None or current_price == 0:
-                logger.warning(f"⚠️ Prix non disponible pour {ticker}, utilisation avg_price")
+                logger.debug(f"🔹 {ticker}: Prix live non dispo, utilisation prix d'achat (${pos['avg_price']})")
                 current_price = pos['avg_price']
             
             market_value = pos['shares'] * current_price
@@ -335,59 +335,64 @@ class PortfolioTracker:
     
     def _get_current_prices(self, tickers: List[str]) -> Dict[str, float]:
         """
-        Récupère prix actuels (avec gestion d'erreurs robuste)
+        Récupère prix actuels (ticker par ticker pour robustesse)
         """
         prices = {}
         
-        # 🔥 Filtrer tickers invalides AVANT l'appel yfinance
-        valid_tickers = []
+        # 🔥 NOUVELLE APPROCHE: Téléchargement INDIVIDUEL pour chaque ticker
+        # Plus lent mais BEAUCOUP plus robuste
+        
         for ticker in tickers:
+            # Validation
             if not ticker or len(ticker) == 0 or ticker == '0':
-                logger.warning(f"⚠️ Ticker invalide ignoré: {ticker}")
                 prices[ticker] = 0
                 continue
             
             try:
                 int(ticker)
-                logger.warning(f"⚠️ Ticker numérique ignoré: {ticker}")
                 prices[ticker] = 0
                 continue
             except ValueError:
-                valid_tickers.append(ticker)
-        
-        if not valid_tickers:
-            logger.warning("⚠️ Aucun ticker valide pour récupération prix")
-            return prices
-        
-        try:
-            # 🔥 Suppression du logger yfinance pour éviter spam
-            import logging as yf_logging
-            yf_logger = yf_logging.getLogger('yfinance')
-            original_level = yf_logger.level
-            yf_logger.setLevel(yf_logging.CRITICAL)
+                pass  # OK
             
-            data = yf.download(valid_tickers, period='1d', progress=False)
-            
-            # Restaurer niveau log
-            yf_logger.setLevel(original_level)
-            
-            if len(valid_tickers) == 1:
-                try:
-                    prices[valid_tickers[0]] = float(data['Close'].iloc[-1])
-                except Exception as e:
-                    logger.error(f"Erreur prix pour {valid_tickers[0]}: {e}")
-                    prices[valid_tickers[0]] = 0
-            else:
-                for ticker in valid_tickers:
+            # Téléchargement individuel
+            try:
+                # Silence yfinance
+                import logging as yf_logging
+                yf_logger = yf_logging.getLogger('yfinance')
+                original_level = yf_logger.level
+                yf_logger.setLevel(yf_logging.CRITICAL)
+                
+                # Download (1 seul ticker)
+                stock = yf.Ticker(ticker)
+                hist = stock.history(period='1d')
+                
+                # Restaurer log level
+                yf_logger.setLevel(original_level)
+                
+                if not hist.empty and 'Close' in hist.columns:
+                    prices[ticker] = float(hist['Close'].iloc[-1])
+                    logger.debug(f"✅ {ticker}: ${prices[ticker]:.2f}")
+                else:
+                    # Fallback: essayer avec .info
                     try:
-                        prices[ticker] = float(data['Close'][ticker].iloc[-1])
-                    except Exception as e:
-                        logger.warning(f"Prix non disponible pour {ticker}: {e}")
+                        info = stock.info
+                        if 'currentPrice' in info:
+                            prices[ticker] = float(info['currentPrice'])
+                            logger.debug(f"✅ {ticker}: ${prices[ticker]:.2f} (via .info)")
+                        elif 'regularMarketPrice' in info:
+                            prices[ticker] = float(info['regularMarketPrice'])
+                            logger.debug(f"✅ {ticker}: ${prices[ticker]:.2f} (via regularMarketPrice)")
+                        else:
+                            prices[ticker] = 0
+                            logger.debug(f"🔹 {ticker}: Prix non disponible")
+                    except:
                         prices[ticker] = 0
-        except Exception as e:
-            logger.error(f"Erreur récupération prix globale: {e}")
-            for ticker in valid_tickers:
+                        logger.debug(f"🔹 {ticker}: Prix non disponible")
+                        
+            except Exception as e:
                 prices[ticker] = 0
+                logger.debug(f"🔹 {ticker}: Erreur ({str(e)[:50]})")
         
         return prices
     
