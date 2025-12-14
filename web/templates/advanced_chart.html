@@ -7,6 +7,10 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- 🔥 CHART PRO CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='chart_pro.css') }}">
+    
     <style>
         body {
             background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
@@ -42,13 +46,20 @@
         .scrollbar-hide::-webkit-scrollbar {
             display: none;
         }
+        
+        /* 📊 Ajustements pour Chart Pro */
+        .chart-container {
+            position: relative;
+        }
     </style>
 </head>
 <body class="p-4">
-    <div class="max-w-[98%] mx-auto">
+    <div class="max-w-[98%] mx-auto chart-container">
+        
+        <!-- 🔥 Chart Pro Controls sera injecté ici automatiquement par chart_pro.js -->
         
         <!-- Header -->
-        <div class="glass rounded-lg p-4 mb-4 flex justify-between items-center">
+        <div class="glass rounded-lg p-4 mb-4 flex justify-between items-center header">
             <div class="flex items-center gap-4">
                 <h1 class="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-600 bg-clip-text text-transparent">
                     📊 Ploutos Trader Pro
@@ -78,7 +89,7 @@
         <div class="grid grid-cols-12 gap-4">
             
             <!-- LEFT SIDEBAR -->
-            <div class="col-span-2 space-y-4">
+            <div class="col-span-2 space-y-4 sidebar">
                 
                 <!-- Quick Stats -->
                 <div class="glass rounded-lg p-4">
@@ -181,7 +192,7 @@
             </div>
 
             <!-- RIGHT SIDEBAR -->
-            <div class="col-span-3 space-y-4">
+            <div class="col-span-3 space-y-4 sidebar">
                 
                 <!-- Indicateurs Summary -->
                 <div class="glass rounded-lg p-4">
@@ -221,6 +232,43 @@
         
     </div>
 
+    <!-- 🔥 KEYBOARD SHORTCUTS HINT -->
+    <div class="keyboard-hint">
+        <div style="font-weight: 700; margin-bottom: 8px; color: #00f260;">⌨️ RACCOURCIS</div>
+        <kbd>F</kbd> Fibonacci &nbsp;
+        <kbd>V</kbd> Volume Profile &nbsp;
+        <kbd>S</kbd> Support/Resistance<br>
+        <kbd>A</kbd> Annotations &nbsp;
+        <kbd>Z</kbd> Zen Mode<br>
+        <kbd>1</kbd> <kbd>5</kbd> <kbd>M</kbd> <kbd>Y</kbd> Timeframes
+    </div>
+
+    <!-- 🔥 Volume Profile Sidebar (injecté dynamiquement par chart_pro.js) -->
+
+    <!-- Scripts -->
     <script src="{{ url_for('static', filename='advanced_chart.js') }}"></script>
+    
+    <!-- 🔥 CHART PRO JS -->
+    <script src="{{ url_for('static', filename='chart_pro.js') }}"></script>
+    
+    <script>
+        // 🔗 Connecter Chart Pro avec le chart existant
+        window.addEventListener('chartDataLoaded', function(event) {
+            if (window.chartPro) {
+                window.chartPro.currentTicker = event.detail.ticker;
+                window.chartPro.currentPeriod = event.detail.period;
+                
+                // Charger les données chart tools
+                window.chartPro.fibonacciData = event.detail.data.fibonacci;
+                window.chartPro.volumeProfileData = event.detail.data.volume_profile;
+                window.chartPro.supportResistanceData = event.detail.data.support_resistance;
+                window.chartPro.annotationsData = event.detail.data.annotations;
+                
+                // Mettre à jour le chart avec les nouvelles données
+                window.chartPro.updateChart();
+                window.chartPro.renderVolumeProfile();
+            }
+        });
+    </script>
 </body>
 </html>
