@@ -16,19 +16,33 @@ from datetime import datetime, timedelta
 from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS
 
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # Import bibliothèque complète d'indicateurs
+COMPLETE_INDICATORS = False
+TRADER_PRO = False
+
 try:
     from web.utils.all_indicators import calculate_complete_indicators, get_indicator_signals
     from web.utils.advanced_ai import AdvancedAIAnalyzer
+    COMPLETE_INDICATORS = True
+    logger.info("✅ Indicateurs avancés chargés")
+except Exception as e:
+    logger.warning(f"⚠️  Indicateurs avancés non disponibles: {e}")
+    import ta
+
+try:
     from web.utils.pattern_detector import PatternDetector
     from web.utils.multi_timeframe import MultiTimeframeAnalyzer
-    COMPLETE_INDICATORS = True
     TRADER_PRO = True
+    logger.info("✅ TRADER PRO modules chargés")
 except Exception as e:
-    print(f"Warning: {e}")
-    COMPLETE_INDICATORS = False
-    TRADER_PRO = False
-    import ta
+    logger.error(f"❌ TRADER PRO non disponible: {e}")
+    logger.error("Vérifiez que les fichiers existent:")
+    logger.error("  - web/utils/pattern_detector.py")
+    logger.error("  - web/utils/multi_timeframe.py")
 
 # Import modules Ploutos
 try:
@@ -70,8 +84,6 @@ def clean_for_json(obj):
 # Setup
 app = Flask(__name__)
 CORS(app)
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 # Initialisation
 alpaca_client = None
@@ -94,9 +106,29 @@ if V8_ORACLE_AVAILABLE:
         v8_oracle = None
 
 # Initialiser les modules Trader Pro
-ai_analyzer = AdvancedAIAnalyzer() if COMPLETE_INDICATORS else None
-pattern_detector = PatternDetector() if TRADER_PRO else None
-mtf_analyzer = MultiTimeframeAnalyzer() if TRADER_PRO else None
+ai_analyzer = None
+if COMPLETE_INDICATORS:
+    try:
+        ai_analyzer = AdvancedAIAnalyzer()
+        logger.info("✅ AI Analyzer initialisé")
+    except Exception as e:
+        logger.error(f"❌ AI Analyzer error: {e}")
+
+pattern_detector = None
+mtf_analyzer = None
+
+if TRADER_PRO:
+    try:
+        pattern_detector = PatternDetector()
+        logger.info("✅ Pattern Detector initialisé")
+    except Exception as e:
+        logger.error(f"❌ Pattern Detector error: {e}")
+    
+    try:
+        mtf_analyzer = MultiTimeframeAnalyzer()
+        logger.info("✅ MTF Analyzer initialisé")
+    except Exception as e:
+        logger.error(f"❌ MTF Analyzer error: {e}")
 
 cache = {
     'account': None,
@@ -156,8 +188,11 @@ def api_chart_data(ticker):
         if pattern_detector:
             try:
                 patterns = pattern_detector.detect_all_patterns(df)
+                logger.info(f"✅ Patterns détectés pour {ticker}")
             except Exception as e:
-                logger.error(f"Erreur patterns: {e}")
+                logger.error(f"❌ Erreur patterns pour {ticker}: {e}")
+        else:
+            logger.warning("⚠️  Pattern detector non disponible")
         
         # 🚀 NOUVEAU : Générer analyse IA complète
         ai_analysis = None
@@ -238,6 +273,7 @@ def api_patterns(ticker):
         return jsonify(clean_for_json(patterns))
         
     except Exception as e:
+        logger.error(f"Erreur patterns API: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 
@@ -251,6 +287,7 @@ def api_multi_timeframe(ticker):
         analysis = mtf_analyzer.analyze_multi_timeframe(ticker.upper())
         return jsonify(clean_for_json(analysis))
     except Exception as e:
+        logger.error(f"Erreur MTF API: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 
@@ -371,15 +408,6 @@ def generate_smart_ai_response(message: str, ticker: str, context: dict) -> str:
             return f"🟡 Le RSI de {ticker} est à {rsi:.1f}, en zone **neutre**. \n\n" \
                    f"Le momentum n'est ni extrêmement haussier ni baissier. Attendez un signal plus clair."
     
-    # MACD
-    elif 'macd' in message:
-        return f"📊 Le **MACD** (Moving Average Convergence Divergence) est un indicateur de momentum. \n\n" \
-               f"🔍 **Comment l'utiliser**: \n" \
-               f"- Croisement MACD > Signal = **Signal d'achat**\n" \
-               f"- Croisement MACD < Signal = **Signal de vente**\n" \
-               f"- Histogram positif = Momentum haussier\n" \
-               f"- Histogram négatif = Momentum baissier"
-    
     # Default
     else:
         return f"🤖 Je suis l'**assistant IA Ploutos V8 Trader Pro** ! Je peux vous aider avec:\n\n" \
@@ -417,7 +445,17 @@ def api_v8_predict_single(ticker):
 
 @app.route('/api/health')
 def api_health():
-    return jsonify({'status': 'healthy'}), 200
+    return jsonify({
+        'status': 'healthy',
+        'modules': {
+            'complete_indicators': COMPLETE_INDICATORS,
+            'trader_pro': TRADER_PRO,
+            'pattern_detector': pattern_detector is not None,
+            'mtf_analyzer': mtf_analyzer is not None,
+            'ai_analyzer': ai_analyzer is not None,
+            'v8_oracle': v8_oracle is not None
+        }
+    }), 200
 
 
 if __name__ == '__main__':
@@ -435,16 +473,24 @@ if __name__ == '__main__':
         print("✅ 50+ indicateurs professionnels")
     
     if TRADER_PRO:
-        print("🎯 TRADER PRO activé (Patterns + MTF + Fibonacci)")
+        print("🎯 TRADER PRO activé")
+        if pattern_detector:
+            print("  ✅ Pattern Detector")
+        if mtf_analyzer:
+            print("  ✅ Multi-Timeframe Analyzer")
+    else:
+        print("❌ TRADER PRO désactivé (modules non chargés)")
     
     if ai_analyzer:
-        print("🤖 IA avancée activée (analyse multi-facteurs)")
+        print("🤖 IA avancée activée")
     
     if v8_oracle:
         print(f"⭐ V8 Oracle: {len(v8_oracle.models)} modèles")
     
     print("\n✅ Pages: / et /chart")
-    print("🎯 Nouvelles API: /api/patterns/<ticker>, /api/mtf/<ticker>")
+    if TRADER_PRO:
+        print("🎯 Nouvelles API: /api/patterns/<ticker>, /api/mtf/<ticker>")
+    print("🩺 Test: /api/health")
     print("\n" + "="*70 + "\n")
     
     app.run(host=host, port=port, debug=False)
