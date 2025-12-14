@@ -14,7 +14,6 @@
 
 class ChartPro {
     constructor() {
-        // 🔥 FIX: Récupérer ticker depuis URL params ou input
         this.currentTicker = this.getCurrentTicker();
         this.currentPeriod = '3mo';
         this.zenMode = false;
@@ -30,53 +29,30 @@ class ChartPro {
         
         this.initKeyboardShortcuts();
         this.createControlPanel();
-        
-        // Écouter les changements de ticker
         this.watchTickerChanges();
         
-        // 🔥 AUTO-LOAD Support/Resistance au démarrage
+        // Auto-load S/R au démarrage
         setTimeout(() => {
             if (this.showSupportResistance) {
                 this.loadSupportResistance();
             }
-        }, 2000); // Délais pour laisser le chart principal se charger
+        }, 2000);
     }
     
-    /**
-     * 🎯 Récupérer ticker actuel
-     */
     getCurrentTicker() {
-        // 1. Essayer URL params
         const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.has('ticker')) {
-            return urlParams.get('ticker').toUpperCase();
-        }
+        if (urlParams.has('ticker')) return urlParams.get('ticker').toUpperCase();
         
-        // 2. Essayer input ticker si existe
         const tickerInput = document.getElementById('ticker-input');
-        if (tickerInput && tickerInput.value) {
-            return tickerInput.value.toUpperCase();
-        }
+        if (tickerInput && tickerInput.value) return tickerInput.value.toUpperCase();
         
-        // 3. Essayer window.currentTicker (défini par advanced_chart.js)
-        if (window.currentTicker) {
-            return window.currentTicker.toUpperCase();
-        }
+        if (window.currentTicker) return window.currentTicker.toUpperCase();
+        if (window.currentData && window.currentData.ticker) return window.currentData.ticker.toUpperCase();
         
-        // 4. Essayer currentData globale
-        if (window.currentData && window.currentData.ticker) {
-            return window.currentData.ticker.toUpperCase();
-        }
-        
-        // 5. Fallback
         return 'AAPL';
     }
     
-    /**
-     * 👀 Écouter les changements de ticker
-     */
     watchTickerChanges() {
-        // Observer window.currentData.ticker
         let lastTicker = this.currentTicker;
         
         setInterval(() => {
@@ -90,65 +66,35 @@ class ChartPro {
         }, 500);
     }
     
-    /**
-     * 🔄 Callback changement ticker
-     */
     onTickerChange() {
-        // Reset cache
         this.fibonacciData = null;
         this.volumeProfileData = null;
         this.supportResistanceData = null;
         this.annotationsData = null;
         
-        // Recharger si features activées
         if (this.showFibonacci) this.loadFibonacci();
         if (this.showVolumeProfile) this.loadVolumeProfile();
         if (this.showSupportResistance) this.loadSupportResistance();
     }
     
-    /**
-     * ⌨️ Raccourcis clavier
-     */
     initKeyboardShortcuts() {
         document.addEventListener('keydown', (e) => {
-            // Ne pas trigger si on écrit dans un input
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
             
             switch(e.key.toLowerCase()) {
-                case 'z':
-                    this.toggleZenMode();
-                    break;
-                case 'f':
-                    this.toggleFibonacci();
-                    break;
-                case 'v':
-                    this.toggleVolumeProfile();
-                    break;
-                case 's':
-                    this.toggleSupportResistance();
-                    break;
-                case 'a':
-                    this.toggleAnnotations();
-                    break;
-                case '1':
-                    this.changePeriod('1d');
-                    break;
-                case '5':
-                    this.changePeriod('5d');
-                    break;
-                case 'm':
-                    this.changePeriod('1mo');
-                    break;
-                case 'y':
-                    this.changePeriod('1y');
-                    break;
+                case 'z': this.toggleZenMode(); break;
+                case 'f': this.toggleFibonacci(); break;
+                case 'v': this.toggleVolumeProfile(); break;
+                case 's': this.toggleSupportResistance(); break;
+                case 'a': this.toggleAnnotations(); break;
+                case '1': this.changePeriod('1d'); break;
+                case '5': this.changePeriod('5d'); break;
+                case 'm': this.changePeriod('1mo'); break;
+                case 'y': this.changePeriod('1y'); break;
             }
         });
     }
     
-    /**
-     * 🏛️ Panneau de contrôle
-     */
     createControlPanel() {
         const panel = document.createElement('div');
         panel.id = 'chart-pro-controls';
@@ -182,18 +128,15 @@ class ChartPro {
             </div>
         `;
         
-        // Insérer en haut de la page chart
         const chartContainer = document.querySelector('.chart-container') || document.body;
         chartContainer.insertBefore(panel, chartContainer.firstChild);
         
-        // Event listeners
         document.getElementById('btn-fibonacci').addEventListener('click', () => this.toggleFibonacci());
         document.getElementById('btn-volume-profile').addEventListener('click', () => this.toggleVolumeProfile());
         document.getElementById('btn-support-resistance').addEventListener('click', () => this.toggleSupportResistance());
         document.getElementById('btn-annotations').addEventListener('click', () => this.toggleAnnotations());
         document.getElementById('btn-zen-mode').addEventListener('click', () => this.toggleZenMode());
         
-        // Timeframe selector
         document.querySelectorAll('.tf-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
@@ -203,9 +146,6 @@ class ChartPro {
         });
     }
     
-    /**
-     * 📊 Toggle Fibonacci
-     */
     async toggleFibonacci() {
         this.showFibonacci = !this.showFibonacci;
         document.getElementById('btn-fibonacci').classList.toggle('active');
@@ -217,9 +157,6 @@ class ChartPro {
         }
     }
     
-    /**
-     * 📉 Toggle Volume Profile
-     */
     async toggleVolumeProfile() {
         this.showVolumeProfile = !this.showVolumeProfile;
         document.getElementById('btn-volume-profile').classList.toggle('active');
@@ -231,9 +168,6 @@ class ChartPro {
         }
     }
     
-    /**
-     * 🎯 Toggle Support/Resistance
-     */
     async toggleSupportResistance() {
         this.showSupportResistance = !this.showSupportResistance;
         document.getElementById('btn-support-resistance').classList.toggle('active');
@@ -245,24 +179,17 @@ class ChartPro {
         }
     }
     
-    /**
-     * ⭐ Toggle Annotations
-     */
     toggleAnnotations() {
         this.showAnnotations = !this.showAnnotations;
         document.getElementById('btn-annotations').classList.toggle('active');
         this.updateChart();
     }
     
-    /**
-     * 🧘 Toggle Zen Mode
-     */
     toggleZenMode() {
         this.zenMode = !this.zenMode;
         document.getElementById('btn-zen-mode').classList.toggle('active');
         document.body.classList.toggle('zen-mode');
         
-        // Masquer/afficher éléments
         const hideElements = ['.header', '.nav', '.sidebar', '.footer'];
         hideElements.forEach(selector => {
             const el = document.querySelector(selector);
@@ -270,68 +197,52 @@ class ChartPro {
         });
     }
     
-    /**
-     * 🔄 Changer période
-     */
     changePeriod(period) {
         this.currentPeriod = period;
         this.loadChartData();
     }
     
-    /**
-     * 📊 Charger Fibonacci depuis API
-     */
     async loadFibonacci() {
         try {
             console.log(`🔄 Loading Fibonacci for ${this.currentTicker}...`);
             const response = await fetch(`/api/chart/${this.currentTicker}/fibonacci?period=${this.currentPeriod}`);
             this.fibonacciData = await response.json();
             console.log('✅ Fibonacci loaded:', this.fibonacciData);
-            this.updateChart(); // 🔥 AUTO UPDATE
+            this.updateChart();
         } catch (error) {
             console.error('❌ Erreur Fibonacci:', error);
         }
     }
     
-    /**
-     * 📉 Charger Volume Profile depuis API
-     */
     async loadVolumeProfile() {
         try {
             console.log(`🔄 Loading Volume Profile for ${this.currentTicker}...`);
             const response = await fetch(`/api/chart/${this.currentTicker}/volume-profile?period=${this.currentPeriod}`);
             this.volumeProfileData = await response.json();
             console.log('✅ Volume Profile loaded:', this.volumeProfileData);
-            this.renderVolumeProfile(); // 🔥 AUTO UPDATE
+            this.renderVolumeProfile();
         } catch (error) {
             console.error('❌ Erreur Volume Profile:', error);
         }
     }
     
-    /**
-     * 🎯 Charger Support/Resistance depuis API
-     */
     async loadSupportResistance() {
         try {
             console.log(`🔄 Loading Support/Resistance for ${this.currentTicker}...`);
             const response = await fetch(`/api/chart/${this.currentTicker}/support-resistance?period=${this.currentPeriod}`);
             this.supportResistanceData = await response.json();
             console.log('✅ Support/Resistance loaded:', this.supportResistanceData);
-            this.updateChart(); // 🔥 AUTO UPDATE
+            this.updateChart();
         } catch (error) {
             console.error('❌ Erreur S/R:', error);
         }
     }
     
-    /**
-     * 📊 Charger données chart complètes
-     */
     async loadChartData() {
         try {
             const response = await fetch(`/api/chart/${this.currentTicker}?period=${this.currentPeriod}`);
             const data = await response.json();
             
-            // Extraire les chart tools du résultat principal
             this.fibonacciData = data.fibonacci;
             this.volumeProfileData = data.volume_profile;
             this.supportResistanceData = data.support_resistance;
@@ -348,7 +259,6 @@ class ChartPro {
      * 📊 Mettre à jour le chart (Plotly)
      */
     updateChart() {
-        // 🔥 FIX: Utiliser 'main-chart' au lieu de 'chart'
         const chartElement = document.getElementById('main-chart');
         
         if (!chartElement) {
@@ -364,7 +274,7 @@ class ChartPro {
         const shapes = [];
         const annotations = [];
         
-        // 📊 Fibonacci Levels
+        // 📊 Fibonacci Levels - 🔥 FILTRE les niveaux dans la zone visible
         if (this.showFibonacci && this.fibonacciData && this.fibonacciData.levels) {
             const fib = this.fibonacciData;
             const colors = {
@@ -379,7 +289,18 @@ class ChartPro {
                 '261.8': '#fd79a8'
             };
             
+            // 🔥 Déterminer la plage visible du chart
+            const visibleMin = fib.swing_low * 0.95;  // 5% marge basse
+            const visibleMax = fib.swing_high * 1.05;  // 5% marge haute
+            
+            let fibCount = 0;
             Object.entries(fib.levels).forEach(([level, price]) => {
+                // 🔥 FILTRE: ignorer les niveaux hors zone visible
+                if (price < visibleMin || price > visibleMax) {
+                    console.log(`⚠️ Fibonacci ${level}% ($${price.toFixed(2)}) hors zone visible - ignoré`);
+                    return;
+                }
+                
                 shapes.push({
                     type: 'line',
                     x0: 0,
@@ -395,22 +316,24 @@ class ChartPro {
                 });
                 
                 annotations.push({
-                    x: 1,
+                    x: 0.98,  // 🔥 Position à 98% pour éviter le débordement
                     xref: 'paper',
                     y: price,
-                    xanchor: 'left',
-                    text: `  Fib ${level}% - $${price.toFixed(2)}`,
+                    xanchor: 'right',
+                    text: `Fib ${level}% $${price.toFixed(2)}`,
                     showarrow: false,
                     font: {
-                        size: 10,
+                        size: 9,
                         color: colors[level] || '#95a5a6'
                     },
                     bgcolor: 'rgba(0,0,0,0.7)',
                     borderpad: 2
                 });
+                
+                fibCount++;
             });
             
-            console.log(`✅ ${Object.keys(fib.levels).length} Fibonacci levels added`);
+            console.log(`✅ ${fibCount} Fibonacci levels added (visible range: $${visibleMin.toFixed(2)} - $${visibleMax.toFixed(2)})`);
         }
         
         // 🎯 Support/Resistance
@@ -432,14 +355,14 @@ class ChartPro {
                 });
                 
                 annotations.push({
-                    x: 0,
+                    x: 0.02,  // 🔥 Position à 2% à gauche
                     xref: 'paper',
                     y: support.price,
-                    xanchor: 'right',
-                    text: `Support $${support.price.toFixed(2)}  `,
+                    xanchor: 'left',
+                    text: `Supp $${support.price.toFixed(2)}`,
                     showarrow: false,
                     font: { size: 9, color: '#00f260' },
-                    bgcolor: 'rgba(0,242,96,0.1)',
+                    bgcolor: 'rgba(0,242,96,0.2)',
                     borderpad: 2
                 });
             });
@@ -461,14 +384,14 @@ class ChartPro {
                 });
                 
                 annotations.push({
-                    x: 0,
+                    x: 0.02,
                     xref: 'paper',
                     y: resistance.price,
-                    xanchor: 'right',
-                    text: `Resistance $${resistance.price.toFixed(2)}  `,
+                    xanchor: 'left',
+                    text: `Resi $${resistance.price.toFixed(2)}`,
                     showarrow: false,
                     font: { size: 9, color: '#ff4757' },
-                    bgcolor: 'rgba(255,71,87,0.1)',
+                    bgcolor: 'rgba(255,71,87,0.2)',
                     borderpad: 2
                 });
             });
@@ -489,9 +412,6 @@ class ChartPro {
         }
     }
     
-    /**
-     * 📉 Render Volume Profile (sidebar)
-     */
     renderVolumeProfile() {
         let container = document.getElementById('volume-profile-container');
         
