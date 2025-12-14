@@ -33,6 +33,13 @@ class ChartPro {
         
         // Écouter les changements de ticker
         this.watchTickerChanges();
+        
+        // 🔥 AUTO-LOAD Support/Resistance au démarrage
+        setTimeout(() => {
+            if (this.showSupportResistance) {
+                this.loadSupportResistance();
+            }
+        }, 2000); // Délais pour laisser le chart principal se charger
     }
     
     /**
@@ -56,7 +63,12 @@ class ChartPro {
             return window.currentTicker.toUpperCase();
         }
         
-        // 4. Fallback
+        // 4. Essayer currentData globale
+        if (window.currentData && window.currentData.ticker) {
+            return window.currentData.ticker.toUpperCase();
+        }
+        
+        // 5. Fallback
         return 'AAPL';
     }
     
@@ -64,13 +76,13 @@ class ChartPro {
      * 👀 Écouter les changements de ticker
      */
     watchTickerChanges() {
-        // Observer window.currentTicker
+        // Observer window.currentData.ticker
         let lastTicker = this.currentTicker;
         
         setInterval(() => {
             const newTicker = this.getCurrentTicker();
             if (newTicker !== lastTicker) {
-                console.log(`🔄 Ticker changé: ${lastTicker} → ${newTicker}`);
+                console.log(`🔄 Chart Pro - Ticker changé: ${lastTicker} → ${newTicker}`);
                 lastTicker = newTicker;
                 this.currentTicker = newTicker;
                 this.onTickerChange();
@@ -200,9 +212,9 @@ class ChartPro {
         
         if (this.showFibonacci && !this.fibonacciData) {
             await this.loadFibonacci();
+        } else {
+            this.updateChart();
         }
-        
-        this.updateChart();
     }
     
     /**
@@ -214,9 +226,9 @@ class ChartPro {
         
         if (this.showVolumeProfile && !this.volumeProfileData) {
             await this.loadVolumeProfile();
+        } else {
+            this.renderVolumeProfile();
         }
-        
-        this.renderVolumeProfile();
     }
     
     /**
@@ -228,9 +240,9 @@ class ChartPro {
         
         if (this.showSupportResistance && !this.supportResistanceData) {
             await this.loadSupportResistance();
+        } else {
+            this.updateChart();
         }
-        
-        this.updateChart();
     }
     
     /**
@@ -275,6 +287,7 @@ class ChartPro {
             const response = await fetch(`/api/chart/${this.currentTicker}/fibonacci?period=${this.currentPeriod}`);
             this.fibonacciData = await response.json();
             console.log('✅ Fibonacci loaded:', this.fibonacciData);
+            this.updateChart(); // 🔥 AUTO UPDATE
         } catch (error) {
             console.error('❌ Erreur Fibonacci:', error);
         }
@@ -289,6 +302,7 @@ class ChartPro {
             const response = await fetch(`/api/chart/${this.currentTicker}/volume-profile?period=${this.currentPeriod}`);
             this.volumeProfileData = await response.json();
             console.log('✅ Volume Profile loaded:', this.volumeProfileData);
+            this.renderVolumeProfile(); // 🔥 AUTO UPDATE
         } catch (error) {
             console.error('❌ Erreur Volume Profile:', error);
         }
@@ -303,6 +317,7 @@ class ChartPro {
             const response = await fetch(`/api/chart/${this.currentTicker}/support-resistance?period=${this.currentPeriod}`);
             this.supportResistanceData = await response.json();
             console.log('✅ Support/Resistance loaded:', this.supportResistanceData);
+            this.updateChart(); // 🔥 AUTO UPDATE
         } catch (error) {
             console.error('❌ Erreur S/R:', error);
         }
@@ -333,11 +348,16 @@ class ChartPro {
      * 📊 Mettre à jour le chart (Plotly)
      */
     updateChart() {
-        // Cette fonction doit être appelée APRES que Plotly ait créé le chart
-        // On suppose que chartData global existe
+        // 🔥 FIX: Utiliser 'main-chart' au lieu de 'chart'
+        const chartElement = document.getElementById('main-chart');
         
-        if (!window.chartData) {
-            console.warn('⚠️ chartData non disponible');
+        if (!chartElement) {
+            console.warn('⚠️ main-chart element non trouvé');
+            return;
+        }
+        
+        if (!window.Plotly) {
+            console.warn('⚠️ Plotly non chargé');
             return;
         }
         
@@ -389,6 +409,8 @@ class ChartPro {
                     borderpad: 2
                 });
             });
+            
+            console.log(`✅ ${Object.keys(fib.levels).length} Fibonacci levels added`);
         }
         
         // 🎯 Support/Resistance
@@ -404,7 +426,7 @@ class ChartPro {
                     y1: support.price,
                     line: {
                         color: '#00f260',
-                        width: Math.min(support.strength, 3),
+                        width: Math.min(support.strength || 2, 3),
                         dash: 'dash'
                     }
                 });
@@ -433,7 +455,7 @@ class ChartPro {
                     y1: resistance.price,
                     line: {
                         color: '#ff4757',
-                        width: Math.min(resistance.strength, 3),
+                        width: Math.min(resistance.strength || 2, 3),
                         dash: 'dash'
                     }
                 });
@@ -450,14 +472,20 @@ class ChartPro {
                     borderpad: 2
                 });
             });
+            
+            const totalSR = (this.supportResistanceData.supports?.length || 0) + (this.supportResistanceData.resistances?.length || 0);
+            console.log(`✅ ${totalSR} Support/Resistance levels added`);
         }
         
         // Update Plotly chart
-        if (window.Plotly && document.getElementById('chart')) {
-            Plotly.relayout('chart', {
+        try {
+            Plotly.relayout('main-chart', {
                 shapes: shapes,
                 annotations: annotations
             });
+            console.log(`✅ Chart updated with ${shapes.length} shapes and ${annotations.length} annotations`);
+        } catch (error) {
+            console.error('❌ Erreur Plotly.relayout:', error);
         }
     }
     
@@ -517,6 +545,7 @@ class ChartPro {
         
         html += '</div>';
         container.innerHTML = html;
+        console.log('✅ Volume Profile rendered');
     }
 }
 
@@ -525,9 +554,11 @@ let chartPro;
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         chartPro = new ChartPro();
+        console.log('✅ Chart Pro initialized');
     });
 } else {
     chartPro = new ChartPro();
+    console.log('✅ Chart Pro initialized');
 }
 
 // Export pour utilisation externe
