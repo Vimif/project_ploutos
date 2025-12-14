@@ -14,7 +14,8 @@
 
 class ChartPro {
     constructor() {
-        this.currentTicker = 'AAPL';
+        // 🔥 FIX: Récupérer ticker depuis URL params ou input
+        this.currentTicker = this.getCurrentTicker();
         this.currentPeriod = '3mo';
         this.zenMode = false;
         this.showFibonacci = false;
@@ -29,6 +30,68 @@ class ChartPro {
         
         this.initKeyboardShortcuts();
         this.createControlPanel();
+        
+        // Écouter les changements de ticker
+        this.watchTickerChanges();
+    }
+    
+    /**
+     * 🎯 Récupérer ticker actuel
+     */
+    getCurrentTicker() {
+        // 1. Essayer URL params
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('ticker')) {
+            return urlParams.get('ticker').toUpperCase();
+        }
+        
+        // 2. Essayer input ticker si existe
+        const tickerInput = document.getElementById('ticker-input');
+        if (tickerInput && tickerInput.value) {
+            return tickerInput.value.toUpperCase();
+        }
+        
+        // 3. Essayer window.currentTicker (défini par advanced_chart.js)
+        if (window.currentTicker) {
+            return window.currentTicker.toUpperCase();
+        }
+        
+        // 4. Fallback
+        return 'AAPL';
+    }
+    
+    /**
+     * 👀 Écouter les changements de ticker
+     */
+    watchTickerChanges() {
+        // Observer window.currentTicker
+        let lastTicker = this.currentTicker;
+        
+        setInterval(() => {
+            const newTicker = this.getCurrentTicker();
+            if (newTicker !== lastTicker) {
+                console.log(`🔄 Ticker changé: ${lastTicker} → ${newTicker}`);
+                lastTicker = newTicker;
+                this.currentTicker = newTicker;
+                this.onTickerChange();
+            }
+        }, 500);
+    }
+    
+    /**
+     * 🔄 Callback changement ticker
+     */
+    onTickerChange() {
+        // Reset cache
+        this.fibonacciData = null;
+        this.volumeProfileData = null;
+        this.supportResistanceData = null;
+        this.annotationsData = null;
+        
+        // Recharger si features activées
+        if (this.showFibonacci) this.loadFibonacci();
+        if (this.showVolumeProfile) this.loadVolumeProfile();
+        if (this.showSupportResistance) this.loadSupportResistance();
     }
     
     /**
@@ -208,6 +271,7 @@ class ChartPro {
      */
     async loadFibonacci() {
         try {
+            console.log(`🔄 Loading Fibonacci for ${this.currentTicker}...`);
             const response = await fetch(`/api/chart/${this.currentTicker}/fibonacci?period=${this.currentPeriod}`);
             this.fibonacciData = await response.json();
             console.log('✅ Fibonacci loaded:', this.fibonacciData);
@@ -221,6 +285,7 @@ class ChartPro {
      */
     async loadVolumeProfile() {
         try {
+            console.log(`🔄 Loading Volume Profile for ${this.currentTicker}...`);
             const response = await fetch(`/api/chart/${this.currentTicker}/volume-profile?period=${this.currentPeriod}`);
             this.volumeProfileData = await response.json();
             console.log('✅ Volume Profile loaded:', this.volumeProfileData);
@@ -234,6 +299,7 @@ class ChartPro {
      */
     async loadSupportResistance() {
         try {
+            console.log(`🔄 Loading Support/Resistance for ${this.currentTicker}...`);
             const response = await fetch(`/api/chart/${this.currentTicker}/support-resistance?period=${this.currentPeriod}`);
             this.supportResistanceData = await response.json();
             console.log('✅ Support/Resistance loaded:', this.supportResistanceData);
@@ -279,7 +345,7 @@ class ChartPro {
         const annotations = [];
         
         // 📊 Fibonacci Levels
-        if (this.showFibonacci && this.fibonacciData) {
+        if (this.showFibonacci && this.fibonacciData && this.fibonacciData.levels) {
             const fib = this.fibonacciData;
             const colors = {
                 '0.0': '#ff4757',
@@ -293,29 +359,27 @@ class ChartPro {
                 '261.8': '#fd79a8'
             };
             
-            Object.entries(fib.levels).forEach(([level, data]) => {
-                // Ligne horizontale
+            Object.entries(fib.levels).forEach(([level, price]) => {
                 shapes.push({
                     type: 'line',
                     x0: 0,
                     x1: 1,
                     xref: 'paper',
-                    y0: data.price,
-                    y1: data.price,
+                    y0: price,
+                    y1: price,
                     line: {
                         color: colors[level] || '#95a5a6',
                         width: level === '50.0' ? 2 : 1,
-                        dash: level.includes('.') ? 'dot' : 'solid'
+                        dash: 'dot'
                     }
                 });
                 
-                // Label
                 annotations.push({
                     x: 1,
                     xref: 'paper',
-                    y: data.price,
+                    y: price,
                     xanchor: 'left',
-                    text: `  ${data.label} - $${data.price.toFixed(2)}`,
+                    text: `  Fib ${level}% - $${price.toFixed(2)}`,
                     showarrow: false,
                     font: {
                         size: 10,
@@ -330,7 +394,7 @@ class ChartPro {
         // 🎯 Support/Resistance
         if (this.showSupportResistance && this.supportResistanceData) {
             // Supports (vert)
-            this.supportResistanceData.supports.forEach(support => {
+            (this.supportResistanceData.supports || []).forEach(support => {
                 shapes.push({
                     type: 'line',
                     x0: 0,
@@ -340,7 +404,7 @@ class ChartPro {
                     y1: support.price,
                     line: {
                         color: '#00f260',
-                        width: support.strength,
+                        width: Math.min(support.strength, 3),
                         dash: 'dash'
                     }
                 });
@@ -350,7 +414,7 @@ class ChartPro {
                     xref: 'paper',
                     y: support.price,
                     xanchor: 'right',
-                    text: `Support $${support.price.toFixed(2)} (${support.touches}x)  `,
+                    text: `Support $${support.price.toFixed(2)}  `,
                     showarrow: false,
                     font: { size: 9, color: '#00f260' },
                     bgcolor: 'rgba(0,242,96,0.1)',
@@ -359,7 +423,7 @@ class ChartPro {
             });
             
             // Resistances (rouge)
-            this.supportResistanceData.resistances.forEach(resistance => {
+            (this.supportResistanceData.resistances || []).forEach(resistance => {
                 shapes.push({
                     type: 'line',
                     x0: 0,
@@ -369,7 +433,7 @@ class ChartPro {
                     y1: resistance.price,
                     line: {
                         color: '#ff4757',
-                        width: resistance.strength,
+                        width: Math.min(resistance.strength, 3),
                         dash: 'dash'
                     }
                 });
@@ -379,39 +443,11 @@ class ChartPro {
                     xref: 'paper',
                     y: resistance.price,
                     xanchor: 'right',
-                    text: `Resistance $${resistance.price.toFixed(2)} (${resistance.touches}x)  `,
+                    text: `Resistance $${resistance.price.toFixed(2)}  `,
                     showarrow: false,
                     font: { size: 9, color: '#ff4757' },
                     bgcolor: 'rgba(255,71,87,0.1)',
                     borderpad: 2
-                });
-            });
-        }
-        
-        // ⭐ Smart Annotations
-        if (this.showAnnotations && this.annotationsData) {
-            this.annotationsData.forEach(ann => {
-                const symbols = {
-                    'buy': '🟢',
-                    'sell': '🔴',
-                    'pattern': '⭐',
-                    'volume': '📈',
-                    'support': '🟢',
-                    'resistance': '🔴'
-                };
-                
-                annotations.push({
-                    x: ann.date,
-                    y: ann.price,
-                    text: `${symbols[ann.type] || '📌'} ${ann.text}`,
-                    showarrow: true,
-                    arrowhead: 2,
-                    arrowcolor: ann.color,
-                    font: { size: 10, color: '#fff' },
-                    bgcolor: ann.color,
-                    borderpad: 4,
-                    bordercolor: ann.color,
-                    borderwidth: 2
                 });
             });
         }
@@ -445,7 +481,7 @@ class ChartPro {
         
         container.style.display = 'block';
         
-        if (!this.volumeProfileData) {
+        if (!this.volumeProfileData || !this.volumeProfileData.profile) {
             container.innerHTML = '<div class="loading">⌛ Chargement...</div>';
             return;
         }
@@ -457,15 +493,15 @@ class ChartPro {
             <h3>📉 Volume Profile</h3>
             <div class="vp-stats">
                 <div>POC: <strong>$${vp.poc_price.toFixed(2)}</strong></div>
-                <div>Value Area: $${vp.value_area_low.toFixed(2)} - $${vp.value_area_high.toFixed(2)}</div>
+                <div>VA: $${vp.value_area_low.toFixed(2)} - $${vp.value_area_high.toFixed(2)}</div>
             </div>
             <div class="vp-bars">
         `;
         
-        vp.profile.reverse().forEach(level => {
+        vp.profile.slice().reverse().forEach(level => {
             const widthPct = (level.volume / maxVolume * 100).toFixed(1);
-            const isPoc = level.is_poc;
-            const inVa = level.in_value_area;
+            const isPoc = Math.abs(level.price - vp.poc_price) < 0.01;
+            const inVa = level.price >= vp.value_area_low && level.price <= vp.value_area_high;
             
             const barClass = isPoc ? 'poc' : (inVa ? 'value-area' : '');
             
