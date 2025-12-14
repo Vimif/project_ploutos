@@ -31,7 +31,6 @@ class ChartPro {
         this.createControlPanel();
         this.watchTickerChanges();
         
-        // Auto-load S/R au démarrage
         setTimeout(() => {
             if (this.showSupportResistance) {
                 this.loadSupportResistance();
@@ -274,7 +273,7 @@ class ChartPro {
         const shapes = [];
         const annotations = [];
         
-        // 📊 Fibonacci Levels - 🔥 FILTRE les niveaux dans la zone visible
+        // 📊 Fibonacci Levels
         if (this.showFibonacci && this.fibonacciData && this.fibonacciData.levels) {
             const fib = this.fibonacciData;
             const colors = {
@@ -289,13 +288,13 @@ class ChartPro {
                 '261.8': '#fd79a8'
             };
             
-            // 🔥 Déterminer la plage visible du chart
-            const visibleMin = fib.swing_low * 0.95;  // 5% marge basse
-            const visibleMax = fib.swing_high * 1.05;  // 5% marge haute
+            // Déterminer la plage visible du chart
+            const visibleMin = fib.swing_low * 0.95;
+            const visibleMax = fib.swing_high * 1.05;
             
             let fibCount = 0;
             Object.entries(fib.levels).forEach(([level, price]) => {
-                // 🔥 FILTRE: ignorer les niveaux hors zone visible
+                // 🔥 Filtre: ignorer les niveaux hors zone visible
                 if (price < visibleMin || price > visibleMax) {
                     console.log(`⚠️ Fibonacci ${level}% ($${price.toFixed(2)}) hors zone visible - ignoré`);
                     return;
@@ -315,30 +314,44 @@ class ChartPro {
                     }
                 });
                 
+                // 🔥 FIX: Format amélioré pour éviter la troncature
+                const levelNum = parseFloat(level);
+                let labelText;
+                
+                if (levelNum >= 100) {
+                    // Extensions: format court "E1.62" au lieu de "Fib 161.8%"
+                    labelText = `E${(levelNum / 100).toFixed(2)} $${price.toFixed(2)}`;
+                } else {
+                    // Retracements: format court "${levelNum.toFixed(1)}%"
+                    labelText = `${levelNum.toFixed(1)}% $${price.toFixed(2)}`;
+                }
+                
                 annotations.push({
-                    x: 0.98,  // 🔥 Position à 98% pour éviter le débordement
+                    x: 0.98,
                     xref: 'paper',
                     y: price,
                     xanchor: 'right',
-                    text: `Fib ${level}% $${price.toFixed(2)}`,
+                    text: labelText,
                     showarrow: false,
                     font: {
                         size: 9,
-                        color: colors[level] || '#95a5a6'
+                        color: colors[level] || '#95a5a6',
+                        family: 'monospace'  // 🔥 Police monospace pour alignement
                     },
-                    bgcolor: 'rgba(0,0,0,0.7)',
-                    borderpad: 2
+                    bgcolor: 'rgba(0,0,0,0.8)',
+                    borderpad: 3,
+                    bordercolor: colors[level] || '#95a5a6',
+                    borderwidth: 1
                 });
                 
                 fibCount++;
             });
             
-            console.log(`✅ ${fibCount} Fibonacci levels added (visible range: $${visibleMin.toFixed(2)} - $${visibleMax.toFixed(2)})`);
+            console.log(`✅ ${fibCount} Fibonacci levels added (visible: $${visibleMin.toFixed(2)} - $${visibleMax.toFixed(2)})`);
         }
         
         // 🎯 Support/Resistance
         if (this.showSupportResistance && this.supportResistanceData) {
-            // Supports (vert)
             (this.supportResistanceData.supports || []).forEach(support => {
                 shapes.push({
                     type: 'line',
@@ -355,19 +368,22 @@ class ChartPro {
                 });
                 
                 annotations.push({
-                    x: 0.02,  // 🔥 Position à 2% à gauche
+                    x: 0.02,
                     xref: 'paper',
                     y: support.price,
                     xanchor: 'left',
-                    text: `Supp $${support.price.toFixed(2)}`,
+                    text: `🔻 $${support.price.toFixed(2)}`,  // 🔥 Emoji pour Support
                     showarrow: false,
-                    font: { size: 9, color: '#00f260' },
+                    font: { 
+                        size: 9, 
+                        color: '#00f260',
+                        family: 'monospace'
+                    },
                     bgcolor: 'rgba(0,242,96,0.2)',
-                    borderpad: 2
+                    borderpad: 3
                 });
             });
             
-            // Resistances (rouge)
             (this.supportResistanceData.resistances || []).forEach(resistance => {
                 shapes.push({
                     type: 'line',
@@ -388,11 +404,15 @@ class ChartPro {
                     xref: 'paper',
                     y: resistance.price,
                     xanchor: 'left',
-                    text: `Resi $${resistance.price.toFixed(2)}`,
+                    text: `🔺 $${resistance.price.toFixed(2)}`,  // 🔥 Emoji pour Resistance
                     showarrow: false,
-                    font: { size: 9, color: '#ff4757' },
+                    font: { 
+                        size: 9, 
+                        color: '#ff4757',
+                        family: 'monospace'
+                    },
                     bgcolor: 'rgba(255,71,87,0.2)',
-                    borderpad: 2
+                    borderpad: 3
                 });
             });
             
