@@ -34,14 +34,58 @@ class PortfolioTracker:
     def __init__(self, portfolio_path: Optional[str] = None):
         self.portfolio_path = portfolio_path or 'web/data/portfolio.json'
         self.positions = self._load_portfolio()
+        
+        # 🔥 NETTOYAGE: Supprimer positions invalides
+        self._clean_invalid_positions()
+        
         logger.info(f"💼 Portfolio Tracker initialisé ({len(self.positions)} positions)")
+    
+    def _clean_invalid_positions(self):
+        """
+        Supprime les positions avec tickers invalides
+        """
+        invalid_tickers = []
+        
+        for ticker in list(self.positions.keys()):
+            # Vérifier si ticker est valide
+            if not ticker or len(ticker) == 0 or ticker == '0' or ticker.lower() == 'null':
+                invalid_tickers.append(ticker)
+                continue
+            
+            # Vérifier si c'est juste un chiffre
+            try:
+                int(ticker)
+                invalid_tickers.append(ticker)
+            except ValueError:
+                pass  # OK, c'est un vrai ticker
+        
+        if invalid_tickers:
+            logger.warning(f"⚠️ Suppression de {len(invalid_tickers)} positions invalides: {invalid_tickers}")
+            for ticker in invalid_tickers:
+                del self.positions[ticker]
+            self._save_portfolio()
     
     def add_position(self, ticker: str, shares: float, avg_price: float, 
                     date: Optional[str] = None) -> dict:
         """
         Ajoute ou met à jour une position
         """
-        ticker = ticker.upper()
+        ticker = ticker.upper().strip()
+        
+        # 🔥 VALIDATION: Vérifier que le ticker est valide
+        if not ticker or len(ticker) == 0:
+            raise ValueError("Ticker ne peut pas être vide")
+        
+        try:
+            int(ticker)
+            raise ValueError("Ticker ne peut pas être un chiffre")
+        except ValueError as e:
+            if "Ticker" in str(e):
+                raise  # Re-raise notre erreur custom
+            # Sinon c'est OK (pas un int)
+        
+        if ticker in ['0', 'NULL', 'NONE', '']:
+            raise ValueError(f"Ticker invalide: {ticker}")
         
         if ticker in self.positions:
             # Moyenne pondérée
@@ -98,7 +142,8 @@ class PortfolioTracker:
                 'total_value': 0,
                 'total_cost': 0,
                 'total_pl': 0,
-                'total_pl_pct': 0
+                'total_pl_pct': 0,
+                'positions': []
             }
         
         # Récupérer prix actuels
@@ -110,7 +155,12 @@ class PortfolioTracker:
         positions_detail = []
         
         for ticker, pos in self.positions.items():
-            current_price = current_prices.get(ticker, pos['avg_price'])
+            # 🔥 Si prix non disponible, utiliser avg_price
+            current_price = current_prices.get(ticker)
+            
+            if current_price is None or current_price == 0:
+                logger.warning(f"⚠️ Prix non disponible pour {ticker}, utilisation avg_price")
+                current_price = pos['avg_price']
             
             market_value = pos['shares'] * current_price
             cost_basis = pos['shares'] * pos['avg_price']
@@ -285,23 +335,59 @@ class PortfolioTracker:
     
     def _get_current_prices(self, tickers: List[str]) -> Dict[str, float]:
         """
-        Récupère prix actuels
+        Récupère prix actuels (avec gestion d'erreurs robuste)
         """
         prices = {}
         
-        try:
-            data = yf.download(tickers, period='1d', progress=False)
+        # 🔥 Filtrer tickers invalides AVANT l'appel yfinance
+        valid_tickers = []
+        for ticker in tickers:
+            if not ticker or len(ticker) == 0 or ticker == '0':
+                logger.warning(f"⚠️ Ticker invalide ignoré: {ticker}")
+                prices[ticker] = 0
+                continue
             
-            if len(tickers) == 1:
-                prices[tickers[0]] = float(data['Close'].iloc[-1])
+            try:
+                int(ticker)
+                logger.warning(f"⚠️ Ticker numérique ignoré: {ticker}")
+                prices[ticker] = 0
+                continue
+            except ValueError:
+                valid_tickers.append(ticker)
+        
+        if not valid_tickers:
+            logger.warning("⚠️ Aucun ticker valide pour récupération prix")
+            return prices
+        
+        try:
+            # 🔥 Suppression du logger yfinance pour éviter spam
+            import logging as yf_logging
+            yf_logger = yf_logging.getLogger('yfinance')
+            original_level = yf_logger.level
+            yf_logger.setLevel(yf_logging.CRITICAL)
+            
+            data = yf.download(valid_tickers, period='1d', progress=False)
+            
+            # Restaurer niveau log
+            yf_logger.setLevel(original_level)
+            
+            if len(valid_tickers) == 1:
+                try:
+                    prices[valid_tickers[0]] = float(data['Close'].iloc[-1])
+                except Exception as e:
+                    logger.error(f"Erreur prix pour {valid_tickers[0]}: {e}")
+                    prices[valid_tickers[0]] = 0
             else:
-                for ticker in tickers:
+                for ticker in valid_tickers:
                     try:
                         prices[ticker] = float(data['Close'][ticker].iloc[-1])
-                    except:
+                    except Exception as e:
+                        logger.warning(f"Prix non disponible pour {ticker}: {e}")
                         prices[ticker] = 0
         except Exception as e:
-            logger.error(f"Erreur récupération prix: {e}")
+            logger.error(f"Erreur récupération prix globale: {e}")
+            for ticker in valid_tickers:
+                prices[ticker] = 0
         
         return prices
     
