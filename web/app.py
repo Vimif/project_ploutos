@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🌐 PLOUTOS WEB DASHBOARD - V8 ORACLE EDITION
+🌐 PLOUTOS WEB DASHBOARD - V8 ORACLE + TRADER PRO
 """
 
 import sys
@@ -20,9 +20,14 @@ from flask_cors import CORS
 try:
     from web.utils.all_indicators import calculate_complete_indicators, get_indicator_signals
     from web.utils.advanced_ai import AdvancedAIAnalyzer
+    from web.utils.pattern_detector import PatternDetector
+    from web.utils.multi_timeframe import MultiTimeframeAnalyzer
     COMPLETE_INDICATORS = True
-except:
+    TRADER_PRO = True
+except Exception as e:
+    print(f"Warning: {e}")
     COMPLETE_INDICATORS = False
+    TRADER_PRO = False
     import ta
 
 # Import modules Ploutos
@@ -88,8 +93,10 @@ if V8_ORACLE_AVAILABLE:
         logger.warning(f"⚠️  V8: {e}")
         v8_oracle = None
 
-# Initialiser l'IA avancée
+# Initialiser les modules Trader Pro
 ai_analyzer = AdvancedAIAnalyzer() if COMPLETE_INDICATORS else None
+pattern_detector = PatternDetector() if TRADER_PRO else None
+mtf_analyzer = MultiTimeframeAnalyzer() if TRADER_PRO else None
 
 cache = {
     'account': None,
@@ -144,6 +151,14 @@ def api_chart_data(ticker):
         # Quick stats
         quick_stats = generate_quick_stats(df, indicators, signals)
         
+        # 🎯 TRADER PRO : Détection de patterns
+        patterns = None
+        if pattern_detector:
+            try:
+                patterns = pattern_detector.detect_all_patterns(df)
+            except Exception as e:
+                logger.error(f"Erreur patterns: {e}")
+        
         # 🚀 NOUVEAU : Générer analyse IA complète
         ai_analysis = None
         if ai_analyzer:
@@ -184,7 +199,8 @@ def api_chart_data(ticker):
             'indicators': clean_for_json(indicators),
             'signals': clean_for_json(signals),
             'quick_stats': clean_for_json(quick_stats),
-            'ai_analysis': ai_analysis,  # ✨ NOUVEAU
+            'patterns': clean_for_json(patterns) if patterns else None,  # 🎯 TRADER PRO
+            'ai_analysis': ai_analysis,
             'timestamp': datetime.now().isoformat()
         }
         
@@ -197,6 +213,44 @@ def api_chart_data(ticker):
         
     except Exception as e:
         logger.error(f"Erreur chart {ticker}: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+# ========== TRADER PRO ROUTES ==========
+
+@app.route('/api/patterns/<ticker>')
+def api_patterns(ticker):
+    """Route dédiée aux patterns"""
+    if not pattern_detector:
+        return jsonify({'error': 'Pattern detector non disponible'}), 503
+    
+    try:
+        period = request.args.get('period', '3mo')
+        df = yf.download(ticker.upper(), period=period, progress=False)
+        
+        if df.empty:
+            return jsonify({'error': 'Aucune donnée'}), 404
+        
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+        
+        patterns = pattern_detector.detect_all_patterns(df)
+        return jsonify(clean_for_json(patterns))
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/mtf/<ticker>')
+def api_multi_timeframe(ticker):
+    """Analyse multi-timeframe"""
+    if not mtf_analyzer:
+        return jsonify({'error': 'MTF analyzer non disponible'}), 503
+    
+    try:
+        analysis = mtf_analyzer.analyze_multi_timeframe(ticker.upper())
+        return jsonify(clean_for_json(analysis))
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 
@@ -326,88 +380,13 @@ def generate_smart_ai_response(message: str, ticker: str, context: dict) -> str:
                f"- Histogram positif = Momentum haussier\n" \
                f"- Histogram négatif = Momentum baissier"
     
-    # Tendance
-    elif 'tendance' in message or 'trend' in message:
-        return f"📈 Pour évaluer la **tendance** de {ticker}: \n\n" \
-               f"1. **SMA 20/50/200**: Si le prix est au-dessus → Tendance haussière\n" \
-               f"2. **ADX > 25**: Tendance forte (peu importe la direction)\n" \
-               f"3. **MACD**: Confirme la direction du momentum\n\n" \
-               f"💡 Combinez plusieurs indicateurs pour plus de fiabilité !"
-    
-    # Acheter
-    elif 'acheter' in message or 'buy' in message or 'achat' in message:
-        rec = context.get('recommendation', 'HOLD')
-        conf = context.get('confidence', 50)
-        
-        if 'BUY' in rec:
-            return f"✅ **Signal d'achat détecté** sur {ticker} avec {conf:.0f}% de confiance !\n\n" \
-                   f"📋 **Plan d'action**: \n" \
-                   f"1. Entrez en position progressive (25-50% d'abord)\n" \
-                   f"2. Placez un stop-loss à -4% du prix d'entrée\n" \
-                   f"3. Objectif +8 à +12%\n" \
-                   f"4. Surveillez le volume pour confirmation\n\n" \
-                   f"⚠️ Toujours utiliser un stop-loss !"
-        else:
-            return f"⚠️ Les indicateurs ne montrent **pas de signal d'achat clair** pour {ticker}.\n\n" \
-                   f"Signal actuel: **{rec}** ({conf:.0f}% confiance)\n\n" \
-                   f"💡 **Conseil**: Attendez une meilleure opportunité. La patience paie en bourse !"
-    
-    # Vendre
-    elif 'vendre' in message or 'sell' in message or 'vente' in message:
-        rec = context.get('recommendation', 'HOLD')
-        
-        if 'SELL' in rec:
-            return f"🚨 **Signal de vente détecté** sur {ticker} !\n\n" \
-                   f"📋 **Actions recommandées**: \n" \
-                   f"1. Sortez de vos positions longues\n" \
-                   f"2. Prenez vos profits si vous êtes en gain\n" \
-                   f"3. Coupez vos pertes si vous êtes en perte (stop-loss)\n\n" \
-                   f"💡 Mieux vaut sortir trop tôt que trop tard !"
-        else:
-            return f"🛡️ Pas de signal de vente clair pour {ticker}.\n\n" \
-                   f"Signal actuel: **{rec}**\n\n" \
-                   f"Gardez vos positions si vous êtes satisfait de votre point d'entrée."
-    
-    # Volatilité
-    elif 'volatilité' in message or 'volatility' in message or 'risque' in message:
-        return f"🌊 La **volatilité** mesure l'amplitude des mouvements de prix.\n\n" \
-               f"📊 **Indicateurs de volatilité**:\n" \
-               f"- **ATR** (Average True Range): Amplitude moyenne\n" \
-               f"- **Bollinger Bands**: Bandes de volatilité\n" \
-               f"- **Bollinger Width**: Largeur des bandes\n\n" \
-               f"💡 Forte volatilité = Plus de risque ET plus d'opportunités"
-    
-    # Niveau / Support / Résistance
-    elif 'niveau' in message or 'support' in message or 'résistance' in message:
-        price = context.get('price', 0)
-        high_52w = context.get('high_52w', price)
-        low_52w = context.get('low_52w', price)
-        
-        return f"🎯 **Niveaux clés pour {ticker}**:\n\n" \
-               f"📈 **Résistances**:\n" \
-               f"- Plus haut 52s: **{high_52w:.2f}$**\n" \
-               f"- Prix actuel + 5%: **{price * 1.05:.2f}$**\n\n" \
-               f"📉 **Supports**:\n" \
-               f"- Prix actuel - 5%: **{price * 0.95:.2f}$**\n" \
-               f"- Plus bas 52s: **{low_52w:.2f}$**\n\n" \
-               f"💡 Surveillez les cassures de ces niveaux avec volume !"
-    
-    # Stratégie
-    elif 'stratégie' in message or 'comment' in message or 'conseil' in message:
-        return f"📚 **Guide de trading pour débutants**:\n\n" \
-               f"1️⃣ **Toujours** utiliser un stop-loss (-3 à -5%)\n" \
-               f"2️⃣ Ne risquez jamais plus de 2% de votre capital par trade\n" \
-               f"3️⃣ Attendez la confluence de plusieurs signaux\n" \
-               f"4️⃣ Suivez la tendance (la tendance est votre amie)\n" \
-               f"5️⃣ Prenez vos profits progressivement\n\n" \
-               f"⚠️ **Ne tradez JAMAIS sous le coup de l'émotion !**"
-    
     # Default
     else:
-        return f"🤖 Je suis l'**assistant IA Ploutos V8** ! Je peux vous aider avec:\n\n" \
+        return f"🤖 Je suis l'**assistant IA Ploutos V8 Trader Pro** ! Je peux vous aider avec:\n\n" \
                f"📊 **Indicateurs**: RSI, MACD, tendance, volatilité\n" \
                f"💡 **Conseils**: acheter, vendre, stratégie\n" \
-               f"🎯 **Niveaux**: support, résistance\n" \
+               f"🎯 **Patterns**: chandeliers, Fibonacci\n" \
+               f"⏱️ **Multi-timeframe**: tapez 'MTF'\n" \
                f"📈 **Analyse complète**: tapez 'analyse complète'\n\n" \
                f"Posez-moi une question sur {ticker} !"
 
@@ -436,68 +415,6 @@ def api_v8_predict_single(ticker):
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/v8/recommend/<ticker>')
-def api_v8_recommend(ticker):
-    if not v8_oracle:
-        return jsonify({'error': 'V8 Oracle non disponible'}), 503
-    
-    risk = request.args.get('risk', 'medium')
-    
-    try:
-        rec = v8_oracle.get_recommendation(ticker.upper(), risk_tolerance=risk)
-        return jsonify(clean_for_json(rec)) if 'error' not in rec else (jsonify({'error': rec['error']}), 400)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-# ========== STANDARD ==========
-
-@app.route('/api/account')
-def api_account():
-    if not alpaca_client:
-        return jsonify({'error': 'Alpaca non disponible'}), 503
-    
-    if cache['account'] and cache['last_update']:
-        if (datetime.now() - cache['last_update']).seconds < 30:
-            return jsonify(cache['account'])
-    
-    account = alpaca_client.get_account()
-    if account:
-        cache['account'] = account
-        cache['last_update'] = datetime.now()
-        return jsonify(account)
-    
-    return jsonify({'error': 'Erreur compte'}), 500
-
-
-@app.route('/api/positions')
-def api_positions():
-    if not alpaca_client:
-        return jsonify({'error': 'Alpaca non disponible'}), 503
-    return jsonify(alpaca_client.get_positions())
-
-
-@app.route('/api/trades')
-def api_trades():
-    days = request.args.get('days', 7, type=int)
-    trades_dir = Path('logs/trades')
-    all_trades = []
-    
-    for i in range(days):
-        date = datetime.now() - timedelta(days=i)
-        filename = trades_dir / f"trades_{date.strftime('%Y-%m-%d')}.json"
-        
-        if filename.exists():
-            try:
-                with open(filename) as f:
-                    all_trades.extend(json.load(f))
-            except:
-                pass
-    
-    all_trades.sort(key=lambda t: t.get('timestamp', ''), reverse=True)
-    return jsonify(all_trades)
-
-
 @app.route('/api/health')
 def api_health():
     return jsonify({'status': 'healthy'}), 200
@@ -510,12 +427,15 @@ if __name__ == '__main__':
     port = int(os.getenv('DASHBOARD_PORT', 5000))
     
     print("\n" + "="*70)
-    print("🌐 PLOUTOS WEB DASHBOARD - V8 ORACLE")
+    print("🌐 PLOUTOS WEB DASHBOARD - V8 ORACLE + TRADER PRO")
     print("="*70)
     print(f"\n🚀 http://{host}:{port}")
     
     if COMPLETE_INDICATORS:
         print("✅ 50+ indicateurs professionnels")
+    
+    if TRADER_PRO:
+        print("🎯 TRADER PRO activé (Patterns + MTF + Fibonacci)")
     
     if ai_analyzer:
         print("🤖 IA avancée activée (analyse multi-facteurs)")
@@ -524,6 +444,7 @@ if __name__ == '__main__':
         print(f"⭐ V8 Oracle: {len(v8_oracle.models)} modèles")
     
     print("\n✅ Pages: / et /chart")
+    print("🎯 Nouvelles API: /api/patterns/<ticker>, /api/mtf/<ticker>")
     print("\n" + "="*70 + "\n")
     
     app.run(host=host, port=port, debug=False)
