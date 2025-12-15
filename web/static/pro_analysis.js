@@ -8,6 +8,9 @@
 class ProAnalysis {
     constructor() {
         this.currentData = null;
+        this.currentTicker = null;
+        this.isLoading = false;
+        this.cache = {}; // Cache pour éviter les appels multiples
         this.initEventListeners();
     }
     
@@ -15,7 +18,24 @@ class ProAnalysis {
      * 🔄 Charger l'analyse pour un ticker
      */
     async loadAnalysis(ticker) {
+        // ⚠️ ANTI-DOUBLON : Si déjà en cours ou même ticker, skip
+        if (this.isLoading || ticker === this.currentTicker) {
+            console.log(`⏭️ Skip pro-analysis ${ticker} (déjà chargé ou en cours)`);
+            return;
+        }
+        
+        // 📂 Vérifier le cache (valide 5 min)
+        if (this.cache[ticker] && (Date.now() - this.cache[ticker].timestamp < 300000)) {
+            console.log(`💾 Utilisation cache pour ${ticker}`);
+            this.currentData = this.cache[ticker].data;
+            this.currentTicker = ticker;
+            this.renderSummary();
+            this.renderDetails();
+            return;
+        }
+        
         try {
+            this.isLoading = true;
             console.log(`🎯 Chargement analyse pro pour ${ticker}...`);
             
             const response = await fetch(`/api/pro-analysis/${ticker}`);
@@ -25,7 +45,15 @@ class ProAnalysis {
             }
             
             this.currentData = await response.json();
-            console.log('✅ Analyse pro chargée:', this.currentData);
+            this.currentTicker = ticker;
+            
+            // 💾 Mise en cache
+            this.cache[ticker] = {
+                data: this.currentData,
+                timestamp: Date.now()
+            };
+            
+            console.log('✅ Analyse pro chargée:', this.currentData.overall_signal, this.currentData.confidence + '%');
             
             this.renderSummary();
             this.renderDetails();
@@ -33,6 +61,8 @@ class ProAnalysis {
         } catch (error) {
             console.error('❌ Erreur chargement analyse pro:', error);
             this.renderError(error.message);
+        } finally {
+            this.isLoading = false;
         }
     }
     
@@ -210,6 +240,14 @@ class ProAnalysis {
     }
     
     /**
+     * 🧹 Nettoyer le cache (appel manuel si besoin)
+     */
+    clearCache() {
+        this.cache = {};
+        console.log('🧹 Cache Pro Analysis vidé');
+    }
+    
+    /**
      * 📦 Helpers
      */
     getSignalEmoji(signal) {
@@ -245,12 +283,17 @@ class ProAnalysis {
         // Auto-reload quand un nouveau ticker est analysé
         window.addEventListener('chartDataLoaded', (event) => {
             if (event.detail && event.detail.ticker) {
-                this.loadAnalysis(event.detail.ticker);
+                // Délai de 500ms pour éviter les appels simultanés
+                setTimeout(() => {
+                    this.loadAnalysis(event.detail.ticker);
+                }, 500);
             }
         });
     }
 }
 
 // 🚀 Auto-init
-window.ProAnalysis = new ProAnalysis();
-console.log('✅ ProAnalysis module loaded');
+if (typeof window.ProAnalysis === 'undefined') {
+    window.ProAnalysis = new ProAnalysis();
+    console.log('✅ ProAnalysis module loaded');
+}
