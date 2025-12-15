@@ -358,6 +358,15 @@ def api_chart_data(symbol):
         # Récupérer les données brutes
         df = analyzer.df
         
+        # Prix actuel et stats 24h
+        current_price = float(df['Close'].iloc[-1])
+        previous_close = float(df['Close'].iloc[-2]) if len(df) > 1 else current_price
+        price_change_24h = current_price - previous_close
+        price_change_pct = (price_change_24h / previous_close * 100) if previous_close > 0 else 0
+        volume_24h = int(df['Volume'].iloc[-1])
+        high_24h = float(df['High'].iloc[-1])
+        low_24h = float(df['Low'].iloc[-1])
+        
         # Préparer les données OHLCV
         ohlcv_data = []
         for idx, row in df.iterrows():
@@ -400,6 +409,12 @@ def api_chart_data(symbol):
             'success': True,
             'symbol': symbol.upper(),
             'period': period,
+            'current_price': current_price,
+            'price_change_24h': price_change_24h,
+            'price_change_pct': price_change_pct,
+            'volume_24h': volume_24h,
+            'high_24h': high_24h,
+            'low_24h': low_24h,
             'data': ohlcv_data,
             'indicators': indicators,
             'signal': {
