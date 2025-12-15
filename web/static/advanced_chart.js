@@ -1,22 +1,48 @@
 /**
  * PLOUTOS TRADER PRO - JavaScript V4
- * Features: Patterns + Multi-Timeframe + Fibonacci + Support/Resistance
+ * Features: Auto-load ticker from URL + Patterns + Multi-Timeframe + Fibonacci + S/R
  */
 
 const API_BASE = window.location.origin;
 let currentData = null;
 let activeIndicators = new Set(['sma']);
 
+// ========== AUTO-LOAD TICKER FROM URL ==========
+
+function getTickerFromURL() {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('ticker');
+}
+
+function setTickerInURL(ticker) {
+    const url = new URL(window.location);
+    url.searchParams.set('ticker', ticker);
+    window.history.pushState({}, '', url);
+}
+
 // ========== MAIN ANALYSIS ==========
 
-async function analyzeStock() {
-    const ticker = document.getElementById('ticker-input').value.trim().toUpperCase();
-    const period = document.getElementById('period-select').value;
+async function analyzeStock(tickerOverride = null) {
+    let ticker = tickerOverride;
+    
+    if (!ticker) {
+        const input = document.getElementById('ticker-input');
+        ticker = input ? input.value.trim().toUpperCase() : null;
+    }
     
     if (!ticker) {
         alert('⚠️ Veuillez entrer un ticker');
         return;
     }
+    
+    // Update input field
+    const input = document.getElementById('ticker-input');
+    if (input) input.value = ticker;
+    
+    // Update URL
+    setTickerInURL(ticker);
+    
+    const period = document.getElementById('period-select')?.value || '3mo';
     
     addAIMessage(`🔍 Analyse complète de ${ticker}...`, 'ai');
     
@@ -574,7 +600,7 @@ async function sendChatMessage() {
 function initEventListeners() {
     const analyzeBtn = document.getElementById('analyze-btn');
     if (analyzeBtn) {
-        analyzeBtn.addEventListener('click', analyzeStock);
+        analyzeBtn.addEventListener('click', () => analyzeStock());
     }
     
     const tickerInput = document.getElementById('ticker-input');
@@ -611,5 +637,17 @@ function initEventListeners() {
 
 window.addEventListener('load', () => {
     initEventListeners();
-    analyzeStock();
+    
+    // 🚀 AUTO-LOAD: Vérifier si un ticker est dans l'URL
+    const tickerFromURL = getTickerFromURL();
+    if (tickerFromURL) {
+        console.log(`✅ Auto-chargement du ticker: ${tickerFromURL}`);
+        analyzeStock(tickerFromURL);
+    } else {
+        // Charger le ticker par défaut depuis l'input si présent
+        const input = document.getElementById('ticker-input');
+        if (input && input.value) {
+            analyzeStock();
+        }
+    }
 });
