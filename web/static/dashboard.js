@@ -2,15 +2,19 @@
  * PLOUTOS DASHBOARD V8 - JavaScript
  * 
  * Gestion complète du dashboard avec:
- * - Onglets Dashboard, V8 Oracle, V7 Legacy
- * - Prédictions multi-horizon
- * - Graphiques temps réel
+ * - Watchlists intégrées (clic pour analyser)
+ * - Prédictions multi-horizon V8 Oracle
+ * - Affichage temps réel des tickers
  * - Recommandations de trading
  */
 
 // Configuration
 const API_BASE = window.location.origin;
 const REFRESH_INTERVAL = 10000; // 10 secondes
+
+// État global
+let selectedTickers = [];
+let currentWatchlist = null;
 
 // ========== TAB MANAGEMENT ==========
 document.querySelectorAll('.tab-button').forEach(btn => {
@@ -88,6 +92,228 @@ function formatPercent(value) {
     return (value * 100).toFixed(2) + '%';
 }
 
+// ========== WATCHLIST INTEGRATION ==========
+
+// Écouter les sélections de watchlists
+window.addEventListener('watchlistSelected', async (event) => {
+    const { listId, name, tickers } = event.detail;
+    
+    console.log(`📊 Watchlist sélectionnée: ${name}`, tickers);
+    
+    selectedTickers = tickers;
+    currentWatchlist = name;
+    
+    // Afficher dans la zone principale
+    displayWatchlistTickers(name, tickers);
+    
+    // Auto-analyse batch si pas trop de tickers
+    if (tickers.length <= 10) {
+        await analyzeWatchlistBatch(tickers);
+    }
+});
+
+function displayWatchlistTickers(name, tickers) {
+    // Trouver la zone d'affichage principale
+    let container = document.getElementById('watchlist-tickers-display');
+    
+    // Si elle n'existe pas, la créer
+    if (!container) {
+        const mainContent = document.getElementById('main-content');
+        if (!mainContent) return;
+        
+        // Créer la section d'affichage des tickers
+        const section = document.createElement('div');
+        section.id = 'watchlist-tickers-display';
+        section.className = 'mb-6';
+        mainContent.insertBefore(section, mainContent.firstChild);
+        container = section;
+    }
+    
+    container.innerHTML = `
+        <div class="bg-gray-800 rounded-lg p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold">
+                    📊 ${name}
+                    <span class="text-sm text-gray-400 ml-2">(${tickers.length} tickers)</span>
+                </h3>
+                <button onclick="analyzeWatchlistBatch(selectedTickers)" 
+                        class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-sm">
+                    <i class="fas fa-chart-line mr-2"></i>Analyser tout
+                </button>
+            </div>
+            
+            <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3" id="tickers-grid">
+                ${tickers.map(ticker => `
+                    <button onclick="quickAnalyzeTicker('${ticker}')" 
+                            class="ticker-card bg-gray-700 hover:bg-gray-600 p-4 rounded-lg text-center transition-all">
+                        <div class="font-bold text-lg">${ticker}</div>
+                        <div class="text-xs text-gray-400 mt-1">Cliquer pour analyser</div>
+                    </button>
+                `).join('')}
+            </div>
+            
+            <div id="quick-analysis-result" class="mt-4"></div>
+        </div>
+    `;
+}
+
+async function quickAnalyzeTicker(ticker) {
+    console.log(`🔍 Analyse rapide de ${ticker}`);
+    
+    const resultDiv = document.getElementById('quick-analysis-result');
+    if (!resultDiv) return;
+    
+    resultDiv.innerHTML = `
+        <div class="bg-gray-700 rounded p-4 animate-pulse">
+            <p class="text-center">⏳ Analyse de ${ticker} en cours...</p>
+        </div>
+    `;
+    
+    try {
+        // Appeler l'API V8 Oracle si disponible
+        const res = await fetch(`${API_BASE}/api/v8/predict/${ticker}`);
+        const data = await res.json();
+        
+        if (data.error) {
+            resultDiv.innerHTML = `
+                <div class="bg-red-900/30 border border-red-500 rounded p-4">
+                    <p class="text-red-400">❌ ${data.error}</p>
+                    <p class="text-xs text-gray-400 mt-2">Essayez le module Chart pour plus de détails</p>
+                </div>
+            `;
+            return;
+        }
+        
+        const ensemble = data.ensemble || {};
+        const prediction = ensemble.prediction || 'N/A';
+        const confidence = ensemble.confidence || 0;
+        const agreement = ensemble.agreement || 'WEAK';
+        
+        const signalClass = prediction === 'UP' ? 'bg-green-900/30 border-green-500' : 'bg-red-900/30 border-red-500';
+        const textClass = prediction === 'UP' ? 'text-green-400' : 'text-red-400';
+        const icon = prediction === 'UP' ? 'fa-arrow-up' : 'fa-arrow-down';
+        
+        resultDiv.innerHTML = `
+            <div class="${signalClass} border rounded-lg p-6">
+                <div class="flex justify-between items-start mb-4">
+                    <div>
+                        <h4 class="text-2xl font-bold">${ticker}</h4>
+                        <p class="text-sm text-gray-400">Prédiction V8 Oracle</p>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-3xl font-bold ${textClass}">
+                            <i class="fas ${icon} mr-2"></i>${prediction}
+                        </div>
+                        <div class="text-sm text-gray-300">Confiance: ${confidence.toFixed(1)}%</div>
+                    </div>
+                </div>
+                
+                <div class="w-full bg-gray-700 rounded-full h-3 mb-4">
+                    <div class="${prediction === 'UP' ? 'bg-green-500' : 'bg-red-500'} h-3 rounded-full transition-all" 
+                         style="width: ${confidence}%"></div>
+                </div>
+                
+                <div class="grid grid-cols-3 gap-4 text-center">
+                    <div class="bg-gray-800 rounded p-3">
+                        <div class="text-xs text-gray-400">Agreement</div>
+                        <div class="font-bold ${agreement === 'STRONG' ? 'text-green-400' : 'text-yellow-400'}">
+                            ${agreement}
+                        </div>
+                    </div>
+                    <div class="bg-gray-800 rounded p-3">
+                        <div class="text-xs text-gray-400">Modèles</div>
+                        <div class="font-bold">${ensemble.models_used || 1}</div>
+                    </div>
+                    <div class="bg-gray-800 rounded p-3">
+                        <a href="/chart?ticker=${ticker}" class="text-blue-400 hover:text-blue-300 text-sm">
+                            <i class="fas fa-chart-area mr-1"></i>Voir graphique
+                        </a>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+    } catch (error) {
+        console.error('Erreur analyse ticker:', error);
+        resultDiv.innerHTML = `
+            <div class="bg-red-900/30 border border-red-500 rounded p-4">
+                <p class="text-red-400">❌ Erreur: ${error.message}</p>
+            </div>
+        `;
+    }
+}
+
+async function analyzeWatchlistBatch(tickers) {
+    console.log('📊 Analyse batch:', tickers);
+    
+    const resultDiv = document.getElementById('quick-analysis-result');
+    if (!resultDiv) return;
+    
+    resultDiv.innerHTML = `
+        <div class="bg-gray-700 rounded p-4 animate-pulse">
+            <p class="text-center">⏳ Analyse de ${tickers.length} tickers en cours...</p>
+        </div>
+    `;
+    
+    try {
+        const tickersParam = tickers.join(',');
+        const res = await fetch(`${API_BASE}/api/v8/batch?tickers=${tickersParam}`);
+        const data = await res.json();
+        
+        if (data.error) {
+            resultDiv.innerHTML = `<p class="text-red-500">❌ ${data.error}</p>`;
+            return;
+        }
+        
+        const results = data.tickers || {};
+        const summary = data.summary || { bullish: 0, bearish: 0 };
+        
+        let html = `
+            <div class="space-y-3">
+                <div class="bg-blue-900/30 border border-blue-500 rounded p-3">
+                    <div class="flex justify-between text-sm">
+                        <span>🟢 Bullish: <strong class="text-green-400">${summary.bullish}</strong></span>
+                        <span>🔴 Bearish: <strong class="text-red-400">${summary.bearish}</strong></span>
+                        <span>⚡ High Conf: <strong class="text-yellow-400">${summary.high_confidence_count || 0}</strong></span>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+        `;
+        
+        for (const [ticker, result] of Object.entries(results)) {
+            if (result.error) continue;
+            
+            const ens = result.ensemble || {};
+            const pred = ens.prediction || 'N/A';
+            const conf = ens.confidence || 0;
+            
+            const bgClass = pred === 'UP' ? 'bg-green-900/20 border-green-500' : 'bg-red-900/20 border-red-500';
+            const textClass = pred === 'UP' ? 'text-green-400' : 'text-red-400';
+            
+            html += `
+                <div class="${bgClass} border rounded p-3 cursor-pointer hover:scale-105 transition-transform" 
+                     onclick="quickAnalyzeTicker('${ticker}')">
+                    <div class="font-bold text-sm mb-1">${ticker}</div>
+                    <div class="text-xl font-bold ${textClass}">${pred}</div>
+                    <div class="text-xs text-gray-400">${conf.toFixed(0)}%</div>
+                </div>
+            `;
+        }
+        
+        html += `
+                </div>
+            </div>
+        `;
+        
+        resultDiv.innerHTML = html;
+        
+    } catch (error) {
+        console.error('Erreur batch:', error);
+        resultDiv.innerHTML = `<p class="text-red-500">❌ ${error.message}</p>`;
+    }
+}
+
 // ========== DASHBOARD FUNCTIONS ==========
 
 async function updateAccount() {
@@ -108,18 +334,20 @@ async function updateAccount() {
 async function updatePositions() {
     try {
         const res = await fetch(`${API_BASE}/api/positions`);
-        const positions = await res.json();
+        const data = await res.json();
         
+        const positions = data.positions || [];
         const container = document.getElementById('positions-list');
         if (!container) return;
         
-        if (!positions || positions.length === 0) {
+        if (positions.length === 0) {
             container.innerHTML = '<p class="text-gray-400 text-sm">Aucune position</p>';
             return;
         }
         
         container.innerHTML = positions.map(pos => `
-            <div class="flex justify-between items-center p-2 bg-gray-700 rounded">
+            <div class="flex justify-between items-center p-2 bg-gray-700 rounded hover:bg-gray-600 cursor-pointer"
+                 onclick="quickAnalyzeTicker('${pos.symbol}')">
                 <div>
                     <span class="font-bold">${pos.symbol}</span>
                     <span class="text-gray-400 text-sm ml-2">${pos.qty} shares</span>
@@ -129,7 +357,7 @@ async function updatePositions() {
                         ${formatMoney(pos.unrealized_pl)}
                     </div>
                     <div class="text-xs text-gray-400">
-                        ${formatPercent(pos.unrealized_plpc)}
+                        ${formatPercent(pos.unrealized_plpc / 100)}
                     </div>
                 </div>
             </div>
@@ -143,12 +371,13 @@ async function updatePositions() {
 async function updateTrades() {
     try {
         const res = await fetch(`${API_BASE}/api/trades?days=3`);
-        const trades = await res.json();
+        const data = await res.json();
         
+        const trades = data.trades || [];
         const container = document.getElementById('trades-list');
         if (!container) return;
         
-        if (!trades || trades.length === 0) {
+        if (trades.length === 0) {
             container.innerHTML = '<p class="text-gray-400 text-sm">Aucun trade</p>';
             return;
         }
@@ -162,10 +391,10 @@ async function updateTrades() {
                 <div class="flex justify-between items-center p-2 bg-gray-700 rounded">
                     <div class="flex items-center space-x-2">
                         <i class="fas ${icon} ${color}"></i>
-                        <span class="font-bold">${trade.symbol}</span>
+                        <span class="font-bold">${trade.ticker}</span>
                         <span class="text-gray-400 text-xs">${time}</span>
                     </div>
-                    <span class="font-bold">${formatMoney(trade.amount)}</span>
+                    <span class="font-bold">${formatMoney(trade.price * trade.quantity)}</span>
                 </div>
             `;
         }).join('');
@@ -188,18 +417,16 @@ async function predictV8Ticker() {
         const res = await fetch(`${API_BASE}/api/v8/predict/${ticker}`);
         const data = await res.json();
         
-        console.log('V8 Response:', data); // Debug
+        console.log('V8 Response:', data);
         
         if (data.error) {
             alert('❌ ' + data.error);
-            // Réinitialiser l'affichage
             document.getElementById('v8-intraday').innerHTML = '<p class="text-red-500">' + data.error + '</p>';
             document.getElementById('v8-weekly').innerHTML = '<p class="text-red-500">' + data.error + '</p>';
             document.getElementById('v8-ensemble').innerHTML = '<p class="text-red-500">' + data.error + '</p>';
             return;
         }
         
-        // Vérifier que predictions existe
         const predictions = data.predictions || {};
         
         // Court terme (intraday)
@@ -267,7 +494,6 @@ async function predictV8Ticker() {
             }
         }
         
-        // Recommandation
         const risk = document.getElementById('v8-risk').value;
         await getV8Recommendation(ticker, risk);
         
@@ -372,7 +598,6 @@ async function analyzeV8Batch() {
             `;
         }
         
-        // Summary
         if (data.summary) {
             const s = data.summary;
             container.innerHTML += `
@@ -393,82 +618,6 @@ async function analyzeV8Batch() {
     }
 }
 
-// ========== V7 LEGACY FUNCTIONS ==========
-
-async function analyzeV7Ticker() {
-    const ticker = document.getElementById('v7-ticker').value.trim().toUpperCase();
-    if (!ticker) return;
-    
-    try {
-        const res = await fetch(`${API_BASE}/api/v7/analysis?ticker=${ticker}`);
-        const data = await res.json();
-        
-        if (data.error) {
-            document.getElementById('v7-detail').innerHTML = `<p class="text-red-500">❌ ${data.error}</p>`;
-            return;
-        }
-        
-        const signalClass = data.signal === 'BUY' ? 'signal-buy' : data.signal === 'SELL' ? 'signal-sell' : 'signal-hold';
-        
-        document.getElementById('v7-detail').innerHTML = `
-            <div class="space-y-4">
-                <h4 class="text-2xl font-bold">${ticker}</h4>
-                <div class="signal-badge ${signalClass}">${data.strength} ${data.signal}</div>
-                
-                <div class="space-y-2 text-left">
-                    <div class="flex justify-between p-2 bg-gray-700 rounded">
-                        <span>Momentum</span>
-                        <span class="font-bold">${data.experts.momentum.prediction} (${data.experts.momentum.confidence.toFixed(1)}%)</span>
-                    </div>
-                    <div class="flex justify-between p-2 bg-gray-700 rounded">
-                        <span>Reversion</span>
-                        <span class="font-bold">${data.experts.reversion.prediction} (${data.experts.reversion.confidence.toFixed(1)}%)</span>
-                    </div>
-                    <div class="flex justify-between p-2 bg-gray-700 rounded">
-                        <span>Volatility</span>
-                        <span class="font-bold">${data.experts.volatility.prediction} (${data.experts.volatility.confidence.toFixed(1)}%)</span>
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        document.getElementById('v7-momentum').textContent = `${data.experts.momentum.prediction} - ${data.experts.momentum.confidence.toFixed(1)}%`;
-        document.getElementById('v7-reversion').textContent = `${data.experts.reversion.prediction} - ${data.experts.reversion.confidence.toFixed(1)}%`;
-        document.getElementById('v7-volatility').textContent = `${data.experts.volatility.prediction} - ${data.experts.volatility.confidence.toFixed(1)}%`;
-        
-    } catch (error) {
-        document.getElementById('v7-detail').innerHTML = `<p class="text-red-500">❌ ${error.message}</p>`;
-    }
-}
-
-async function analyzeV7Batch() {
-    try {
-        const res = await fetch(`${API_BASE}/api/v7/batch?tickers=NVDA,AAPL,MSFT,GOOGL,AMZN`);
-        const data = await res.json();
-        
-        if (!data.results || data.results.length === 0) {
-            document.getElementById('v7-batch-results').innerHTML = '<p class="text-red-500">Aucun résultat</p>';
-            return;
-        }
-        
-        document.getElementById('v7-batch-results').innerHTML = data.results.map(r => {
-            const signalClass = r.signal === 'BUY' ? 'text-green-500' : r.signal === 'SELL' ? 'text-red-500' : 'text-yellow-500';
-            return `
-                <div class="p-3 bg-gray-700 rounded flex justify-between items-center">
-                    <div>
-                        <span class="font-bold">${r.ticker}</span>
-                        <span class="text-gray-400 text-sm ml-2">${r.strength}</span>
-                    </div>
-                    <span class="font-bold ${signalClass}">${r.signal}</span>
-                </div>
-            `;
-        }).join('');
-        
-    } catch (error) {
-        document.getElementById('v7-batch-results').innerHTML = `<p class="text-red-500">❌ ${error.message}</p>`;
-    }
-}
-
 // ========== EVENT LISTENERS ==========
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -482,19 +631,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (v8Ticker) {
         v8Ticker.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') predictV8Ticker();
-        });
-    }
-    
-    // V7 Legacy
-    const v7SearchBtn = document.getElementById('v7-search-btn');
-    const v7BatchBtn = document.getElementById('v7-batch-btn');
-    const v7Ticker = document.getElementById('v7-ticker');
-    
-    if (v7SearchBtn) v7SearchBtn.addEventListener('click', analyzeV7Ticker);
-    if (v7BatchBtn) v7BatchBtn.addEventListener('click', analyzeV7Batch);
-    if (v7Ticker) {
-        v7Ticker.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') analyzeV7Ticker();
         });
     }
     
