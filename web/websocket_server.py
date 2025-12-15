@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-⚡ WEBSOCKET SERVER - PRIX TEMPS RÉEL
-Flask-SocketIO + Alpaca Data Stream API
+⚡ WEBSOCKET SERVER - PRIX TEMPS RÉEL + INDICATEURS TECHNIQUES
+Flask-SocketIO + Alpaca Data Stream API + Technical Analysis
 """
 
 import os
@@ -10,6 +10,10 @@ import logging
 import time
 from threading import Thread, Event
 from datetime import datetime
+from pathlib import Path
+
+# Ajouter le chemin parent pour imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from flask import Flask, request
 from flask_socketio import SocketIO, emit, join_room, leave_room
@@ -23,8 +27,16 @@ try:
     from alpaca.data.historical import StockHistoricalDataClient
     ALPACA_AVAILABLE = True
 except ImportError:
-    logger.warning("⚠️ alpaca-py non installé, mode DEMO uniquement")
     ALPACA_AVAILABLE = False
+    logging.warning("⚠️ alpaca-py non installé, mode DEMO uniquement")
+
+# Import TechnicalAnalyzer pour calcul indicateurs
+try:
+    from dashboard.technical_analysis import TechnicalAnalyzer
+    TECHNICAL_ANALYZER_AVAILABLE = True
+except ImportError:
+    TECHNICAL_ANALYZER_AVAILABLE = False
+    logging.warning("⚠️ TechnicalAnalyzer non disponible")
 
 # Configuration logging
 logging.basicConfig(
@@ -62,6 +74,10 @@ active_subscriptions = {}
 alpaca_stream = None
 stream_thread = None
 stream_stop_event = Event()
+
+# Cache indicateurs (pour éviter recalcul trop fréquent)
+indicators_cache = {}
+INDICATORS_TTL = 60  # Secondes
 
 
 # ========== WEBSOCKET EVENTS ==========
@@ -106,8 +122,9 @@ def handle_subscribe(data):
     
     logger.info(f"📶 {request.sid} abonné à {ticker} ({len(active_subscriptions[ticker])} clients)")
     
-    # Envoyer prix initial
+    # Envoyer prix initial + indicateurs
     send_initial_price(ticker)
+    send_indicators(ticker)
     
     emit('subscribed', {'ticker': ticker, 'status': 'success'})
 
@@ -127,6 +144,87 @@ def handle_unsubscribe(data):
             del active_subscriptions[ticker]
     
     emit('unsubscribed', {'ticker': ticker, 'status': 'success'})
+
+
+# ========== INDICATEURS TECHNIQUES ==========
+
+def send_indicators(ticker):
+    """
+    Calculer et envoyer les indicateurs techniques pour un ticker
+    Utilise le cache pour éviter recalcul trop fréquent
+    """
+    if not TECHNICAL_ANALYZER_AVAILABLE:
+        logger.warning("⚠️ TechnicalAnalyzer non disponible")
+        return
+    
+    try:
+        current_time = time.time()
+        cache_key = ticker
+        
+        # Vérifier cache
+        if cache_key in indicators_cache:
+            cached_data, cached_time = indicators_cache[cache_key]
+            if current_time - cached_time < INDICATORS_TTL:
+                # Utiliser cache
+                socketio.emit('indicator_update', cached_data, room=ticker)
+                logger.info(f"⚙️ Indicateurs {ticker} envoyés (cache)")
+                return
+        
+        # Calculer nouveaux indicateurs
+        logger.info(f"📊 Calcul indicateurs pour {ticker}...")
+        analyzer = TechnicalAnalyzer(ticker, period='3mo', interval='1d')
+        
+        if analyzer.df is None or len(analyzer.df) < 50:
+            logger.warning(f"⚠️ Pas assez de données pour {ticker}")
+            return
+        
+        # Calculer tous les indicateurs
+        rsi = analyzer.calculate_rsi()
+        macd_line, signal_line, histogram = analyzer.calculate_macd()
+        k_percent, d_percent = analyzer.calculate_stochastic()
+        atr = analyzer.calculate_atr()
+        
+        # Importer ta pour ADX (si disponible)
+        try:
+            import ta
+            adx_indicator = ta.trend.ADXIndicator(
+                analyzer.df['High'], 
+                analyzer.df['Low'], 
+                analyzer.df['Close']
+            )
+            adx = adx_indicator.adx()
+            adx_value = float(adx.iloc[-1]) if len(adx) > 0 and not adx.isna().iloc[-1] else None
+        except Exception as e:
+            logger.debug(f"ADX non calculé: {e}")
+            adx_value = None
+        
+        # Préparer les données
+        indicators_data = {
+            'ticker': ticker,
+            'indicators': {
+                'rsi': float(rsi.iloc[-1]) if len(rsi) > 0 and not rsi.isna().iloc[-1] else None,
+                'macd': float(macd_line.iloc[-1]) if len(macd_line) > 0 and not macd_line.isna().iloc[-1] else None,
+                'macd_signal': float(signal_line.iloc[-1]) if len(signal_line) > 0 and not signal_line.isna().iloc[-1] else None,
+                'macd_hist': float(histogram.iloc[-1]) if len(histogram) > 0 and not histogram.isna().iloc[-1] else None,
+                'stoch': float(k_percent.iloc[-1]) if len(k_percent) > 0 and not k_percent.isna().iloc[-1] else None,
+                'stoch_signal': float(d_percent.iloc[-1]) if len(d_percent) > 0 and not d_percent.isna().iloc[-1] else None,
+                'adx': adx_value,
+                'atr': float(atr.iloc[-1]) if len(atr) > 0 and not atr.isna().iloc[-1] else None
+            },
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        # Mettre en cache
+        indicators_cache[cache_key] = (indicators_data, current_time)
+        
+        # Envoyer via WebSocket
+        socketio.emit('indicator_update', indicators_data, room=ticker)
+        logger.info(f"✅ Indicateurs {ticker} envoyés: RSI={indicators_data['indicators']['rsi']:.1f if indicators_data['indicators']['rsi'] else 'N/A'}")
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur calcul indicateurs {ticker}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
 
 
 # ========== ALPACA DATA STREAM ==========
@@ -229,6 +327,8 @@ def start_demo_stream():
     """Stream de démo utilisant yfinance (polling)"""
     logger.info("🎯 Démarrage stream DEMO (yfinance polling)")
     
+    last_indicator_update = {}
+    
     while not stream_stop_event.is_set():
         try:
             for ticker in list(active_subscriptions.keys()):
@@ -258,6 +358,12 @@ def start_demo_stream():
                 }
                 
                 socketio.emit('price_update', data, room=ticker)
+                
+                # Envoyer indicateurs toutes les 5 secondes
+                current_time = time.time()
+                if ticker not in last_indicator_update or (current_time - last_indicator_update[ticker]) > 5:
+                    send_indicators(ticker)
+                    last_indicator_update[ticker] = current_time
             
             # Attendre 2 secondes avant le prochain update
             stream_stop_event.wait(2)
@@ -275,6 +381,7 @@ def health():
         'status': 'ok',
         'websocket': 'active',
         'demo_mode': DEMO_MODE,
+        'technical_analyzer': TECHNICAL_ANALYZER_AVAILABLE,
         'active_tickers': list(active_subscriptions.keys()),
         'total_clients': sum(len(clients) for clients in active_subscriptions.values())
     }
@@ -299,6 +406,8 @@ if __name__ == '__main__':
     
     # Démarrer serveur WebSocket
     logger.info("⚡ Démarrage WebSocket Server sur port 5001...")
+    logger.info(f"📈 Technical Analyzer: {'ACTIVÉ' if TECHNICAL_ANALYZER_AVAILABLE else 'DÉSACTIVÉ'}")
+    logger.info(f"🎯 Mode: {'DEMO (yfinance)' if DEMO_MODE else 'PRODUCTION (Alpaca)'}")
     
     try:
         socketio.run(
