@@ -140,54 +140,36 @@ def clean_for_json(obj):
     Convertit récursivement les objets Python en types JSON-sérialisables
     Gère : numpy, pandas, dataclasses, enums, etc.
     """
-    # Dataclasses
     if is_dataclass(obj) and not isinstance(obj, type):
         return clean_for_json(asdict(obj))
-    
-    # Enums
     if isinstance(obj, Enum):
         return obj.value
-    
-    # Booléens numpy (CRITICAL FIX)
     if isinstance(obj, (np.bool_, bool)):
         return bool(obj)
-    
-    # Numpy/Pandas types
     if isinstance(obj, (np.integer, np.int32, np.int64)):
         return int(obj)
-    
     if isinstance(obj, (np.floating, np.float32, np.float64)):
         if np.isnan(obj) or np.isinf(obj):
             return None
         return float(obj)
-    
     if isinstance(obj, np.ndarray):
         return [clean_for_json(x) for x in obj.tolist()]
-    
     if isinstance(obj, pd.Timestamp):
         return obj.isoformat()
-    
-    # Collections
     if isinstance(obj, dict):
         return {k: clean_for_json(v) for k, v in obj.items()}
-    
     if isinstance(obj, (list, tuple)):
         return [clean_for_json(item) for item in obj]
-    
-    # Float/Int standards
     if isinstance(obj, float):
         if np.isnan(obj) or np.isinf(obj):
             return None
         return float(obj)
-    
-    # Fallback
     return obj
 
 
 app = Flask(__name__)
 CORS(app)
 
-# 🔗 Register blueprints
 if WATCHLISTS_AVAILABLE:
     app.register_blueprint(watchlists_bp)
     logger.info("✅ Watchlists blueprint enregistré")
@@ -240,7 +222,6 @@ if TRADER_PRO:
         logger.info("✅ Pattern Detector initialisé")
     except Exception as e:
         logger.error(f"❌ Pattern Detector error: {e}")
-    
     try:
         mtf_analyzer = MultiTimeframeAnalyzer()
         logger.info("✅ MTF Analyzer initialisé")
@@ -282,11 +263,9 @@ def get_db_connection():
     """💾 Connexion PostgreSQL avec gestion d'erreurs"""
     if not DB_AVAILABLE:
         return None
-    
     try:
         import os
         db_password = os.getenv('POSTGRES_PASSWORD', 'your_password_here')
-        
         return psycopg2.connect(
             host="localhost",
             database="ploutos",
@@ -297,8 +276,6 @@ def get_db_connection():
         logger.warning(f"⚠️  DB connexion: {e}")
         return None
 
-
-# ========== ROUTES PAGES HTML ==========
 
 @app.route('/')
 def index():
@@ -314,21 +291,16 @@ def tools_page():
 
 @app.route('/live')
 def live_page():
-    """🔥 Page Live Trading Dashboard"""
     return render_template('live.html')
 
 @app.route('/signals')
 def signals_page():
-    """🚦 Page Trading Signals Dashboard - Interface graphique avec signaux BUY/SELL"""
     return render_template('trading_signals.html')
 
 @app.route('/scalper')
 def scalper_page():
-    """⚡ Page Scalper Pro - Dashboard trading court-terme temps réel"""
     return render_template('scalper.html')
 
-
-# ========== API ENDPOINTS ==========
 
 @app.route('/api/health')
 def api_health():
@@ -346,8 +318,6 @@ def api_health():
     }), 200
 
 
-# ========== ENDPOINTS CHART (TECHNICAL ANALYSIS) ==========
-
 @app.route('/api/chart/<symbol>')
 def api_chart_data(symbol):
     """📊 Données OHLCV + tous indicateurs techniques pour affichage chart"""
@@ -358,8 +328,12 @@ def api_chart_data(symbol):
         period = request.args.get('period', '3mo')
         analyzer = TechnicalAnalyzer(symbol, period=period, interval='1d')
         df = analyzer.df
+        
+        if len(df) < 2:
+            return jsonify({'success': False, 'error': 'Données insuffisantes'}), 400
+        
         current_price = float(df['Close'].iloc[-1])
-        previous_close = float(df['Close'].iloc[-2]) if len(df) > 1 else current_price
+        previous_close = float(df['Close'].iloc[-2])
         price_change_24h = current_price - previous_close
         price_change_pct = (price_change_24h / previous_close * 100) if previous_close > 0 else 0
         volume_24h = int(df['Volume'].iloc[-1])
@@ -391,7 +365,18 @@ def api_chart_data(symbol):
         macd_line, signal_line, histogram = analyzer.calculate_macd()
         upper, middle, lower = analyzer.calculate_bollinger_bands()
         
+        # Calcul sécurisé des indicateurs ta-lib
         import ta as ta_lib
+        
+        def safe_indicator_array(calc_func, default=[]):
+            """Wrapper sécurisé pour indicateurs ta-lib"""
+            try:
+                result = calc_func()
+                return [float(v) if not pd.isna(v) else None for v in result]
+            except (IndexError, ValueError, Exception) as e:
+                logger.warning(f"⚠️  Indicateur ignoré (données insuffisantes): {e}")
+                return default
+        
         stoch = ta_lib.momentum.StochasticOscillator(df['High'], df['Low'], df['Close'])
         adx_calc = ta_lib.trend.ADXIndicator(df['High'], df['Low'], df['Close'])
         atr_calc = ta_lib.volatility.AverageTrueRange(df['High'], df['Low'], df['Close'])
@@ -411,11 +396,11 @@ def api_chart_data(symbol):
             'bb_upper': [float(v) if not pd.isna(v) else None for v in upper],
             'bb_middle': [float(v) if not pd.isna(v) else None for v in middle],
             'bb_lower': [float(v) if not pd.isna(v) else None for v in lower],
-            'stoch_k': [float(v) if not pd.isna(v) else None for v in stoch.stoch()],
-            'stoch_d': [float(v) if not pd.isna(v) else None for v in stoch.stoch_signal()],
-            'adx': [float(v) if not pd.isna(v) else None for v in adx_calc.adx()],
-            'atr': [float(v) if not pd.isna(v) else None for v in atr_calc.average_true_range()],
-            'obv': [float(v) if not pd.isna(v) else None for v in obv_calc.on_balance_volume()]
+            'stoch_k': safe_indicator_array(stoch.stoch),
+            'stoch_d': safe_indicator_array(stoch.stoch_signal),
+            'adx': safe_indicator_array(adx_calc.adx),
+            'atr': safe_indicator_array(atr_calc.average_true_range),
+            'obv': safe_indicator_array(obv_calc.on_balance_volume)
         }
         
         rsi_current = float(rsi.iloc[-1]) if len(rsi) > 0 and not pd.isna(rsi.iloc[-1]) else 50.0
@@ -524,13 +509,9 @@ def api_chart_fibonacci(symbol):
         period = request.args.get('period', '3mo')
         analyzer = TechnicalAnalyzer(symbol, period=period, interval='1d')
         df = analyzer.df
-        
-        # Trouver swing high et swing low sur la période
         swing_high = float(df['High'].max())
         swing_low = float(df['Low'].min())
         current_price = float(df['Close'].iloc[-1])
-        
-        # Calculer retracements Fibonacci (du haut vers le bas)
         fib_levels = {
             '0.0%': swing_high,
             '23.6%': swing_high - (swing_high - swing_low) * 0.236,
@@ -540,13 +521,10 @@ def api_chart_fibonacci(symbol):
             '78.6%': swing_high - (swing_high - swing_low) * 0.786,
             '100.0%': swing_low
         }
-        
-        # Extensions Fibonacci
         fib_extensions = {
             '161.8%': swing_low - (swing_high - swing_low) * 0.618,
             '261.8%': swing_low - (swing_high - swing_low) * 1.618
         }
-        
         return jsonify({
             'success': True,
             'symbol': symbol.upper(),
@@ -557,7 +535,6 @@ def api_chart_fibonacci(symbol):
             'retracements': fib_levels,
             'extensions': fib_extensions
         })
-        
     except Exception as e:
         logger.error(f"❌ Fibonacci error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -573,40 +550,26 @@ def api_chart_volume_profile(symbol):
         period = request.args.get('period', '3mo')
         analyzer = TechnicalAnalyzer(symbol, period=period, interval='1d')
         df = analyzer.df
-        
-        # Diviser la plage de prix en N bins
         num_bins = 50
         price_min = float(df['Low'].min())
         price_max = float(df['High'].max())
         bin_size = (price_max - price_min) / num_bins
-        
-        # Créer le profile de volume
         volume_profile = {}
         for i in range(num_bins):
             bin_start = price_min + (i * bin_size)
             bin_end = bin_start + bin_size
             bin_center = (bin_start + bin_end) / 2
-            
-            # Somme du volume pour les barres dont le prix est dans ce bin
-            vol_in_bin = df[
-                ((df['High'] >= bin_start) & (df['Low'] <= bin_end))
-            ]['Volume'].sum()
-            
+            vol_in_bin = df[((df['High'] >= bin_start) & (df['Low'] <= bin_end))]['Volume'].sum()
             if vol_in_bin > 0:
                 volume_profile[f"{bin_center:.2f}"] = int(vol_in_bin)
-        
-        # Trouver le Point of Control (POC) - niveau avec le plus de volume
         if volume_profile:
             poc_price = max(volume_profile, key=volume_profile.get)
             poc_volume = volume_profile[poc_price]
         else:
             poc_price = None
             poc_volume = 0
-        
-        # Value Area (70% du volume total)
         total_volume = sum(volume_profile.values())
         sorted_bins = sorted(volume_profile.items(), key=lambda x: x[1], reverse=True)
-        
         value_area_volume = 0
         value_area_prices = []
         for price, vol in sorted_bins:
@@ -614,10 +577,8 @@ def api_chart_volume_profile(symbol):
             value_area_prices.append(float(price))
             if value_area_volume >= total_volume * 0.7:
                 break
-        
-        vah = max(value_area_prices) if value_area_prices else None  # Value Area High
-        val = min(value_area_prices) if value_area_prices else None  # Value Area Low
-        
+        vah = max(value_area_prices) if value_area_prices else None
+        val = min(value_area_prices) if value_area_prices else None
         return jsonify({
             'success': True,
             'symbol': symbol.upper(),
@@ -626,7 +587,6 @@ def api_chart_volume_profile(symbol):
             'value_area': {'high': vah, 'low': val},
             'total_volume': total_volume
         })
-        
     except Exception as e:
         logger.error(f"❌ Volume Profile error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
