@@ -7,7 +7,7 @@ class ScalperProUltra {
     constructor() {
         this.currentTicker = 'AAPL';
         this.currentTimeframe = '5m';
-        this.refreshInterval = 5000; // 5 secondes
+        this.refreshInterval = 5000;
         this.chart = null;
         this.currentChartData = null;
         
@@ -90,14 +90,15 @@ class ScalperProUltra {
     }
 
     timeframeToPeriod(tf) {
+        // 🔥 TOUS LES TIMEFRAMES UTILISENT 3mo POUR GARANTIR 60+ BARRES
         const mapping = {
-            '1m': '1mo',   // FIX: 1mo au lieu de 5d (besoin 20+ barres pour RSI)
-            '5m': '1mo',   // FIX: 1mo au lieu de 5d
-            '15m': '1mo',
+            '1m': '3mo',
+            '5m': '3mo',
+            '15m': '3mo',
             '1h': '3mo',
             '4h': '6mo'
         };
-        return mapping[tf] || '1mo';
+        return mapping[tf] || '3mo';
     }
 
     updatePriceStats(data) {
@@ -359,9 +360,9 @@ class ScalperProUltra {
 
     async loadHeatmap() {
         try {
-            // 🔥 FIX: Utiliser period=1mo au lieu de 5d (besoin 20+ barres)
+            // 🔥 UTILISER 3mo POUR GARANTIR 60+ BARRES
             const promises = this.watchlist.slice(0, 20).map(ticker => 
-                fetch(`/api/chart/${ticker}?period=1mo`)
+                fetch(`/api/chart/${ticker}?period=3mo`)
                     .then(r => r.json())
                     .catch(err => ({ success: false, symbol: ticker }))
             );
