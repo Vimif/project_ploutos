@@ -105,6 +105,15 @@ except Exception as e:
     LIVE_WATCHLISTS_AVAILABLE = False
     logger.error(f"❌ Live Watchlists non disponibles: {e}")
 
+# 🎯 PRO ANALYSIS BLUEPRINT
+try:
+    from web.routes.pro_analysis import pro_analysis_bp
+    PRO_ANALYSIS_BP_AVAILABLE = True
+    logger.info("✅ Pro Analysis blueprint chargé")
+except Exception as e:
+    PRO_ANALYSIS_BP_AVAILABLE = False
+    logger.error(f"❌ Pro Analysis blueprint non disponible: {e}")
+
 try:
     from trading.alpaca_client import AlpacaClient
     ALPACA_AVAILABLE = True
@@ -190,6 +199,10 @@ if LIVE_TRADING_AVAILABLE:
 if LIVE_WATCHLISTS_AVAILABLE:
     app.register_blueprint(live_watchlists_bp)
     logger.info("✅ Live Watchlists blueprint enregistré")
+
+if PRO_ANALYSIS_BP_AVAILABLE:
+    app.register_blueprint(pro_analysis_bp)
+    logger.info("✅ Pro Analysis blueprint enregistré")
 
 alpaca_client = None
 if ALPACA_AVAILABLE:
@@ -322,7 +335,8 @@ def api_health():
             'alpaca': alpaca_client is not None,
             'technical_analyzer': TECHNICAL_ANALYZER_AVAILABLE,
             'chart_data': TECHNICAL_ANALYZER_AVAILABLE,
-            'mtf_analyzer': TRADER_PRO and mtf_analyzer is not None
+            'mtf_analyzer': TRADER_PRO and mtf_analyzer is not None,
+            'pro_analysis': PRO_ANALYSIS_BP_AVAILABLE
         }
     }), 200
 
@@ -685,5 +699,7 @@ if __name__ == '__main__':
         print(f"📊 9 Watchlists prédéfinies disponibles")
     if TECHNICAL_ANALYZER_AVAILABLE:
         print(f"✅ Technical Analysis: /api/chart/* + /api/mtf/* actifs")
+    if PRO_ANALYSIS_BP_AVAILABLE:
+        print(f"✅ Pro Analysis: /api/pro-analysis/* actif")
     print("\n" + "="*70 + "\n")
     app.run(host=host, port=port, debug=False)
