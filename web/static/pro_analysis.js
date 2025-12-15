@@ -109,41 +109,45 @@ class ProAnalysis {
         if (!container || !this.currentData) return;
         
         const data = this.currentData;
-        const signalClass = `signal-${data.overall_signal.replace('_', '-')}`;
-        const riskClass = `risk-${data.risk_level}`;
+        const signalClass = `signal-${data.overall_signal?.replace('_', '-') || 'unknown'}`;
+        const riskClass = `risk-${data.risk_level || 'unknown'}`;
         
         // Afficher l'âge du cache
         const cacheAge = this.cache[this.currentTicker] ? 
             Math.floor((Date.now() - this.cache[this.currentTicker].timestamp) / 1000) : 0;
         
+        // 🔥 FIX: Protection accès current_price avec optional chaining
+        const currentPrice = data.current_price || data.stats?.price || null;
+        const priceDisplay = currentPrice ? `${currentPrice.toFixed(2)} $` : 'N/A';
+        
         container.innerHTML = `
             <div class="signal-badge ${signalClass} mb-3">
-                ${this.getSignalEmoji(data.overall_signal)} ${data.overall_signal.replace('_', ' ')}
+                ${this.getSignalEmoji(data.overall_signal)} ${(data.overall_signal || 'UNKNOWN').replace('_', ' ')}
             </div>
             
             <div class="mb-3">
                 <div class="text-gray-400 text-xs mb-1">Confiance</div>
                 <div class="gauge">
-                    <div class="gauge-fill" style="width: ${data.confidence}%; background: linear-gradient(90deg, #3b82f6, #8b5cf6);"></div>
+                    <div class="gauge-fill" style="width: ${data.confidence || 0}%; background: linear-gradient(90deg, #3b82f6, #8b5cf6);"></div>
                 </div>
-                <div class="text-right text-xs mt-1">${data.confidence.toFixed(0)}%</div>
+                <div class="text-right text-xs mt-1">${(data.confidence || 0).toFixed(0)}%</div>
             </div>
             
             <div class="mb-3">
                 <div class="text-gray-400 text-xs">Risque</div>
-                <div class="${riskClass} font-bold text-lg">${data.risk_level}</div>
+                <div class="${riskClass} font-bold text-lg">${data.risk_level || 'UNKNOWN'}</div>
             </div>
             
             <div class="text-xs bg-gray-800 p-2 rounded mt-3">
                 <div class="text-gray-400 mb-1">Prix actuel</div>
-                <div class="text-xl font-bold">${data.current_price.toFixed(2)} $</div>
+                <div class="text-xl font-bold">${priceDisplay}</div>
                 <div class="text-gray-500 text-xs mt-1">🔄 il y a ${cacheAge}s</div>
             </div>
         `;
     }
     
     /**
-     * 📑 Afficher les détails (sidebar droite)
+     * 📁 Afficher les détails (sidebar droite)
      */
     renderDetails() {
         const container = document.getElementById('pro-details');
@@ -154,86 +158,98 @@ class ProAnalysis {
         let html = '';
         
         // 📈 TENDANCE
-        html += this.renderIndicatorCard(
-            'Tendance',
-            'trend',
-            data.trend.direction,
-            data.trend.strength,
-            data.trend.explanation,
-            {
-                'SMA 200': data.trend.price_vs_sma200 === 'above' ? '🟢 Au-dessus' : '🔴 En-dessous',
-                'Golden Cross': data.trend.golden_cross ? '✅ Oui' : '❌ Non',
-                'Support': data.trend.support_level ? `$${data.trend.support_level.toFixed(2)}` : 'N/A',
-                'Résistance': data.trend.resistance_level ? `$${data.trend.resistance_level.toFixed(2)}` : 'N/A'
-            }
-        );
+        if (data.trend) {
+            html += this.renderIndicatorCard(
+                'Tendance',
+                'trend',
+                data.trend.direction || 'unknown',
+                data.trend.strength || 0,
+                data.trend.explanation || 'N/A',
+                {
+                    'SMA 200': data.trend.price_vs_sma200 === 'above' ? '🟢 Au-dessus' : '🔴 En-dessous',
+                    'Golden Cross': data.trend.golden_cross ? '✅ Oui' : '❌ Non',
+                    'Support': data.trend.support_level ? `$${data.trend.support_level.toFixed(2)}` : 'N/A',
+                    'Résistance': data.trend.resistance_level ? `$${data.trend.resistance_level.toFixed(2)}` : 'N/A'
+                }
+            );
+        }
         
         // ⚡ MOMENTUM
-        html += this.renderIndicatorCard(
-            'Momentum (RSI)',
-            'momentum',
-            data.momentum.signal,
-            data.momentum.rsi_value,
-            data.momentum.explanation,
-            {
-                'RSI': `${data.momentum.rsi_value.toFixed(1)}`,
-                'Zone': this.getRSIZoneEmoji(data.momentum.zone) + ' ' + data.momentum.zone,
-                'Divergence': data.momentum.divergence_detected ? `⚠️ ${data.momentum.divergence_type}` : '✅ Non'
-            }
-        );
+        if (data.momentum) {
+            html += this.renderIndicatorCard(
+                'Momentum (RSI)',
+                'momentum',
+                data.momentum.signal || 'unknown',
+                data.momentum.rsi_value || 0,
+                data.momentum.explanation || 'N/A',
+                {
+                    'RSI': `${(data.momentum.rsi_value || 0).toFixed(1)}`,
+                    'Zone': this.getRSIZoneEmoji(data.momentum.zone) + ' ' + (data.momentum.zone || 'unknown'),
+                    'Divergence': data.momentum.divergence_detected ? `⚠️ ${data.momentum.divergence_type}` : '✅ Non'
+                }
+            );
+        }
         
         // 📉 MACD
-        html += this.renderIndicatorCard(
-            'MACD',
-            'macd',
-            data.macd.signal,
-            data.macd.macd_value,
-            data.macd.explanation,
-            {
-                'MACD': data.macd.macd_value.toFixed(3),
-                'Signal': data.macd.signal_value.toFixed(3),
-                'Histogram': data.macd.histogram_value.toFixed(3),
-                'Croisement': data.macd.crossover ? `🔀 ${data.macd.crossover}` : '➖ Aucun',
-                'Direction': this.getDirectionEmoji(data.macd.histogram_direction)
-            }
-        );
+        if (data.macd) {
+            html += this.renderIndicatorCard(
+                'MACD',
+                'macd',
+                data.macd.signal || 'unknown',
+                data.macd.macd_value || 0,
+                data.macd.explanation || 'N/A',
+                {
+                    'MACD': (data.macd.macd_value || 0).toFixed(3),
+                    'Signal': (data.macd.signal_value || 0).toFixed(3),
+                    'Histogram': (data.macd.histogram_value || 0).toFixed(3),
+                    'Croisement': data.macd.crossover ? `🔀 ${data.macd.crossover}` : '➖ Aucun',
+                    'Direction': this.getDirectionEmoji(data.macd.histogram_direction)
+                }
+            );
+        }
         
         // 🌊 VOLATILITÉ
-        html += this.renderIndicatorCard(
-            'Volatilité (Bollinger)',
-            'volatility',
-            data.volatility.price_position,
-            data.volatility.bb_width,
-            data.volatility.explanation,
-            {
-                'BB Upper': `$${data.volatility.bb_upper.toFixed(2)}`,
-                'BB Middle': `$${data.volatility.bb_middle.toFixed(2)}`,
-                'BB Lower': `$${data.volatility.bb_lower.toFixed(2)}`,
-                'Squeeze': data.volatility.squeeze_detected ? '💥 OUI !' : '❌ Non'
-            }
-        );
+        if (data.volatility) {
+            html += this.renderIndicatorCard(
+                'Volatilité (Bollinger)',
+                'volatility',
+                data.volatility.price_position || 'unknown',
+                data.volatility.bb_width || 0,
+                data.volatility.explanation || 'N/A',
+                {
+                    'BB Upper': data.volatility.bb_upper ? `$${data.volatility.bb_upper.toFixed(2)}` : 'N/A',
+                    'BB Middle': data.volatility.bb_middle ? `$${data.volatility.bb_middle.toFixed(2)}` : 'N/A',
+                    'BB Lower': data.volatility.bb_lower ? `$${data.volatility.bb_lower.toFixed(2)}` : 'N/A',
+                    'Squeeze': data.volatility.squeeze_detected ? '💥 OUI !' : '❌ Non'
+                }
+            );
+        }
         
         // 📦 VOLUME
-        html += this.renderIndicatorCard(
-            'Volume (OBV)',
-            'volume',
-            data.volume.obv_trend,
-            0,
-            data.volume.explanation,
-            {
-                'Tendance OBV': this.getDirectionEmoji(data.volume.obv_trend),
-                'Confirmation': data.volume.volume_confirmation ? '✅ Oui' : '⚠️ Non',
-                'Smart Money': data.volume.smart_money_accumulation ? '👑 Détecté' : '❌ Non'
-            }
-        );
+        if (data.volume) {
+            html += this.renderIndicatorCard(
+                'Volume (OBV)',
+                'volume',
+                data.volume.obv_trend || 'unknown',
+                0,
+                data.volume.explanation || 'N/A',
+                {
+                    'Tendance OBV': this.getDirectionEmoji(data.volume.obv_trend),
+                    'Confirmation': data.volume.volume_confirmation ? '✅ Oui' : '⚠️ Non',
+                    'Smart Money': data.volume.smart_money_accumulation ? '👑 Détecté' : '❌ Non'
+                }
+            );
+        }
         
         // 📄 PLAN DE TRADING
-        html += `
-            <div class="bg-gray-800 p-3 rounded-lg mt-3">
-                <div class="font-bold text-sm mb-2">📌 Plan de Trading</div>
-                <div class="text-xs whitespace-pre-wrap">${data.trading_plan}</div>
-            </div>
-        `;
+        if (data.trading_plan) {
+            html += `
+                <div class="bg-gray-800 p-3 rounded-lg mt-3">
+                    <div class="font-bold text-sm mb-2">📌 Plan de Trading</div>
+                    <div class="text-xs whitespace-pre-wrap">${data.trading_plan}</div>
+                </div>
+            `;
+        }
         
         container.innerHTML = html;
     }
@@ -311,6 +327,7 @@ class ProAnalysis {
     }
     
     getDirectionEmoji(direction) {
+        if (!direction) return '➡️';
         if (direction.includes('increas') || direction === 'rising') return '📈';
         if (direction.includes('decreas') || direction === 'falling') return '📉';
         return '➡️';
