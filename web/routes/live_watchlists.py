@@ -12,12 +12,18 @@ from pathlib import Path
 from flask import Blueprint, jsonify, request
 import logging
 
+# Utiliser les settings existants
+try:
+    from config.settings import DATA_DIR
+except ImportError:
+    DATA_DIR = Path('data')
+
 logger = logging.getLogger(__name__)
 
 live_watchlists_bp = Blueprint('live_watchlists', __name__, url_prefix='/api/live')
 
-# Fichier de stockage
-WATCHLISTS_FILE = Path('data/live_watchlists.json')
+# Fichier de stockage (utilise DATA_DIR du .env)
+WATCHLISTS_FILE = DATA_DIR / 'live_watchlists.json'
 WATCHLISTS_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 # Watchlists prédéfinies
