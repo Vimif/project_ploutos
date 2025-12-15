@@ -51,6 +51,65 @@
         .chart-container {
             position: relative;
         }
+        
+        /* 🎯 PRO ANALYSIS STYLES */
+        .signal-badge {
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-weight: 700;
+            text-align: center;
+            font-size: 14px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        .signal-STRONG_BUY { background: linear-gradient(135deg, #00f260, #0575e6); }
+        .signal-BUY { background: linear-gradient(135deg, #52c234, #0575e6); }
+        .signal-HOLD { background: linear-gradient(135deg, #ffd89b, #19547b); }
+        .signal-SELL { background: linear-gradient(135deg, #ff6a00, #ee0979); }
+        .signal-STRONG_SELL { background: linear-gradient(135deg, #eb3349, #f45c43); }
+        
+        .risk-LOW { color: #00f260; }
+        .risk-MEDIUM { color: #ffa502; }
+        .risk-HIGH { color: #ff4757; }
+        
+        .indicator-card {
+            background: rgba(31, 41, 55, 0.9);
+            border-left: 4px solid;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            transition: all 0.3s;
+        }
+        .indicator-card:hover {
+            transform: translateX(4px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+        }
+        .indicator-card.trend { border-left-color: #3b82f6; }
+        .indicator-card.momentum { border-left-color: #a855f7; }
+        .indicator-card.macd { border-left-color: #ec4899; }
+        .indicator-card.volatility { border-left-color: #f59e0b; }
+        .indicator-card.volume { border-left-color: #10b981; }
+        
+        .gauge {
+            width: 100%;
+            height: 8px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+        .gauge-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+        
+        .warning-box {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 8px;
+        }
     </style>
 </head>
 <body class="p-4">
@@ -97,6 +156,18 @@
                         <i class="fas fa-tachometer-alt text-blue-400"></i> Vue Rapide
                     </h3>
                     <div id="quick-stats" class="text-sm"></div>
+                </div>
+
+                <!-- 🎯 PRO ANALYSIS SUMMARY -->
+                <div class="glass rounded-lg p-4">
+                    <h3 class="font-bold text-lg mb-3 flex items-center gap-2">
+                        🎯 Analyse Pro
+                    </h3>
+                    <div id="pro-summary" class="text-xs">
+                        <div class="text-gray-500 text-center py-4">
+                            📊 Cliquez sur Analyser
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Multi-Timeframe Matrix -->
@@ -194,12 +265,16 @@
             <!-- RIGHT SIDEBAR -->
             <div class="col-span-3 space-y-4 sidebar">
                 
-                <!-- Indicateurs Summary -->
+                <!-- 🎯 PRO ANALYSIS DETAILS -->
                 <div class="glass rounded-lg p-4">
                     <h3 class="font-bold text-lg mb-3 flex items-center gap-2">
-                        <i class="fas fa-chart-pie text-cyan-400"></i> Indicateurs
+                        🎯 Détails Pro
                     </h3>
-                    <div id="indicators-summary"></div>
+                    <div id="pro-details" class="text-xs max-h-[500px] overflow-y-auto scrollbar-hide">
+                        <div class="text-gray-500 text-center py-4">
+                            📈 En attente d'analyse
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Support/Resistance -->
@@ -211,7 +286,7 @@
                 </div>
 
                 <!-- AI Assistant -->
-                <div class="glass rounded-lg p-4 flex flex-col" style="height: 600px;">
+                <div class="glass rounded-lg p-4 flex flex-col" style="height: 400px;">
                     <h3 class="font-bold text-lg mb-3 flex items-center gap-2">
                         <i class="fas fa-robot text-blue-400"></i> Assistant IA
                     </h3>
@@ -243,13 +318,14 @@
         <kbd>1</kbd> <kbd>5</kbd> <kbd>M</kbd> <kbd>Y</kbd> Timeframes
     </div>
 
-    <!-- 🔥 Volume Profile Sidebar (injecté dynamiquement par chart_pro.js) -->
-
     <!-- Scripts -->
     <script src="{{ url_for('static', filename='advanced_chart.js') }}"></script>
     
     <!-- 🔥 CHART PRO JS -->
     <script src="{{ url_for('static', filename='chart_pro.js') }}"></script>
+    
+    <!-- 🎯 PRO ANALYSIS JS -->
+    <script src="{{ url_for('static', filename='pro_analysis.js') }}"></script>
     
     <script>
         // 🔗 Connecter Chart Pro avec le chart existant
@@ -258,15 +334,18 @@
                 window.chartPro.currentTicker = event.detail.ticker;
                 window.chartPro.currentPeriod = event.detail.period;
                 
-                // Charger les données chart tools
                 window.chartPro.fibonacciData = event.detail.data.fibonacci;
                 window.chartPro.volumeProfileData = event.detail.data.volume_profile;
                 window.chartPro.supportResistanceData = event.detail.data.support_resistance;
                 window.chartPro.annotationsData = event.detail.data.annotations;
                 
-                // Mettre à jour le chart avec les nouvelles données
                 window.chartPro.updateChart();
                 window.chartPro.renderVolumeProfile();
+            }
+            
+            // 🎯 Charger l'analyse pro
+            if (window.ProAnalysis) {
+                window.ProAnalysis.loadAnalysis(event.detail.ticker);
             }
         });
     </script>
