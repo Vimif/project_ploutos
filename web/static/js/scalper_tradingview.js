@@ -130,8 +130,12 @@ class ScalperTradingView {
     setupWebSocket() {
         console.log('🔌 Connexion WebSocket...');
         
-        // Connexion au serveur Flask-SocketIO
-        this.socket = io({
+        // 🔥 CONNEXION AU BON PORT (5001)
+        const wsUrl = `http://${window.location.hostname}:5001`;
+        console.log(`🔗 WebSocket URL: ${wsUrl}`);
+        
+        // Connexion au serveur Flask-SocketIO sur port 5001
+        this.socket = io(wsUrl, {
             transports: ['websocket', 'polling'],
             reconnection: true,
             reconnectionDelay: 1000,
