@@ -69,6 +69,15 @@ except Exception as e:
     PRO_ANALYZER_AVAILABLE = False
     logger.error(f"❌ Pro Technical Analyzer non disponible: {e}")
 
+# 📊 TECHNICAL ANALYZER (pour endpoints /api/chart/*)
+try:
+    from dashboard.technical_analysis import TechnicalAnalyzer
+    TECHNICAL_ANALYZER_AVAILABLE = True
+    logger.info("✅ Technical Analyzer chargé (module dashboard)")
+except Exception as e:
+    TECHNICAL_ANALYZER_AVAILABLE = False
+    logger.warning(f"⚠️  Technical Analyzer non disponible: {e}")
+
 # 📊 WATCHLISTS
 try:
     from web.routes import watchlists_bp
@@ -276,6 +285,8 @@ def get_db_connection():
         return None
 
 
+# ========== ROUTES PAGES HTML ==========
+
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -299,6 +310,8 @@ def signals_page():
     return render_template('trading_signals.html')
 
 
+# ========== API ENDPOINTS ==========
+
 @app.route('/api/health')
 def api_health():
     return jsonify({
@@ -306,9 +319,214 @@ def api_health():
         'modules': {
             'live_trading': LIVE_TRADING_AVAILABLE,
             'live_watchlists': LIVE_WATCHLISTS_AVAILABLE,
-            'alpaca': alpaca_client is not None
+            'alpaca': alpaca_client is not None,
+            'technical_analyzer': TECHNICAL_ANALYZER_AVAILABLE,
+            'chart_data': TECHNICAL_ANALYZER_AVAILABLE
         }
     }), 200
+
+
+# ========== ENDPOINTS CHART (TECHNICAL ANALYSIS) ==========
+
+@app.route('/api/chart/<symbol>')
+def api_chart_data(symbol):
+    """
+    📊 Données OHLCV + tous indicateurs techniques pour affichage chart
+    Utilisé par l'interface web chart_pro.js
+    
+    Query params:
+        period: '1mo', '3mo', '6mo', '1y', '2y' (défaut: 3mo)
+    
+    Returns:
+        JSON avec OHLCV + indicateurs techniques complets
+    """
+    if not TECHNICAL_ANALYZER_AVAILABLE:
+        return jsonify({
+            'success': False,
+            'error': 'Charts indisponibles (TechnicalAnalyzer non chargé)',
+            'details': 'Module dashboard.technical_analysis manquant'
+        }), 503
+    
+    try:
+        period = request.args.get('period', '3mo')
+        
+        logger.info(f"📊 Chart request: {symbol} ({period})")
+        
+        # Créer l'analyseur (intervalle 1d pour charts)
+        analyzer = TechnicalAnalyzer(symbol, period=period, interval='1d')
+        
+        # Récupérer les données brutes
+        df = analyzer.df
+        
+        # Préparer les données OHLCV
+        ohlcv_data = []
+        for idx, row in df.iterrows():
+            ohlcv_data.append({
+                'date': idx.strftime('%Y-%m-%d'),
+                'timestamp': int(idx.timestamp() * 1000),
+                'open': float(row['Open']),
+                'high': float(row['High']),
+                'low': float(row['Low']),
+                'close': float(row['Close']),
+                'volume': int(row['Volume'])
+            })
+        
+        # Calculer tous les indicateurs
+        indicators = analyzer.get_all_indicators()
+        signal = analyzer.generate_signal()
+        
+        # Calculer indicateurs pour chaque point (pour affichage sur chart)
+        sma_20 = analyzer.calculate_sma(20)
+        sma_50 = analyzer.calculate_sma(50)
+        ema_20 = analyzer.calculate_ema(20)
+        rsi = analyzer.calculate_rsi()
+        macd_line, signal_line, histogram = analyzer.calculate_macd()
+        upper, middle, lower = analyzer.calculate_bollinger_bands()
+        
+        # Ajouter indicateurs à chaque point OHLCV
+        for i, data_point in enumerate(ohlcv_data):
+            data_point['sma_20'] = float(sma_20.iloc[i]) if i < len(sma_20) and not pd.isna(sma_20.iloc[i]) else None
+            data_point['sma_50'] = float(sma_50.iloc[i]) if i < len(sma_50) and not pd.isna(sma_50.iloc[i]) else None
+            data_point['ema_20'] = float(ema_20.iloc[i]) if i < len(ema_20) and not pd.isna(ema_20.iloc[i]) else None
+            data_point['rsi'] = float(rsi.iloc[i]) if i < len(rsi) and not pd.isna(rsi.iloc[i]) else None
+            data_point['macd'] = float(macd_line.iloc[i]) if i < len(macd_line) and not pd.isna(macd_line.iloc[i]) else None
+            data_point['macd_signal'] = float(signal_line.iloc[i]) if i < len(signal_line) and not pd.isna(signal_line.iloc[i]) else None
+            data_point['macd_histogram'] = float(histogram.iloc[i]) if i < len(histogram) and not pd.isna(histogram.iloc[i]) else None
+            data_point['bb_upper'] = float(upper.iloc[i]) if i < len(upper) and not pd.isna(upper.iloc[i]) else None
+            data_point['bb_middle'] = float(middle.iloc[i]) if i < len(middle) and not pd.isna(middle.iloc[i]) else None
+            data_point['bb_lower'] = float(lower.iloc[i]) if i < len(lower) and not pd.isna(lower.iloc[i]) else None
+        
+        return jsonify({
+            'success': True,
+            'symbol': symbol.upper(),
+            'period': period,
+            'data': ohlcv_data,
+            'indicators': indicators,
+            'signal': {
+                'signal': signal.signal,
+                'strength': signal.strength,
+                'trend': signal.trend,
+                'confidence': signal.confidence,
+                'entry_price': signal.entry_price,
+                'stop_loss': signal.stop_loss,
+                'take_profit': signal.take_profit,
+                'reasons': signal.reasons
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur chart {symbol}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/chart/<symbol>/support-resistance')
+def api_chart_support_resistance(symbol):
+    """
+    🎯 Niveaux de support et résistance automatiques
+    Utilisé par l'interface web pour afficher les zones clés
+    
+    Query params:
+        period: '1mo', '3mo', '6mo', '1y', '2y' (défaut: 3mo)
+    
+    Returns:
+        JSON avec niveaux de support et résistance
+    """
+    if not TECHNICAL_ANALYZER_AVAILABLE:
+        return jsonify({
+            'success': False,
+            'error': 'Support/Resistance indisponibles',
+            'details': 'Module TechnicalAnalyzer manquant'
+        }), 503
+    
+    try:
+        period = request.args.get('period', '3mo')
+        
+        analyzer = TechnicalAnalyzer(symbol, period=period, interval='1d')
+        df = analyzer.df
+        
+        # Détecter les pivots (méthode simplifiée)
+        window = 10  # Fenetre pour détection pivots
+        
+        # Trouver les hauts et bas locaux
+        resistance_levels = []
+        support_levels = []
+        
+        for i in range(window, len(df) - window):
+            # Résistance : prix plus haut que ses voisins
+            if df['High'].iloc[i] == df['High'].iloc[i-window:i+window+1].max():
+                resistance_levels.append(float(df['High'].iloc[i]))
+            
+            # Support : prix plus bas que ses voisins
+            if df['Low'].iloc[i] == df['Low'].iloc[i-window:i+window+1].min():
+                support_levels.append(float(df['Low'].iloc[i]))
+        
+        # Regrouper les niveaux proches (tolerance 1%)
+        def cluster_levels(levels, tolerance=0.01):
+            if not levels:
+                return []
+            
+            levels_sorted = sorted(levels)
+            clusters = []
+            current_cluster = [levels_sorted[0]]
+            
+            for level in levels_sorted[1:]:
+                if abs(level - current_cluster[-1]) / current_cluster[-1] <= tolerance:
+                    current_cluster.append(level)
+                else:
+                    clusters.append(sum(current_cluster) / len(current_cluster))
+                    current_cluster = [level]
+            
+            clusters.append(sum(current_cluster) / len(current_cluster))
+            return clusters
+        
+        resistance_clusters = cluster_levels(resistance_levels)
+        support_clusters = cluster_levels(support_levels)
+        
+        # Garder les 5 niveaux les plus pertinents (proches du prix actuel)
+        current_price = float(df['Close'].iloc[-1])
+        
+        resistance_sorted = sorted(resistance_clusters, key=lambda x: abs(x - current_price))[:5]
+        support_sorted = sorted(support_clusters, key=lambda x: abs(x - current_price))[:5]
+        
+        # Ajouter force (nombre de touches)
+        def calculate_strength(level, all_levels):
+            tolerance = level * 0.01
+            touches = sum(1 for l in all_levels if abs(l - level) <= tolerance)
+            return touches
+        
+        resistance_data = [
+            {
+                'level': r,
+                'strength': calculate_strength(r, resistance_levels),
+                'distance_pct': ((r - current_price) / current_price * 100)
+            }
+            for r in resistance_sorted if r > current_price
+        ]
+        
+        support_data = [
+            {
+                'level': s,
+                'strength': calculate_strength(s, support_levels),
+                'distance_pct': ((current_price - s) / current_price * 100)
+            }
+            for s in support_sorted if s < current_price
+        ]
+        
+        return jsonify({
+            'success': True,
+            'symbol': symbol.upper(),
+            'current_price': current_price,
+            'resistance': sorted(resistance_data, key=lambda x: x['level']),
+            'support': sorted(support_data, key=lambda x: x['level'], reverse=True)
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur support/resistance {symbol}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 if __name__ == '__main__':
@@ -316,12 +534,15 @@ if __name__ == '__main__':
     host = os.getenv('DASHBOARD_HOST', '0.0.0.0')
     port = int(os.getenv('DASHBOARD_PORT', 5000))
     print("\n" + "="*70)
-    print("🌐 PLOUTOS - V8 ORACLE + LIVE TRADING + WATCHLISTS + SIGNALS")
+    print("🌐 PLOUTOS - V8 ORACLE + LIVE TRADING + WATCHLISTS + SIGNALS + CHARTS")
     print("="*70)
     print(f"\n🚀 http://{host}:{port}")
     print(f"🔥 Live Trading: http://{host}:{port}/live")
     print(f"🚦 Trading Signals: http://{host}:{port}/signals")
+    print(f"📊 Advanced Charts: http://{host}:{port}/chart")
     if LIVE_WATCHLISTS_AVAILABLE:
         print(f"📊 9 Watchlists prédéfinies disponibles")
+    if TECHNICAL_ANALYZER_AVAILABLE:
+        print(f"✅ Technical Analysis: Endpoints /api/chart/* actifs")
     print("\n" + "="*70 + "\n")
     app.run(host=host, port=port, debug=False)
