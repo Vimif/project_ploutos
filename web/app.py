@@ -321,7 +321,8 @@ def api_health():
             'live_watchlists': LIVE_WATCHLISTS_AVAILABLE,
             'alpaca': alpaca_client is not None,
             'technical_analyzer': TECHNICAL_ANALYZER_AVAILABLE,
-            'chart_data': TECHNICAL_ANALYZER_AVAILABLE
+            'chart_data': TECHNICAL_ANALYZER_AVAILABLE,
+            'mtf_analyzer': TRADER_PRO and mtf_analyzer is not None
         }
     }), 200
 
@@ -415,6 +416,15 @@ def api_chart_data(symbol):
             'volume_24h': volume_24h,
             'high_24h': high_24h,
             'low_24h': low_24h,
+            'stats': {  # ✅ NOUVEAU - pour compatibilité frontend
+                'price': current_price,
+                'change': price_change_24h,
+                'change_pct': price_change_pct,
+                'volume': volume_24h,
+                'high': high_24h,
+                'low': low_24h,
+                'open': float(df['Open'].iloc[-1])
+            },
             'data': ohlcv_data,
             'indicators': indicators,
             'signal': {
@@ -544,6 +554,92 @@ def api_chart_support_resistance(symbol):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/mtf/<symbol>')
+def api_mtf_analysis(symbol):
+    """
+    🔍 Multi-TimeFrame Analysis
+    Analyse technique sur plusieurs timeframes (1h, 4h, 1d, 1w)
+    
+    Returns:
+        Signaux BUY/SELL/HOLD sur chaque timeframe + consensus
+    """
+    # Si MTF Analyzer disponible, l'utiliser
+    if TRADER_PRO and mtf_analyzer:
+        try:
+            result = mtf_analyzer.analyze(symbol)
+            return jsonify({'success': True, 'data': clean_for_json(result)})
+        except Exception as e:
+            logger.error(f"❌ MTF Analyzer error: {e}")
+            # Fallback sur version simplifiée
+    
+    # Version simplifiée avec TechnicalAnalyzer
+    if not TECHNICAL_ANALYZER_AVAILABLE:
+        return jsonify({
+            'success': False,
+            'error': 'MTF Analysis indisponible',
+            'details': 'Modules requis manquants'
+        }), 503
+    
+    try:
+        timeframes = [
+            {'period': '1mo', 'interval': '1h', 'name': '1H'},
+            {'period': '3mo', 'interval': '4h', 'name': '4H'},
+            {'period': '6mo', 'interval': '1d', 'name': '1D'},
+            {'period': '1y', 'interval': '1wk', 'name': '1W'}
+        ]
+        
+        results = {}
+        signals_count = {'BUY': 0, 'SELL': 0, 'HOLD': 0}
+        
+        for tf in timeframes:
+            try:
+                analyzer = TechnicalAnalyzer(symbol, period=tf['period'], interval=tf['interval'])
+                signal = analyzer.generate_signal()
+                
+                results[tf['name']] = {
+                    'signal': signal.signal,
+                    'strength': signal.strength,
+                    'trend': signal.trend,
+                    'confidence': signal.confidence
+                }
+                
+                signals_count[signal.signal] += 1
+                
+            except Exception as e:
+                logger.warning(f"⚠️  MTF {tf['name']} error: {e}")
+                results[tf['name']] = {'error': str(e)}
+        
+        # Consensus
+        if signals_count['BUY'] > signals_count['SELL']:
+            consensus = 'BUY'
+            consensus_strength = (signals_count['BUY'] / len(timeframes)) * 100
+        elif signals_count['SELL'] > signals_count['BUY']:
+            consensus = 'SELL'
+            consensus_strength = (signals_count['SELL'] / len(timeframes)) * 100
+        else:
+            consensus = 'HOLD'
+            consensus_strength = (signals_count['HOLD'] / len(timeframes)) * 100
+        
+        return jsonify({
+            'success': True,
+            'symbol': symbol.upper(),
+            'timeframes': results,
+            'consensus': {
+                'signal': consensus,
+                'strength': round(consensus_strength, 1),
+                'buy_count': signals_count['BUY'],
+                'sell_count': signals_count['SELL'],
+                'hold_count': signals_count['HOLD']
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur MTF {symbol}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     import os
     host = os.getenv('DASHBOARD_HOST', '0.0.0.0')
@@ -558,6 +654,6 @@ if __name__ == '__main__':
     if LIVE_WATCHLISTS_AVAILABLE:
         print(f"📊 9 Watchlists prédéfinies disponibles")
     if TECHNICAL_ANALYZER_AVAILABLE:
-        print(f"✅ Technical Analysis: Endpoints /api/chart/* actifs")
+        print(f"✅ Technical Analysis: /api/chart/* + /api/mtf/* actifs")
     print("\n" + "="*70 + "\n")
     app.run(host=host, port=port, debug=False)
