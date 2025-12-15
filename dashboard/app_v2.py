@@ -1,5 +1,5 @@
 # dashboard/app_v2.py
-"""Dashboard Flask AMÉLIORÉ pour Ploutos - Version 2.0
+"""Dashboard Flask AMÉLIORÉ pour Ploutos - Version 2.1
 
 Nouveautés:
 - Connexion PostgreSQL native avec fallback JSON
@@ -7,6 +7,7 @@ Nouveautés:
 - Analyse drawdown et risque
 - Comparaison benchmark
 - Analytics par symbole
+- [NOUVEAU v2.1] Analyse technique en temps réel avec indicateurs
 """
 
 import sys
@@ -87,6 +88,26 @@ def init_alpaca():
         return False
 
 
+def _get_technical_analyzer():
+    """
+    Import lazy pour éviter toute régression au démarrage:
+    - Si dépendances manquantes (yfinance, pandas, numpy) => dashboard reste OK
+    - Erreur propre uniquement sur endpoints /api/technical/*
+    
+    Returns:
+        Tuple (TechnicalAnalyzer class, error_message)
+    """
+    try:
+        from dashboard.technical_analysis import TechnicalAnalyzer
+        return TechnicalAnalyzer, None
+    except ImportError as e:
+        logger.warning(f"⚠️  Analyse technique indisponible (dépendances manquantes): {e}")
+        return None, f"Dépendances manquantes: {str(e)}"
+    except Exception as e:
+        logger.error(f"❌ Erreur import module technique: {e}")
+        return None, str(e)
+
+
 def load_trades_from_json(days=30):
     """Charger trades depuis JSON (fallback)"""
     trades = []
@@ -128,7 +149,6 @@ def get_trades_data(days=30, symbol=None):
             return trades
         except Exception as e:
             logger.error(f"❌ Erreur PostgreSQL get_trades: {e}")
-            # Fallback JSON
             return load_trades_from_json(days=days)
     else:
         trades = load_trades_from_json(days=days)
@@ -146,7 +166,6 @@ def get_daily_data(days=30):
             logger.error(f"❌ Erreur PostgreSQL get_daily: {e}")
             return []
     else:
-        # Pas de résumés quotidiens en JSON
         return []
 
 
@@ -170,7 +189,7 @@ def metrics_page():
     return render_template('metrics.html')
 
 
-# ========== ROUTES API ALPACA ==========
+# ========== ROUTES API ALPACA (INCHANGÉES) ==========
 
 @app.route('/api/account')
 def get_account():
@@ -302,7 +321,7 @@ def close_position(symbol):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-# ========== ENDPOINTS ANALYTICS AVANCÉS ==========
+# ========== ENDPOINTS ANALYTICS AVANCÉS (INCHANGÉS) ==========
 
 @app.route('/api/analytics/advanced')
 def api_analytics_advanced():
@@ -310,11 +329,9 @@ def api_analytics_advanced():
     try:
         days = int(request.args.get('days', 30))
         
-        # Charger les données
         trades = get_trades_data(days=days)
         daily_data = get_daily_data(days=days)
         
-        # Calculer les métriques
         analytics = PortfolioAnalytics(trades, daily_data)
         metrics = analytics.get_all_metrics()
         
@@ -334,7 +351,6 @@ def api_analytics_symbol(symbol):
     """Analytics pour un symbole spécifique"""
     try:
         days = int(request.args.get('days', 30))
-        
         trades = get_trades_data(days=days, symbol=symbol)
         
         if not trades:
@@ -344,7 +360,6 @@ def api_analytics_symbol(symbol):
                 'count': 0
             })
         
-        # Stats basiques
         buy_trades = [t for t in trades if t['action'] == 'BUY']
         sell_trades = [t for t in trades if t['action'] == 'SELL']
         
@@ -360,7 +375,7 @@ def api_analytics_symbol(symbol):
                 'sell_count': len(sell_trades),
                 'total_volume': total_volume,
                 'avg_price': avg_price,
-                'trades': trades[:20]  # 20 plus récents
+                'trades': trades[:20]
             }
         })
     except Exception as e:
@@ -374,7 +389,6 @@ def api_db_trades():
     try:
         days = int(request.args.get('days', 30))
         symbol = request.args.get('symbol', None)
-        
         trades = get_trades_data(days=days, symbol=symbol)
         
         return jsonify({
@@ -413,7 +427,6 @@ def api_db_statistics():
                 'avg_trade_size': total_volume / len(trades) if trades else 0
             }
             
-            # Top symbols
             symbol_counts = defaultdict(lambda: {'count': 0, 'volume': 0})
             for t in trades:
                 symbol_counts[t['symbol']]['count'] += 1
@@ -474,15 +487,253 @@ def api_db_evolution():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# ========== ENDPOINTS ANALYSE TECHNIQUE (NOUVEAU v2.1) ==========
+
+@app.route('/api/technical/<symbol>')
+def api_technical_analysis(symbol):
+    """
+    Analyse technique complète d'un symbole
+    
+    Query params:
+        period: '1mo', '3mo', '6mo', '1y', '2y' (défaut: 3mo)
+        interval: '1m', '5m', '15m', '1h', '1d' (défaut: 1h)
+    
+    Returns:
+        JSON avec indicateurs + signal BUY/SELL/HOLD
+    """
+    TechnicalAnalyzer, error = _get_technical_analyzer()
+    if not TechnicalAnalyzer:
+        return jsonify({
+            'success': False,
+            'error': 'Analyse technique indisponible sur ce serveur',
+            'details': error
+        }), 503
+    
+    try:
+        period = request.args.get('period', '3mo')
+        interval = request.args.get('interval', '1h')
+        
+        logger.info(f"📊 Analyse technique: {symbol} ({period}, {interval})")
+        
+        analyzer = TechnicalAnalyzer(symbol, period=period, interval=interval)
+        indicators = analyzer.get_all_indicators()
+        signal = analyzer.generate_signal()
+        
+        risk_reward = None
+        if signal.entry_price and signal.stop_loss and signal.take_profit:
+            if signal.signal == 'BUY':
+                risk = signal.entry_price - signal.stop_loss
+                reward = signal.take_profit - signal.entry_price
+                risk_reward = reward / risk if risk > 0 else None
+            elif signal.signal == 'SELL':
+                risk = signal.stop_loss - signal.entry_price
+                reward = signal.entry_price - signal.take_profit
+                risk_reward = reward / risk if risk > 0 else None
+        
+        return jsonify({
+            'success': True,
+            'symbol': symbol.upper(),
+            'timestamp': datetime.now().isoformat(),
+            'period': period,
+            'interval': interval,
+            'indicators': indicators,
+            'trading_signal': {
+                'signal': signal.signal,
+                'strength': signal.strength,
+                'trend': signal.trend,
+                'confidence': signal.confidence,
+                'reasons': signal.reasons,
+                'entry_price': signal.entry_price,
+                'stop_loss': signal.stop_loss,
+                'take_profit': signal.take_profit,
+                'risk_reward_ratio': risk_reward
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur analyse technique {symbol}: {e}")
+        logger.error(traceback.format_exc())
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/technical/<symbol>/signal')
+def api_trading_signal(symbol):
+    """
+    Signal de trading rapide (sans tous les indicateurs)
+    
+    Returns:
+        JSON avec signal BUY/SELL/HOLD simplifié
+    """
+    TechnicalAnalyzer, error = _get_technical_analyzer()
+    if not TechnicalAnalyzer:
+        return jsonify({
+            'success': False,
+            'error': 'Analyse technique indisponible',
+            'details': error
+        }), 503
+    
+    try:
+        period = request.args.get('period', '3mo')
+        interval = request.args.get('interval', '1h')
+        
+        analyzer = TechnicalAnalyzer(symbol, period=period, interval=interval)
+        signal = analyzer.generate_signal()
+        
+        return jsonify({
+            'success': True,
+            'symbol': symbol.upper(),
+            'timestamp': datetime.now().isoformat(),
+            'signal': signal.signal,
+            'strength': signal.strength,
+            'trend': signal.trend,
+            'confidence': signal.confidence,
+            'entry_price': signal.entry_price,
+            'stop_loss': signal.stop_loss,
+            'take_profit': signal.take_profit,
+            'reasons': signal.reasons
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur signal {symbol}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/technical/batch', methods=['POST'])
+def api_batch_technical():
+    """
+    Analyse technique batch (plusieurs symboles)
+    
+    Body JSON:
+        {
+            "symbols": ["NVDA", "MSFT", "AAPL"],
+            "period": "3mo",
+            "interval": "1h"
+        }
+    """
+    TechnicalAnalyzer, error = _get_technical_analyzer()
+    if not TechnicalAnalyzer:
+        return jsonify({
+            'success': False,
+            'error': 'Analyse technique indisponible',
+            'details': error
+        }), 503
+    
+    try:
+        data = request.get_json()
+        symbols = data.get('symbols', [])
+        period = data.get('period', '3mo')
+        interval = data.get('interval', '1h')
+        
+        if not symbols:
+            return jsonify({'success': False, 'error': 'Aucun symbole fourni'}), 400
+        
+        results = {}
+        
+        for symbol in symbols:
+            try:
+                analyzer = TechnicalAnalyzer(symbol, period=period, interval=interval)
+                signal = analyzer.generate_signal()
+                
+                results[symbol] = {
+                    'signal': signal.signal,
+                    'strength': signal.strength,
+                    'trend': signal.trend,
+                    'confidence': signal.confidence,
+                    'entry_price': signal.entry_price,
+                    'reasons': signal.reasons[:3]
+                }
+            except Exception as e:
+                logger.error(f"❌ Erreur batch {symbol}: {e}")
+                results[symbol] = {'error': str(e)}
+        
+        return jsonify({
+            'success': True,
+            'timestamp': datetime.now().isoformat(),
+            'results': results
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur batch analysis: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/technical/watchlist')
+def api_technical_watchlist():
+    """
+    Scan analyse technique de toute la watchlist (config/tickers.py)
+    
+    Returns:
+        Top 5 opportunités BUY + Top 5 signaux SELL + tous résultats
+    """
+    TechnicalAnalyzer, error = _get_technical_analyzer()
+    if not TechnicalAnalyzer:
+        return jsonify({
+            'success': False,
+            'error': 'Analyse technique indisponible',
+            'details': error
+        }), 503
+    
+    try:
+        from config.tickers import ALL_TICKERS
+        
+        period = request.args.get('period', '3mo')
+        interval = request.args.get('interval', '1h')
+        
+        results = {}
+        
+        for symbol in ALL_TICKERS:
+            try:
+                analyzer = TechnicalAnalyzer(symbol, period=period, interval=interval)
+                signal = analyzer.generate_signal()
+                
+                results[symbol] = {
+                    'signal': signal.signal,
+                    'strength': signal.strength,
+                    'trend': signal.trend,
+                    'confidence': signal.confidence,
+                    'entry_price': signal.entry_price,
+                    'stop_loss': signal.stop_loss,
+                    'take_profit': signal.take_profit
+                }
+            except Exception as e:
+                logger.warning(f"⚠️  Erreur watchlist {symbol}: {e}")
+                results[symbol] = {'error': str(e)}
+        
+        buy_signals = {k: v for k, v in results.items() if v.get('signal') == 'BUY'}
+        sell_signals = {k: v for k, v in results.items() if v.get('signal') == 'SELL'}
+        
+        return jsonify({
+            'success': True,
+            'timestamp': datetime.now().isoformat(),
+            'total_symbols': len(ALL_TICKERS),
+            'buy_signals_count': len(buy_signals),
+            'sell_signals_count': len(sell_signals),
+            'top_buy_opportunities': dict(sorted(buy_signals.items(), key=lambda x: x[1].get('strength', 0), reverse=True)[:5]),
+            'top_sell_signals': dict(sorted(sell_signals.items(), key=lambda x: x[1].get('strength', 0), reverse=True)[:5]),
+            'all_results': results
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur watchlist: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/health')
 def health_check():
     """Vérifier l'état du système"""
+    TechnicalAnalyzer, _ = _get_technical_analyzer()
+    
     return jsonify({
         'success': True,
         'status': 'healthy',
-        'version': '2.0',
+        'version': '2.1',
         'postgres_available': PG_AVAILABLE,
-        'alpaca_connected': alpaca_client is not None
+        'alpaca_connected': alpaca_client is not None,
+        'features': {
+            'technical_analysis': TechnicalAnalyzer is not None,
+            'advanced_analytics': True,
+            'real_time_signals': True
+        }
     })
 
 
@@ -491,7 +742,7 @@ def health_check():
 @socketio.on('connect')
 def handle_connect():
     logger.info("🔌 Client WebSocket connecté")
-    emit('status', {'message': 'Connecté au serveur v2.0'})
+    emit('status', {'message': 'Connecté au serveur v2.1'})
 
 
 @socketio.on('disconnect')
@@ -501,21 +752,29 @@ def handle_disconnect():
 
 if __name__ == '__main__':
     logger.info("="*70)
-    logger.info("🚀 DÉMARRAGE DU DASHBOARD PLOUTOS V2.0")
+    logger.info("🚀 DÉMARRAGE DU DASHBOARD PLOUTOS V2.1")
     logger.info("="*70)
     
-    # Vérifier PostgreSQL
     check_postgres()
     
-    # Init Alpaca
+    TechnicalAnalyzer, tech_error = _get_technical_analyzer()
+    if TechnicalAnalyzer:
+        logger.info("✅ Module analyse technique disponible")
+    else:
+        logger.warning(f"⚠️  Module analyse technique désactivé: {tech_error}")
+    
     if init_alpaca():
-        logger.info("✅ Dashboard v2.0 prêt sur http://0.0.0.0:5000")
+        logger.info("✅ Dashboard v2.1 prêt sur http://0.0.0.0:5000")
         logger.info(f"📊 Source données: {'PostgreSQL' if PG_AVAILABLE else 'JSON (fallback)'}")
-        logger.info("🔥 Nouvelles fonctionnalités:")
+        logger.info("🔥 Fonctionnalités:")
         logger.info("   - Métriques avancées (Sharpe/Sortino/Calmar)")
         logger.info("   - Analyse drawdown et risque")
         logger.info("   - Analytics par symbole")
-        logger.info("   - Pages /trades et /metrics complètes")
+        if TechnicalAnalyzer:
+            logger.info("🆕 NOUVEAU - Analyse technique temps réel:")
+            logger.info("   - Indicateurs: RSI, MACD, Bollinger, Stochastic, ATR, OBV, VWAP")
+            logger.info("   - Signaux BUY/SELL/HOLD + stop-loss/take-profit")
+            logger.info("   - Endpoints: /api/technical/<symbol>, /api/technical/watchlist")
         logger.info("="*70)
         socketio.run(app, host='0.0.0.0', port=5000, debug=False, use_reloader=False)
     else:
