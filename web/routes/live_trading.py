@@ -23,6 +23,7 @@ try:
     from pathlib import Path
     sys.path.append(str(Path(__file__).parent.parent.parent))
     from streaming.live_analyzer import LiveAnalyzer
+    from streaming.websocket_manager import WebSocketManager
     LIVE_ANALYZER_AVAILABLE = True
 except ImportError as e:
     logger.error(f"❌ LiveAnalyzer non disponible: {e}")
@@ -34,6 +35,7 @@ live_bp = Blueprint('live', __name__, url_prefix='/api/live')
 # Global state
 live_analyzer = None
 monitoring_thread = None
+websocket_thread = None
 signal_queue = Queue(maxsize=100)  # Queue pour SSE
 
 
@@ -54,12 +56,12 @@ def start_monitoring():
             'message': 'Module streaming.live_analyzer non installé'
         }), 503
     
-    global live_analyzer, monitoring_thread
+    global live_analyzer, monitoring_thread, websocket_thread
     
     if live_analyzer is not None:
         return jsonify({
             'error': 'Monitoring déjà actif',
-            'message': 'Arrêtez d’abord le monitoring en cours'
+            'message': 'Arrêtez d\'abord le monitoring en cours'
         }), 400
     
     try:
@@ -74,8 +76,12 @@ def start_monitoring():
         if timeframe not in [1, 5, 15, 30, 60]:
             return jsonify({'error': 'Timeframe invalide (1, 5, 15, 30, 60 minutes)'}), 400
         
-        # Créer l’analyzer
-        live_analyzer = LiveAnalyzer(tickers, timeframe_minutes=timeframe)
+        # === UTILISER LE SINGLETON WEBSOCKET ===
+        # Au lieu de créer une nouvelle connexion, on utilise l'instance partagée
+        ws_manager = WebSocketManager.get_instance()
+        
+        # Créer l'analyzer SANS créer de connexion WebSocket interne
+        live_analyzer = LiveAnalyzer(tickers, timeframe_minutes=timeframe, use_websocket_manager=True)
         
         # Ajouter callback pour envoyer les signaux vers SSE
         def on_signal(signal):
@@ -90,7 +96,24 @@ def start_monitoring():
         
         live_analyzer.add_signal_callback(on_signal)
         
-        # Démarrer dans un thread séparé
+        # === DÉMARRER LE WEBSOCKET (UNE SEULE FOIS) ===
+        if not ws_manager.is_running:
+            def run_websocket():
+                """Thread pour exécuter le WebSocket en arrière-plan"""
+                try:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(ws_manager.start())
+                except Exception as e:
+                    logger.error(f"❌ Erreur WebSocket: {e}", exc_info=True)
+            
+            websocket_thread = threading.Thread(target=run_websocket, daemon=True)
+            websocket_thread.start()
+            logger.info("🚀 WebSocket Alpaca démarré (singleton)")
+        else:
+            logger.info("🔗 WebSocket déjà actif (réutilisation)")
+        
+        # Démarrer l'analyzer dans un thread séparé
         def run_analyzer():
             try:
                 asyncio.run(live_analyzer.start())
@@ -106,6 +129,7 @@ def start_monitoring():
             'status': 'started',
             'tickers': tickers,
             'timeframe': timeframe,
+            'websocket_shared': True,
             'timestamp': datetime.now().isoformat()
         })
         
@@ -124,11 +148,11 @@ def stop_monitoring():
     if live_analyzer is None:
         return jsonify({
             'error': 'Aucun monitoring actif',
-            'message': 'Le monitoring n’est pas démarré'
+            'message': 'Le monitoring n\'est pas démarré'
         }), 400
     
     try:
-        # Arrêter l’analyzer
+        # Arrêter l'analyzer
         live_analyzer.stop()
         
         # Nettoyer
@@ -141,6 +165,8 @@ def stop_monitoring():
                 signal_queue.get_nowait()
             except:
                 break
+        
+        # NOTE: On ne stop PAS le WebSocket, il reste actif pour d'autres instances
         
         logger.info("✅ Monitoring arrêté")
         
@@ -157,7 +183,7 @@ def stop_monitoring():
 @live_bp.route('/state')
 def get_state():
     """
-    Récupère l’état actuel du monitoring
+    Récupère l'état actuel du monitoring
     """
     if live_analyzer is None:
         return jsonify({
@@ -169,6 +195,10 @@ def get_state():
     try:
         state = live_analyzer.get_current_state()
         
+        # Stats du WebSocket Manager
+        ws_manager = WebSocketManager.get_instance()
+        ws_stats = ws_manager.get_stats()
+        
         return jsonify({
             'monitoring': True,
             'tickers': live_analyzer.tickers,
@@ -177,6 +207,7 @@ def get_state():
             'total_bars': live_analyzer.total_bars_received,
             'total_signals': live_analyzer.total_signals_generated,
             'state': state,
+            'websocket': ws_stats,
             'timestamp': datetime.now().isoformat()
         })
         
@@ -246,10 +277,35 @@ def health():
     """
     Endpoint de santé
     """
+    try:
+        ws_manager = WebSocketManager.get_instance()
+        ws_stats = ws_manager.get_stats()
+    except:
+        ws_stats = {'error': 'WebSocketManager non initialisé'}
+    
     return jsonify({
         'status': 'healthy',
         'analyzer_available': LIVE_ANALYZER_AVAILABLE,
         'monitoring': live_analyzer is not None,
         'queue_size': signal_queue.qsize(),
+        'websocket': ws_stats,
         'timestamp': datetime.now().isoformat()
     })
+
+
+@live_bp.route('/websocket/reset', methods=['POST'])
+def reset_websocket():
+    """
+    REDÉMARRAGE FORCÉ du WebSocket (debug uniquement)
+    ⚠️  Utiliser seulement en cas de problème
+    """
+    try:
+        WebSocketManager.reset_instance()
+        logger.warning("♻️ WebSocket redémarré (reset forcé)")
+        return jsonify({
+            'status': 'reset',
+            'message': 'WebSocket redémarré avec succès',
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
