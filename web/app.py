@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🌐 PLOUTOS WEB DASHBOARD - V8 ORACLE + TRADER PRO + 5 TOOLS + CHART PRO + PRO ANALYSIS + WATCHLISTS + LIVE TRADING
+🌐 PLOUTOS WEB DASHBOARD - V8 ORACLE + TRADER PRO + 5 TOOLS + CHART PRO + PRO ANALYSIS + WATCHLISTS + LIVE TRADING + SIGNALS
 """
 
 import sys
@@ -293,6 +293,11 @@ def live_page():
     """🔥 Page Live Trading Dashboard"""
     return render_template('live.html')
 
+@app.route('/signals')
+def signals_page():
+    """🚦 Page Trading Signals Dashboard - Interface graphique avec signaux BUY/SELL"""
+    return render_template('trading_signals.html')
+
 
 @app.route('/api/health')
 def api_health():
@@ -311,10 +316,11 @@ if __name__ == '__main__':
     host = os.getenv('DASHBOARD_HOST', '0.0.0.0')
     port = int(os.getenv('DASHBOARD_PORT', 5000))
     print("\n" + "="*70)
-    print("🌐 PLOUTOS - V8 ORACLE + LIVE TRADING + WATCHLISTS")
+    print("🌐 PLOUTOS - V8 ORACLE + LIVE TRADING + WATCHLISTS + SIGNALS")
     print("="*70)
     print(f"\n🚀 http://{host}:{port}")
     print(f"🔥 Live Trading: http://{host}:{port}/live")
+    print(f"🚦 Trading Signals: http://{host}:{port}/signals")
     if LIVE_WATCHLISTS_AVAILABLE:
         print(f"📊 9 Watchlists prédéfinies disponibles")
     print("\n" + "="*70 + "\n")
