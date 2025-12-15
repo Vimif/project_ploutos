@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🌐 PLOUTOS WEB DASHBOARD - V8 ORACLE + TRADER PRO + 5 TOOLS + CHART PRO + PRO ANALYSIS
+🌐 PLOUTOS WEB DASHBOARD - V8 ORACLE + TRADER PRO + 5 TOOLS + CHART PRO + PRO ANALYSIS + WATCHLISTS
 """
 
 import sys
@@ -69,6 +69,15 @@ except Exception as e:
     PRO_ANALYZER_AVAILABLE = False
     logger.error(f"❌ Pro Technical Analyzer non disponible: {e}")
 
+# 📊 WATCHLISTS
+try:
+    from web.routes import watchlists_bp
+    WATCHLISTS_AVAILABLE = True
+    logger.info("✅ Watchlists module chargé")
+except Exception as e:
+    WATCHLISTS_AVAILABLE = False
+    logger.error(f"❌ Watchlists non disponibles: {e}")
+
 try:
     from trading.alpaca_client import AlpacaClient
     ALPACA_AVAILABLE = True
@@ -133,6 +142,11 @@ def clean_for_json(obj):
 
 app = Flask(__name__)
 CORS(app)
+
+# 🔗 Register blueprints
+if WATCHLISTS_AVAILABLE:
+    app.register_blueprint(watchlists_bp)
+    logger.info("✅ Watchlists blueprint enregistré")
 
 alpaca_client = None
 if ALPACA_AVAILABLE:
@@ -622,7 +636,8 @@ def api_health():
             'correlation': corr_analyzer is not None, 
             'portfolio': portfolio is not None, 
             'chart_tools': chart_tools is not None,
-            'pro_analyzer': pro_analyzer is not None
+            'pro_analyzer': pro_analyzer is not None,
+            'watchlists': WATCHLISTS_AVAILABLE
         }
     }), 200
 
@@ -631,7 +646,7 @@ if __name__ == '__main__':
     host = os.getenv('DASHBOARD_HOST', '0.0.0.0')
     port = int(os.getenv('DASHBOARD_PORT', 5000))
     print("\n" + "="*70)
-    print("🌐 PLOUTOS - V8 + TRADER PRO + 5 TOOLS + CHART PRO + PRO ANALYSIS")
+    print("🌐 PLOUTOS - V8 + TRADER PRO + 5 TOOLS + CHART PRO + PRO ANALYSIS + WATCHLISTS")
     print("="*70)
     print(f"\n🚀 http://{host}:{port}")
     if TOOLS_AVAILABLE:
@@ -640,8 +655,10 @@ if __name__ == '__main__':
         print("📈 CHART PRO: Fibonacci / Volume Profile / S/R")
     if PRO_ANALYZER_AVAILABLE:
         print("🎯 PRO ANALYSIS: 5 indicateurs clés + divergences + plan de trading")
+    if WATCHLISTS_AVAILABLE:
+        print("📊 WATCHLISTS: 20 listes (US + FR + International)")
     print("\n✅ Pages: /, /chart, /tools")
     print("🩺 Test: /api/health")
-    print("📊 Nouveau: /api/pro-analysis/<ticker>")
+    print("📊 Watchlists: /api/watchlists")
     print("\n" + "="*70 + "\n")
     app.run(host=host, port=port, debug=False)
