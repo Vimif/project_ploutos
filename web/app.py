@@ -231,16 +231,23 @@ DEFAULT_WATCHLIST = ['AAPL', 'NVDA', 'MSFT', 'GOOGL', 'AMZN', 'META', 'TSLA', 'J
 
 
 def get_db_connection():
-    """💾 Connexion PostgreSQL"""
+    """💾 Connexion PostgreSQL avec gestion d'erreurs"""
+    if not DB_AVAILABLE:
+        return None
+    
     try:
+        import os
+        # Essayer avec les variables d'environnement d'abord
+        db_password = os.getenv('POSTGRES_PASSWORD', 'your_password_here')
+        
         return psycopg2.connect(
             host="localhost",
             database="ploutos",
             user="ploutos",
-            password="ploutos_password"
+            password=db_password
         )
     except Exception as e:
-        logger.error(f"❌ Erreur connexion DB: {e}")
+        logger.warning(f"⚠️  DB connexion: {e}")
         return None
 
 
@@ -266,30 +273,55 @@ def api_account():
     """
     if not alpaca_client:
         return jsonify({
-            'error': 'Alpaca non disponible',
             'mock': True,
             'portfolio_value': 100000,
             'cash': 50000,
             'buying_power': 50000,
-            'equity': 100000
+            'equity': 100000,
+            'profit_loss': 0,
+            'profit_loss_pct': 0
         }), 200
     
     try:
         account = alpaca_client.get_account()
         
+        # ✅ Support dict ou objet
+        if isinstance(account, dict):
+            portfolio_value = float(account.get('portfolio_value', 0))
+            cash = float(account.get('cash', 0))
+            buying_power = float(account.get('buying_power', 0))
+            equity = float(account.get('equity', 0))
+            last_equity = float(account.get('last_equity', equity))
+        else:
+            portfolio_value = float(account.portfolio_value)
+            cash = float(account.cash)
+            buying_power = float(account.buying_power)
+            equity = float(account.equity)
+            last_equity = float(account.last_equity)
+        
+        profit_loss = equity - last_equity
+        profit_loss_pct = (profit_loss / last_equity * 100) if last_equity > 0 else 0
+        
         return jsonify({
-            'portfolio_value': float(account.portfolio_value),
-            'cash': float(account.cash),
-            'buying_power': float(account.buying_power),
-            'equity': float(account.equity),
-            'last_equity': float(account.last_equity),
-            'profit_loss': float(account.equity) - float(account.last_equity),
-            'profit_loss_pct': ((float(account.equity) - float(account.last_equity)) / float(account.last_equity) * 100) if float(account.last_equity) > 0 else 0
+            'portfolio_value': portfolio_value,
+            'cash': cash,
+            'buying_power': buying_power,
+            'equity': equity,
+            'profit_loss': profit_loss,
+            'profit_loss_pct': profit_loss_pct
         })
         
     except Exception as e:
         logger.error(f"❌ Erreur API account: {e}")
-        return jsonify({'error': str(e)}), 500
+        # Retourner mock en cas d'erreur
+        return jsonify({
+            'mock': True,
+            'error': str(e),
+            'portfolio_value': 100000,
+            'cash': 50000,
+            'buying_power': 50000,
+            'equity': 100000
+        }), 200
 
 
 @app.route('/api/positions')
@@ -299,9 +331,9 @@ def api_positions():
     """
     if not alpaca_client:
         return jsonify({
-            'error': 'Alpaca non disponible',
             'mock': True,
-            'positions': []
+            'positions': [],
+            'count': 0
         }), 200
     
     try:
@@ -309,23 +341,42 @@ def api_positions():
         
         result = []
         for pos in positions:
-            result.append({
-                'symbol': pos.symbol,
-                'qty': float(pos.qty),
-                'avg_entry_price': float(pos.avg_entry_price),
-                'current_price': float(pos.current_price),
-                'market_value': float(pos.market_value),
-                'cost_basis': float(pos.cost_basis),
-                'unrealized_pl': float(pos.unrealized_pl),
-                'unrealized_plpc': float(pos.unrealized_plpc) * 100,
-                'side': pos.side
-            })
+            # ✅ Support dict ou objet
+            if isinstance(pos, dict):
+                result.append({
+                    'symbol': pos.get('symbol', ''),
+                    'qty': float(pos.get('qty', 0)),
+                    'avg_entry_price': float(pos.get('avg_entry_price', 0)),
+                    'current_price': float(pos.get('current_price', 0)),
+                    'market_value': float(pos.get('market_value', 0)),
+                    'cost_basis': float(pos.get('cost_basis', 0)),
+                    'unrealized_pl': float(pos.get('unrealized_pl', 0)),
+                    'unrealized_plpc': float(pos.get('unrealized_plpc', 0)) * 100,
+                    'side': pos.get('side', 'long')
+                })
+            else:
+                result.append({
+                    'symbol': pos.symbol,
+                    'qty': float(pos.qty),
+                    'avg_entry_price': float(pos.avg_entry_price),
+                    'current_price': float(pos.current_price),
+                    'market_value': float(pos.market_value),
+                    'cost_basis': float(pos.cost_basis),
+                    'unrealized_pl': float(pos.unrealized_pl),
+                    'unrealized_plpc': float(pos.unrealized_plpc) * 100,
+                    'side': pos.side
+                })
         
         return jsonify({'positions': result, 'count': len(result)})
         
     except Exception as e:
         logger.error(f"❌ Erreur API positions: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({
+            'mock': True,
+            'error': str(e),
+            'positions': [],
+            'count': 0
+        }), 200
 
 
 @app.route('/api/trades')
@@ -335,18 +386,17 @@ def api_trades():
     """
     days = int(request.args.get('days', 7))
     
-    if not DB_AVAILABLE:
+    conn = get_db_connection()
+    if not conn:
         return jsonify({
-            'error': 'PostgreSQL non disponible',
             'mock': True,
-            'trades': []
+            'error': 'PostgreSQL non disponible',
+            'trades': [],
+            'count': 0,
+            'days': days
         }), 200
     
     try:
-        conn = get_db_connection()
-        if not conn:
-            return jsonify({'error': 'DB non disponible'}), 503
-        
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         # Trades des N derniers jours
@@ -394,7 +444,12 @@ def api_trades():
         
     except Exception as e:
         logger.error(f"❌ Erreur API trades: {e}", exc_info=True)
-        return jsonify({'error': str(e)}), 500
+        return jsonify({
+            'mock': True,
+            'error': str(e),
+            'trades': [],
+            'count': 0
+        }), 200
 
 
 # ========== ROUTE CHART PRINCIPALE ==========
