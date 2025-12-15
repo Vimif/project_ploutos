@@ -1,6 +1,12 @@
 """
 🔥 LIVE TRADING ROUTES - API Flask pour le dashboard temps réel
 
+Supporte 2 sources de données :
+- Alpaca WebSocket : Actions US (NVDA, AAPL, TSLA, etc.)
+- Yahoo Finance Polling : Actions européennes (DSY.PA, MC.PA, AI.PA, etc.)
+
+Détection automatique : Si ticker contient '.PA', '.L', '.DE' → Yahoo, sinon Alpaca
+
 Routes :
 - POST /api/live/start : Démarre le monitoring
 - POST /api/live/stop : Arrête le monitoring
@@ -24,6 +30,7 @@ try:
     sys.path.append(str(Path(__file__).parent.parent.parent))
     from streaming.live_analyzer import LiveAnalyzer
     from streaming.websocket_manager import WebSocketManager, start_websocket_in_thread
+    from streaming.yahoo_stream import YahooStreamManager
     LIVE_ANALYZER_AVAILABLE = True
 except ImportError as e:
     logger.error(f"❌ LiveAnalyzer non disponible: {e}")
@@ -36,7 +43,24 @@ live_bp = Blueprint('live', __name__, url_prefix='/api/live')
 live_analyzer = None
 monitoring_thread = None
 websocket_thread = None
+yahoo_manager = None
 signal_queue = Queue(maxsize=100)  # Queue pour SSE
+
+
+def is_european_ticker(ticker: str) -> bool:
+    """
+    Détecte si un ticker est européen.
+    
+    Exemples:
+        DSY.PA  → True  (Euronext Paris)
+        MC.PA   → True  (Euronext Paris)
+        VOD.L   → True  (London Stock Exchange)
+        SAP.DE  → True  (Frankfurt)
+        NVDA    → False (US)
+        AAPL    → False (US)
+    """
+    european_suffixes = ['.PA', '.L', '.DE', '.AS', '.BR', '.MI', '.MC']
+    return any(ticker.upper().endswith(suffix) for suffix in european_suffixes)
 
 
 @live_bp.route('/start', methods=['POST'])
@@ -46,8 +70,8 @@ def start_monitoring():
     
     Body:
         {
-            "tickers": ["NVDA", "AAPL", "TSLA"],
-            "timeframe": 1  # minutes
+            "tickers": ["NVDA", "DSY.PA", "AAPL"],
+            "timeframe": 1  # minutes (ignoré pour Yahoo)
         }
     """
     if not LIVE_ANALYZER_AVAILABLE:
@@ -56,9 +80,9 @@ def start_monitoring():
             'message': 'Module streaming.live_analyzer non installé'
         }), 503
     
-    global live_analyzer, monitoring_thread, websocket_thread
+    global live_analyzer, monitoring_thread, websocket_thread, yahoo_manager
     
-    if live_analyzer is not None:
+    if live_analyzer is not None or yahoo_manager is not None:
         return jsonify({
             'error': 'Monitoring déjà actif',
             'message': 'Arrêtez d\'abord le monitoring en cours'
@@ -76,13 +100,14 @@ def start_monitoring():
         if timeframe not in [1, 5, 15, 30, 60]:
             return jsonify({'error': 'Timeframe invalide (1, 5, 15, 30, 60 minutes)'}), 400
         
-        # === UTILISER LE SINGLETON WEBSOCKET ===
-        ws_manager = WebSocketManager.get_instance()
+        # === SÉPARER TICKERS US / EUROPÉENS ===
+        us_tickers = [t for t in tickers if not is_european_ticker(t)]
+        eu_tickers = [t for t in tickers if is_european_ticker(t)]
         
-        # Créer l'analyzer SANS créer de connexion WebSocket interne
-        live_analyzer = LiveAnalyzer(tickers, timeframe_minutes=timeframe, use_websocket_manager=True)
+        logger.info(f"🇺🇸 Tickers US: {us_tickers}")
+        logger.info(f"🇪🇺 Tickers EU: {eu_tickers}")
         
-        # Ajouter callback pour envoyer les signaux vers SSE
+        # Callback commun pour envoyer les signaux vers SSE
         def on_signal(signal):
             """Callback appelé à chaque signal détecté"""
             try:
@@ -93,38 +118,75 @@ def start_monitoring():
             except Exception as e:
                 logger.error(f"❌ Erreur ajout signal à queue: {e}")
         
-        live_analyzer.add_signal_callback(on_signal)
-        
-        # === DÉMARRER LE WEBSOCKET (UNE SEULE FOIS) ===
-        if not ws_manager.is_running:
-            # Utiliser la helper function qui gère correctement l'event loop
-            websocket_thread = start_websocket_in_thread(ws_manager)
-            logger.info("🚀 WebSocket Alpaca démarré (singleton)")
-        else:
-            logger.info("🔗 WebSocket déjà actif (réutilisation)")
-        
-        # Démarrer l'analyzer dans un thread séparé
-        def run_analyzer():
+        # Callback pour barres (stats uniquement)
+        def on_bar(bar):
+            """Callback pour chaque barre reçue"""
             try:
-                # Créer un nouvel event loop pour ce thread
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(live_analyzer.start())
+                signal_queue.put({
+                    'type': 'bar',
+                    'data': {
+                        'symbol': bar.symbol,
+                        'close': bar.close,
+                        'timestamp': str(bar.timestamp)
+                    }
+                })
             except Exception as e:
-                logger.error(f"❌ Erreur run analyzer: {e}", exc_info=True)
-            finally:
-                loop.close()
+                logger.error(f"❌ Erreur ajout barre à queue: {e}")
         
-        monitoring_thread = threading.Thread(target=run_analyzer, daemon=True, name="LiveAnalyzer")
-        monitoring_thread.start()
+        # === DÉMARRER ALPACA (SI TICKERS US) ===
+        if us_tickers:
+            ws_manager = WebSocketManager.get_instance()
+            
+            # Créer l'analyzer
+            live_analyzer = LiveAnalyzer(us_tickers, timeframe_minutes=timeframe, use_websocket_manager=True)
+            live_analyzer.add_signal_callback(on_signal)
+            
+            # Démarrer le WebSocket (une seule fois)
+            if not ws_manager.is_running:
+                websocket_thread = start_websocket_in_thread(ws_manager)
+                logger.info("🚀 WebSocket Alpaca démarré (singleton)")
+            else:
+                logger.info("🔗 WebSocket déjà actif (réutilisation)")
+            
+            # Démarrer l'analyzer dans un thread
+            def run_analyzer():
+                try:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(live_analyzer.start())
+                except Exception as e:
+                    logger.error(f"❌ Erreur run analyzer: {e}", exc_info=True)
+                finally:
+                    loop.close()
+            
+            monitoring_thread = threading.Thread(target=run_analyzer, daemon=True, name="LiveAnalyzer")
+            monitoring_thread.start()
+            logger.info(f"✅ Alpaca monitoring démarré pour {len(us_tickers)} ticker(s) US")
         
-        logger.info(f"✅ Monitoring démarré pour {len(tickers)} tickers (timeframe: {timeframe}min)")
+        # === DÉMARRER YAHOO (SI TICKERS EUROPÉENS) ===
+        if eu_tickers:
+            # Convertir timeframe en intervalle de polling (min 10s)
+            poll_interval = max(timeframe * 60, 10)  # timeframe en minutes → secondes
+            
+            yahoo_manager = YahooStreamManager(default_interval=poll_interval)
+            
+            # S'abonner à chaque ticker
+            for ticker in eu_tickers:
+                yahoo_manager.subscribe(ticker, on_bar)
+            
+            # Démarrer le polling
+            yahoo_manager.start()
+            logger.info(f"✅ Yahoo polling démarré pour {len(eu_tickers)} ticker(s) EU (interval: {poll_interval}s)")
         
         return jsonify({
             'status': 'started',
-            'tickers': tickers,
+            'tickers_us': us_tickers,
+            'tickers_eu': eu_tickers,
             'timeframe': timeframe,
-            'websocket_shared': True,
+            'sources': {
+                'alpaca': len(us_tickers) > 0,
+                'yahoo': len(eu_tickers) > 0
+            },
             'timestamp': datetime.now().isoformat()
         })
         
@@ -138,21 +200,27 @@ def stop_monitoring():
     """
     Arrête le monitoring en cours
     """
-    global live_analyzer, monitoring_thread
+    global live_analyzer, monitoring_thread, yahoo_manager
     
-    if live_analyzer is None:
+    if live_analyzer is None and yahoo_manager is None:
         return jsonify({
             'error': 'Aucun monitoring actif',
             'message': 'Le monitoring n\'est pas démarré'
         }), 400
     
     try:
-        # Arrêter l'analyzer
-        live_analyzer.stop()
+        # Arrêter Alpaca
+        if live_analyzer is not None:
+            live_analyzer.stop()
+            live_analyzer = None
+            monitoring_thread = None
+            logger.info("✅ Alpaca monitoring arrêté")
         
-        # Nettoyer
-        live_analyzer = None
-        monitoring_thread = None
+        # Arrêter Yahoo
+        if yahoo_manager is not None:
+            yahoo_manager.stop()
+            yahoo_manager = None
+            logger.info("✅ Yahoo polling arrêté")
         
         # Vider la queue
         while not signal_queue.empty():
@@ -160,10 +228,6 @@ def stop_monitoring():
                 signal_queue.get_nowait()
             except:
                 break
-        
-        # NOTE: On ne stop PAS le WebSocket, il reste actif pour d'autres instances
-        
-        logger.info("✅ Monitoring arrêté")
         
         return jsonify({
             'status': 'stopped',
@@ -180,7 +244,7 @@ def get_state():
     """
     Récupère l'état actuel du monitoring
     """
-    if live_analyzer is None:
+    if live_analyzer is None and yahoo_manager is None:
         return jsonify({
             'monitoring': False,
             'tickers': [],
@@ -188,24 +252,29 @@ def get_state():
         })
     
     try:
-        state = live_analyzer.get_current_state()
+        state = {}
         
-        # Stats du WebSocket Manager
+        # Stats Alpaca
+        if live_analyzer is not None:
+            state['alpaca'] = live_analyzer.get_current_state()
+            state['tickers_us'] = live_analyzer.tickers
+            state['timeframe'] = live_analyzer.timeframe_minutes
+        
+        # Stats Yahoo
+        if yahoo_manager is not None:
+            state['yahoo'] = yahoo_manager.get_stats()
+            state['tickers_eu'] = list(yahoo_manager.subscriptions.keys())
+        
+        # Stats WebSocket
         try:
             ws_manager = WebSocketManager.get_instance()
-            ws_stats = ws_manager.get_stats()
+            state['websocket'] = ws_manager.get_stats()
         except:
-            ws_stats = {'error': 'WebSocket non initialisé'}
+            state['websocket'] = {'error': 'WebSocket non initialisé'}
         
         return jsonify({
             'monitoring': True,
-            'tickers': live_analyzer.tickers,
-            'timeframe': live_analyzer.timeframe_minutes,
-            'start_time': live_analyzer.start_time.isoformat() if live_analyzer.start_time else None,
-            'total_bars': live_analyzer.total_bars_received,
-            'total_signals': live_analyzer.total_signals_generated,
             'state': state,
-            'websocket': ws_stats,
             'timestamp': datetime.now().isoformat()
         })
         
@@ -218,44 +287,28 @@ def get_state():
 def stream_signals():
     """
     Server-Sent Events (SSE) pour recevoir les signaux en temps réel
-    
-    Utilisation frontend:
-        const eventSource = new EventSource('/api/live/stream');
-        eventSource.addEventListener('signal', (event) => {
-            const signal = JSON.parse(event.data);
-            console.log(signal);
-        });
     """
     def generate():
-        """Générateur SSE"""
-        # Envoyer heartbeat toutes les 30 secondes
         import time
         last_heartbeat = time.time()
         
         while True:
             try:
-                # Vérifier si des signaux sont disponibles
                 if not signal_queue.empty():
                     item = signal_queue.get(timeout=1)
-                    
                     event_type = item.get('type', 'signal')
                     data = item.get('data', {})
                     
-                    # Formater en SSE
                     yield f"event: {event_type}\n"
                     yield f"data: {json.dumps(data, default=str)}\n\n"
-                    
                 else:
-                    # Heartbeat pour garder la connexion ouverte
                     current_time = time.time()
                     if current_time - last_heartbeat > 30:
                         yield f"event: heartbeat\n"
                         yield f"data: {{\"timestamp\": \"{datetime.now().isoformat()}\"}}\n\n"
                         last_heartbeat = current_time
                     
-                    # Attendre un peu avant de vérifier à nouveau
                     time.sleep(0.5)
-                    
             except Exception as e:
                 logger.error(f"❌ Erreur SSE generator: {e}")
                 break
@@ -265,7 +318,7 @@ def stream_signals():
         mimetype='text/event-stream',
         headers={
             'Cache-Control': 'no-cache',
-            'X-Accel-Buffering': 'no'  # Pour Nginx
+            'X-Accel-Buffering': 'no'
         }
     )
 
@@ -276,17 +329,23 @@ def health():
     Endpoint de santé
     """
     try:
-        ws_manager = WebSocketManager.get_instance()
-        ws_stats = ws_manager.get_stats()
+        ws_stats = WebSocketManager.get_instance().get_stats()
     except:
-        ws_stats = {'error': 'WebSocketManager non initialisé'}
+        ws_stats = {}
+    
+    try:
+        yahoo_stats = yahoo_manager.get_stats() if yahoo_manager else {}
+    except:
+        yahoo_stats = {}
     
     return jsonify({
         'status': 'healthy',
         'analyzer_available': LIVE_ANALYZER_AVAILABLE,
-        'monitoring': live_analyzer is not None,
+        'monitoring_alpaca': live_analyzer is not None,
+        'monitoring_yahoo': yahoo_manager is not None,
         'queue_size': signal_queue.qsize(),
         'websocket': ws_stats,
+        'yahoo': yahoo_stats,
         'timestamp': datetime.now().isoformat()
     })
 
@@ -295,7 +354,6 @@ def health():
 def reset_websocket():
     """
     REDÉMARRAGE FORCÉ du WebSocket (debug uniquement)
-    ⚠️  Utiliser seulement en cas de problème
     """
     global websocket_thread
     
