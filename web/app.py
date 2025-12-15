@@ -406,9 +406,32 @@ def api_chart_data(symbol):
             data_point['bb_middle'] = float(middle.iloc[i]) if i < len(middle) and not pd.isna(middle.iloc[i]) else None
             data_point['bb_lower'] = float(lower.iloc[i]) if i < len(lower) and not pd.isna(lower.iloc[i]) else None
         
+        # 🔥 FIX: Créer quick_stats pour advanced_chart.js
+        rsi_current = float(rsi.iloc[-1]) if len(rsi) > 0 and not pd.isna(rsi.iloc[-1]) else 50.0
+        
+        # Générer recommendation simple
+        if signal.signal == 'BUY':
+            recommendation = 'STRONG BUY' if signal.strength > 70 else 'BUY'
+        elif signal.signal == 'SELL':
+            recommendation = 'STRONG SELL' if signal.strength > 70 else 'SELL'
+        else:
+            recommendation = 'HOLD'
+        
+        quick_stats = {
+            'price': current_price,
+            'change': price_change_24h,
+            'change_pct': price_change_pct,
+            'volume': volume_24h,
+            'rsi': rsi_current,
+            'adx': indicators.get('adx', 0),
+            'recommendation': recommendation,
+            'confidence': signal.confidence
+        }
+        
         return jsonify({
             'success': True,
             'symbol': symbol.upper(),
+            'ticker': symbol.upper(),  # Alias pour compatibilité
             'period': period,
             'current_price': current_price,
             'price_change_24h': price_change_24h,
@@ -416,7 +439,7 @@ def api_chart_data(symbol):
             'volume_24h': volume_24h,
             'high_24h': high_24h,
             'low_24h': low_24h,
-            'stats': {  # ✅ NOUVEAU - pour compatibilité frontend
+            'stats': {
                 'price': current_price,
                 'change': price_change_24h,
                 'change_pct': price_change_pct,
@@ -425,6 +448,12 @@ def api_chart_data(symbol):
                 'low': low_24h,
                 'open': float(df['Open'].iloc[-1])
             },
+            'quick_stats': quick_stats,  # 🔥 NOUVEAU - pour advanced_chart.js
+            'dates': [d['date'] for d in ohlcv_data],
+            'open': [d['open'] for d in ohlcv_data],
+            'high': [d['high'] for d in ohlcv_data],
+            'low': [d['low'] for d in ohlcv_data],
+            'close': [d['close'] for d in ohlcv_data],
             'data': ohlcv_data,
             'indicators': indicators,
             'signal': {
@@ -436,7 +465,8 @@ def api_chart_data(symbol):
                 'stop_loss': signal.stop_loss,
                 'take_profit': signal.take_profit,
                 'reasons': signal.reasons
-            }
+            },
+            'signals': {}  # Pour compatibilité, peut être rempli plus tard
         })
         
     except Exception as e:
