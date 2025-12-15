@@ -225,7 +225,7 @@
         // Load watchlists
         async function loadWatchlists() {
             try {
-                const response = await fetch('/api/watchlists');
+                const response = await fetch('/api/live/watchlists');
                 const data = await response.json();
                 
                 if (data.watchlists) {
