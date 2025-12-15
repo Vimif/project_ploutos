@@ -91,13 +91,13 @@ class ScalperProUltra {
 
     timeframeToPeriod(tf) {
         const mapping = {
-            '1m': '5d',
-            '5m': '5d',
+            '1m': '1mo',   // FIX: 1mo au lieu de 5d (besoin 20+ barres pour RSI)
+            '5m': '1mo',   // FIX: 1mo au lieu de 5d
             '15m': '1mo',
             '1h': '3mo',
             '4h': '6mo'
         };
-        return mapping[tf] || '5d';
+        return mapping[tf] || '1mo';
     }
 
     updatePriceStats(data) {
@@ -200,7 +200,6 @@ class ScalperProUltra {
     renderIndicators(data) {
         const container = document.getElementById('indicatorsGrid');
         
-        // Extraire valeurs actuelles des indicateurs
         const indicators = data.indicators;
         const rsi = this.getLastValue(indicators.rsi);
         const macd = this.getLastValue(indicators.macd);
@@ -209,10 +208,8 @@ class ScalperProUltra {
         const adx = this.getLastValue(indicators.adx);
         const atr = this.getLastValue(indicators.atr);
         
-        // 🔥 CALCUL INTELLIGENT DE LA RECOMMANDATION
         const recommendation = this.calculateRecommendation(rsi, macd, macdSignal, stochK, adx, data.price_change_pct);
         
-        // Générer signaux pour chaque indicateur
         const rsiSignal = rsi < 30 ? 'buy' : rsi > 70 ? 'sell' : 'neutral';
         const macdSignal_type = macd > macdSignal ? 'buy' : macd < macdSignal ? 'sell' : 'neutral';
         const stochSignal = stochK < 20 ? 'buy' : stochK > 80 ? 'sell' : 'neutral';
@@ -223,7 +220,7 @@ class ScalperProUltra {
             <div class="recommendation-card" style="grid-column: 1 / -1;">
                 <div>
                     <div style="font-size: 11px; color: #9ca3af; margin-bottom: 4px;">RECOMMANDATION</div>
-                    <div class="recommendation-badge ${recommendation.signal.toLowerCase()}">${recommendation.signal}</div>
+                    <div class="recommendation-badge ${recommendation.signal.toLowerCase().replace(' ', '-')}">${recommendation.signal}</div>
                 </div>
                 <div style="text-align: right;">
                     <div style="font-size: 11px; color: #9ca3af; margin-bottom: 6px;">Confiance: ${recommendation.confidence.toFixed(0)}%</div>
@@ -289,53 +286,41 @@ class ScalperProUltra {
         `;
     }
 
-    /**
-     * 🔥 CALCUL INTELLIGENT DE LA RECOMMANDATION
-     * Combine 4 indicateurs + momentum prix
-     */
     calculateRecommendation(rsi, macd, macdSignal, stochK, adx, priceChangePct) {
-        let score = 50; // Score neutre de base
+        let score = 50;
         
-        // RSI (poids: 25%)
         if (rsi !== null) {
-            if (rsi < 30) score += 15;      // Survendu = bullish
+            if (rsi < 30) score += 15;
             else if (rsi < 40) score += 8;
-            else if (rsi > 70) score -= 15; // Suracheté = bearish
+            else if (rsi > 70) score -= 15;
             else if (rsi > 60) score -= 8;
         }
         
-        // MACD (poids: 25%)
         if (macd !== null && macdSignal !== null) {
             const macdDiff = macd - macdSignal;
-            if (macdDiff > 0) score += 12;  // Bullish
-            else if (macdDiff < 0) score -= 12; // Bearish
+            if (macdDiff > 0) score += 12;
+            else if (macdDiff < 0) score -= 12;
         }
         
-        // Stochastique (poids: 20%)
         if (stochK !== null) {
-            if (stochK < 20) score += 10;      // Survendu
+            if (stochK < 20) score += 10;
             else if (stochK < 30) score += 5;
-            else if (stochK > 80) score -= 10; // Suracheté
+            else if (stochK > 80) score -= 10;
             else if (stochK > 70) score -= 5;
         }
         
-        // ADX (poids: 15% - force du trend)
         if (adx !== null && adx > 25) {
-            // Trend fort: amplifier le signal
             if (score > 50) score += 8;
             else if (score < 50) score -= 8;
         }
         
-        // Momentum Prix (poids: 15%)
-        if (priceChangePct > 2) score += 8;      // Strong momentum up
+        if (priceChangePct > 2) score += 8;
         else if (priceChangePct > 0) score += 3;
-        else if (priceChangePct < -2) score -= 8; // Strong momentum down
+        else if (priceChangePct < -2) score -= 8;
         else if (priceChangePct < 0) score -= 3;
         
-        // Limiter entre 0 et 100
         score = Math.max(0, Math.min(100, score));
         
-        // Déterminer signal final
         let signal;
         if (score >= 65) signal = 'BUY';
         else if (score >= 55) signal = 'WEAK BUY';
@@ -374,8 +359,9 @@ class ScalperProUltra {
 
     async loadHeatmap() {
         try {
+            // 🔥 FIX: Utiliser period=1mo au lieu de 5d (besoin 20+ barres)
             const promises = this.watchlist.slice(0, 20).map(ticker => 
-                fetch(`/api/chart/${ticker}?period=5d`)
+                fetch(`/api/chart/${ticker}?period=1mo`)
                     .then(r => r.json())
                     .catch(err => ({ success: false, symbol: ticker }))
             );
