@@ -299,7 +299,13 @@ def signals_page():
 
 @app.route('/scalper')
 def scalper_page():
+    """⚡ Page Scalper Basic (ancienne version)"""
     return render_template('scalper.html')
+
+@app.route('/scalper-ultra')
+def scalper_ultra_page():
+    """⚡🚀 Page Scalper Pro Ultra - Interface institutionnelle complète"""
+    return render_template('scalper_pro.html')
 
 
 @app.route('/api/health')
@@ -651,7 +657,8 @@ if __name__ == '__main__':
     print(f"🔥 Live Trading: http://{host}:{port}/live")
     print(f"🚦 Trading Signals: http://{host}:{port}/signals")
     print(f"📊 Advanced Charts: http://{host}:{port}/chart")
-    print(f"⚡ Scalper Pro: http://{host}:{port}/scalper")
+    print(f"⚡ Scalper Basic: http://{host}:{port}/scalper")
+    print(f"⚡🚀 Scalper Pro Ultra: http://{host}:{port}/scalper-ultra")
     if LIVE_WATCHLISTS_AVAILABLE:
         print(f"📊 9 Watchlists prédéfinies disponibles")
     if TECHNICAL_ANALYZER_AVAILABLE:
