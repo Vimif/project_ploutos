@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Trading - Ploutos</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @keyframes pulse-green {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        @keyframes pulse-red {
+            0%, 100% { opacity: 1; background-color: rgba(239, 68, 68, 0.1); }
+            50% { opacity: 0.7; background-color: rgba(239, 68, 68, 0.2); }
+        }
+        .pulse-live { animation: pulse-green 2s infinite; }
+        .signal-buy { 
+            background: linear-gradient(135deg, #00f260 0%, #0575e6 100%);
+            box-shadow: 0 4px 20px rgba(0, 242, 96, 0.3);
+        }
+        .signal-sell { 
+            background: linear-gradient(135deg, #ff4757 0%, #ff6348 100%);
+            box-shadow: 0 4px 20px rgba(255, 71, 87, 0.3);
+        }
+        .signal-hold { 
+            background: linear-gradient(135deg, #ffa502 0%, #ff6348 100%);
+        }
+        .signal-card {
+            animation: pulse-red 2s infinite;
+            border-left: 4px solid;
+        }
+        .signal-card.buy { border-left-color: #00f260; }
+        .signal-card.sell { border-left-color: #ff4757; }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100">
+    
+    <!-- 🧠 NAVIGATION HEADER -->
+    {% include 'components/nav.html' %}
+    
+    <div class="container mx-auto px-4 py-6">
+        
+        <!-- Header -->
+        <div class="bg-gradient-to-r from-blue-900/50 to-purple-900/50 rounded-lg p-6 mb-6 border border-blue-700">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h1 class="text-3xl font-bold mb-2">
+                        <i class="fas fa-bolt text-yellow-400 mr-2"></i>
+                        Live Trading Monitor
+                    </h1>
+                    <p class="text-gray-300">Analyse temps réel des signaux BUY/SELL via Alpaca WebSocket</p>
+                </div>
+                <div class="text-right">
+                    <div id="status-badge" class="inline-block px-4 py-2 bg-gray-700 rounded-lg">
+                        <i class="fas fa-circle text-gray-400 mr-2"></i>
+                        <span id="status-text">Non démarré</span>
+                    </div>
+                    <div class="text-sm text-gray-400 mt-2" id="uptime">-</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Controls -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+            
+            <!-- Start/Stop -->
+            <div class="bg-gray-800 rounded-lg p-6">
+                <h3 class="font-bold mb-4 flex items-center">
+                    <i class="fas fa-play-circle text-green-400 mr-2"></i>
+                    Contrôles
+                </h3>
+                
+                <div class="space-y-3">
+                    <button id="start-btn" class="w-full px-4 py-3 bg-green-600 hover:bg-green-700 rounded-lg font-bold transition">
+                        <i class="fas fa-play mr-2"></i>Démarrer
+                    </button>
+                    <button id="stop-btn" class="w-full px-4 py-3 bg-red-600 hover:bg-red-700 rounded-lg font-bold transition" disabled>
+                        <i class="fas fa-stop mr-2"></i>Arrêter
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Tickers -->
+            <div class="bg-gray-800 rounded-lg p-6">
+                <h3 class="font-bold mb-4 flex items-center">
+                    <i class="fas fa-list text-blue-400 mr-2"></i>
+                    Tickers surveillés
+                </h3>
+                
+                <input type="text" id="tickers-input" value="NVDA,AAPL,TSLA,MSFT,GOOGL" 
+                       class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500 mb-2"
+                       placeholder="NVDA,AAPL,TSLA">
+                
+                <p class="text-xs text-gray-400">Séparés par des virgules</p>
+            </div>
+            
+            <!-- Timeframe -->
+            <div class="bg-gray-800 rounded-lg p-6">
+                <h3 class="font-bold mb-4 flex items-center">
+                    <i class="fas fa-clock text-purple-400 mr-2"></i>
+                    Timeframe
+                </h3>
+                
+                <select id="timeframe-select" class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500">
+                    <option value="1">1 minute</option>
+                    <option value="5" selected>5 minutes</option>
+                    <option value="15">15 minutes</option>
+                </select>
+                
+                <p class="text-xs text-gray-400 mt-2">Fréquence des barres</p>
+            </div>
+            
+        </div>
+        
+        <!-- Stats Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            
+            <div class="bg-gray-800 rounded-lg p-4">
+                <div class="text-gray-400 text-sm mb-1">Barres reçues</div>
+                <div class="text-2xl font-bold" id="bars-count">0</div>
+            </div>
+            
+            <div class="bg-gray-800 rounded-lg p-4">
+                <div class="text-gray-400 text-sm mb-1">Signaux BUY</div>
+                <div class="text-2xl font-bold text-green-400" id="buy-count">0</div>
+            </div>
+            
+            <div class="bg-gray-800 rounded-lg p-4">
+                <div class="text-gray-400 text-sm mb-1">Signaux SELL</div>
+                <div class="text-2xl font-bold text-red-400" id="sell-count">0</div>
+            </div>
+            
+            <div class="bg-gray-800 rounded-lg p-4">
+                <div class="text-gray-400 text-sm mb-1">Confiance moy.</div>
+                <div class="text-2xl font-bold text-blue-400" id="avg-confidence">0%</div>
+            </div>
+            
+        </div>
+        
+        <!-- Signals Feed -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- Live Signals (2/3) -->
+            <div class="lg:col-span-2 bg-gray-800 rounded-lg p-6">
+                <h3 class="font-bold text-xl mb-4 flex items-center">
+                    <i class="fas fa-rss text-yellow-400 mr-2 pulse-live"></i>
+                    Signaux Temps Réel
+                </h3>
+                
+                <div id="signals-feed" class="space-y-3 max-h-[600px] overflow-y-auto">
+                    <div class="text-center text-gray-500 py-8">
+                        <i class="fas fa-satellite-dish text-4xl mb-2"></i>
+                        <p>En attente de signaux...</p>
+                        <p class="text-sm">Cliquez sur "Démarrer" pour lancer le monitoring</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Active Monitoring (1/3) -->
+            <div class="bg-gray-800 rounded-lg p-6">
+                <h3 class="font-bold text-xl mb-4 flex items-center">
+                    <i class="fas fa-eye text-cyan-400 mr-2"></i>
+                    Surveillance active
+                </h3>
+                
+                <div id="active-tickers" class="space-y-2 max-h-[600px] overflow-y-auto">
+                    <div class="text-center text-gray-500 py-8">
+                        <i class="fas fa-list text-3xl mb-2"></i>
+                        <p class="text-sm">Aucun ticker surveillé</p>
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+        
+    </div>
+    
+    <!-- Footer -->
+    <footer class="bg-gray-800 mt-8 py-4">
+        <div class="container mx-auto px-4 text-center text-gray-400 text-sm">
+            © 2025 Ploutos V8 Oracle - Live Trading Monitor
+        </div>
+    </footer>
+    
+    <script>
+        let monitoring = false;
+        let startTime = null;
+        let uptimeInterval = null;
+        let eventSource = null;
+        
+        // Stats
+        let stats = {
+            bars: 0,
+            buySignals: 0,
+            sellSignals: 0,
+            confidences: []
+        };
+        
+        // Elements
+        const startBtn = document.getElementById('start-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const statusBadge = document.getElementById('status-badge');
+        const statusText = document.getElementById('status-text');
+        const signalsFeed = document.getElementById('signals-feed');
+        const activeTickers = document.getElementById('active-tickers');
+        
+        // Start monitoring
+        startBtn.addEventListener('click', async () => {
+            const tickers = document.getElementById('tickers-input').value.split(',').map(t => t.trim());
+            const timeframe = document.getElementById('timeframe-select').value;
+            
+            if (tickers.length === 0) {
+                alert('Veuillez entrer au moins un ticker');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/live/start', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({tickers, timeframe: parseInt(timeframe)})
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'started') {
+                    monitoring = true;
+                    startTime = new Date();
+                    
+                    startBtn.disabled = true;
+                    stopBtn.disabled = false;
+                    
+                    statusBadge.className = 'inline-block px-4 py-2 bg-green-600 rounded-lg';
+                    statusBadge.innerHTML = '<i class="fas fa-circle pulse-live mr-2"></i><span>En ligne</span>';
+                    
+                    updateActiveTickers(tickers);
+                    startUptime();
+                    connectSSE();
+                    
+                    signalsFeed.innerHTML = '<div class="text-center text-green-400 py-4"><i class="fas fa-check-circle mr-2"></i>Monitoring démarré !</div>';
+                }
+                
+            } catch (error) {
+                alert('Erreur: ' + error);
+            }
+        });
+        
+        // Stop monitoring
+        stopBtn.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/live/stop', {method: 'POST'});
+                const data = await response.json();
+                
+                if (data.status === 'stopped') {
+                    monitoring = false;
+                    
+                    startBtn.disabled = false;
+                    stopBtn.disabled = true;
+                    
+                    statusBadge.className = 'inline-block px-4 py-2 bg-gray-700 rounded-lg';
+                    statusBadge.innerHTML = '<i class="fas fa-circle text-gray-400 mr-2"></i><span>Arrêté</span>';
+                    
+                    clearInterval(uptimeInterval);
+                    if (eventSource) {
+                        eventSource.close();
+                    }
+                    
+                    signalsFeed.innerHTML += '<div class="text-center text-red-400 py-4 mt-4"><i class="fas fa-stop-circle mr-2"></i>Monitoring arrêté</div>';
+                }
+                
+            } catch (error) {
+                alert('Erreur: ' + error);
+            }
+        });
+        
+        // Connect to Server-Sent Events for real-time updates
+        function connectSSE() {
+            eventSource = new EventSource('/api/live/stream');
+            
+            eventSource.addEventListener('signal', (event) => {
+                const signal = JSON.parse(event.data);
+                addSignalToFeed(signal);
+                updateStats(signal);
+            });
+            
+            eventSource.addEventListener('bar', (event) => {
+                const bar = JSON.parse(event.data);
+                stats.bars++;
+                updateStatsDisplay();
+            });
+            
+            eventSource.onerror = (error) => {
+                console.error('SSE error:', error);
+            };
+        }
+        
+        // Add signal to feed
+        function addSignalToFeed(signal) {
+            const signalClass = signal.signal === 'BUY' ? 'buy' : 'sell';
+            const bgClass = signal.signal === 'BUY' ? 'signal-buy' : 'signal-sell';
+            const icon = signal.signal === 'BUY' ? 'fa-arrow-up' : 'fa-arrow-down';
+            
+            const html = `
+                <div class="signal-card ${signalClass} ${bgClass} rounded-lg p-4 text-white">
+                    <div class="flex justify-between items-start mb-2">
+                        <div>
+                            <div class="font-bold text-lg">
+                                <i class="fas ${icon} mr-2"></i>
+                                ${signal.ticker} - ${signal.signal}
+                            </div>
+                            <div class="text-sm opacity-90">${new Date(signal.timestamp).toLocaleTimeString('fr-FR')}</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-2xl font-bold">$${signal.current_price.toFixed(2)}</div>
+                            <div class="text-sm">Confiance: ${signal.confidence}%</div>
+                        </div>
+                    </div>
+                    <div class="border-t border-white/20 pt-2 mt-2">
+                        <div class="text-sm font-semibold mb-1">Raisons:</div>
+                        <ul class="text-xs space-y-1">
+                            ${signal.reasons.map(r => `<li>• ${r}</li>`).join('')}
+                        </ul>
+                    </div>
+                    <div class="border-t border-white/20 pt-2 mt-2">
+                        <div class="grid grid-cols-3 gap-2 text-xs">
+                            <div>RSI: ${signal.indicators.RSI}</div>
+                            <div>MACD: ${signal.indicators.MACD}</div>
+                            <div>Vol: ${signal.indicators.Volume_Ratio}x</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Insert at beginning
+            signalsFeed.insertAdjacentHTML('afterbegin', html);
+            
+            // Keep only last 20 signals
+            while (signalsFeed.children.length > 20) {
+                signalsFeed.removeChild(signalsFeed.lastChild);
+            }
+        }
+        
+        // Update stats
+        function updateStats(signal) {
+            if (signal.signal === 'BUY') stats.buySignals++;
+            if (signal.signal === 'SELL') stats.sellSignals++;
+            stats.confidences.push(signal.confidence);
+            
+            updateStatsDisplay();
+        }
+        
+        function updateStatsDisplay() {
+            document.getElementById('bars-count').textContent = stats.bars.toLocaleString();
+            document.getElementById('buy-count').textContent = stats.buySignals;
+            document.getElementById('sell-count').textContent = stats.sellSignals;
+            
+            const avgConf = stats.confidences.length > 0 
+                ? Math.round(stats.confidences.reduce((a,b) => a+b, 0) / stats.confidences.length)
+                : 0;
+            document.getElementById('avg-confidence').textContent = avgConf + '%';
+        }
+        
+        // Update active tickers display
+        function updateActiveTickers(tickers) {
+            activeTickers.innerHTML = tickers.map(ticker => `
+                <div class="bg-gray-700 rounded-lg p-3 flex justify-between items-center">
+                    <div>
+                        <div class="font-bold">${ticker}</div>
+                        <div class="text-xs text-gray-400" id="last-price-${ticker}">-</div>
+                    </div>
+                    <div class="text-green-400">
+                        <i class="fas fa-circle pulse-live text-xs"></i>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        // Start uptime counter
+        function startUptime() {
+            uptimeInterval = setInterval(() => {
+                if (!startTime) return;
+                
+                const elapsed = new Date() - startTime;
+                const seconds = Math.floor(elapsed / 1000);
+                const minutes = Math.floor(seconds / 60);
+                const hours = Math.floor(minutes / 60);
+                
+                const display = hours > 0 
+                    ? `${hours}h ${minutes % 60}m ${seconds % 60}s`
+                    : minutes > 0 
+                        ? `${minutes}m ${seconds % 60}s`
+                        : `${seconds}s`;
+                
+                document.getElementById('uptime').textContent = `Uptime: ${display}`;
+            }, 1000);
+        }
+        
+        // Fetch initial state
+        async function fetchState() {
+            try {
+                const response = await fetch('/api/live/state');
+                const data = await response.json();
+                
+                if (data.monitoring) {
+                    // Already monitoring
+                    monitoring = true;
+                    startBtn.disabled = true;
+                    stopBtn.disabled = false;
+                    statusBadge.className = 'inline-block px-4 py-2 bg-green-600 rounded-lg';
+                    statusBadge.innerHTML = '<i class="fas fa-circle pulse-live mr-2"></i><span>En ligne</span>';
+                }
+            } catch (error) {
+                // Not started yet
+            }
+        }
+        
+        // Init
+        fetchState();
+    </script>
+    
+</body>
+</html>
