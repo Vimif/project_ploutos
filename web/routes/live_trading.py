@@ -17,7 +17,7 @@ Routes :
 import asyncio
 import threading
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, request, Response
 from queue import Queue
 import logging
@@ -35,6 +35,12 @@ try:
 except ImportError as e:
     logger.error(f"❌ LiveAnalyzer non disponible: {e}")
     LIVE_ANALYZER_AVAILABLE = False
+
+try:
+    import yfinance as yf
+    YFINANCE_AVAILABLE = True
+except ImportError:
+    YFINANCE_AVAILABLE = False
 
 
 live_bp = Blueprint('live', __name__, url_prefix='/api/live')
@@ -61,6 +67,46 @@ def is_european_ticker(ticker: str) -> bool:
     """
     european_suffixes = ['.PA', '.L', '.DE', '.AS', '.BR', '.MI', '.MC']
     return any(ticker.upper().endswith(suffix) for suffix in european_suffixes)
+
+
+def load_initial_data(ticker: str):
+    """
+    Charge les données historiques initiales et envoie la dernière barre.
+    Cela permet d'afficher quelque chose immédiatement au lieu d'attendre.
+    """
+    try:
+        if not YFINANCE_AVAILABLE:
+            return
+        
+        # Télécharger les 2 derniers jours (pour avoir au moins 1 barre)
+        stock = yf.Ticker(ticker)
+        df = stock.history(period="2d", interval="5m")
+        
+        if df.empty:
+            logger.warning(f"⚠️ Aucune donnée historique pour {ticker}")
+            return
+        
+        # Prendre la dernière barre
+        last_bar = df.iloc[-1]
+        
+        # Envoyer comme première barre
+        signal_queue.put({
+            'type': 'bar',
+            'data': {
+                'symbol': ticker,
+                'close': float(last_bar['Close']),
+                'open': float(last_bar['Open']),
+                'high': float(last_bar['High']),
+                'low': float(last_bar['Low']),
+                'volume': int(last_bar['Volume']),
+                'timestamp': str(df.index[-1])
+            }
+        })
+        
+        logger.info(f"✅ Donnée initiale chargée pour {ticker}: ${last_bar['Close']:.2f}")
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur chargement données initiales {ticker}: {e}")
 
 
 @live_bp.route('/start', methods=['POST'])
@@ -106,6 +152,10 @@ def start_monitoring():
         
         logger.info(f"🇺🇸 Tickers US: {us_tickers}")
         logger.info(f"🇪🇺 Tickers EU: {eu_tickers}")
+        
+        # === CHARGER DONNÉES INITIALES (POUR TOUS LES TICKERS) ===
+        for ticker in tickers:
+            load_initial_data(ticker)
         
         # Callback commun pour envoyer les signaux vers SSE
         def on_signal(signal):
