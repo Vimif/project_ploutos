@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trading Signals - Ploutos</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.2.1/dist/chartjs-chart-financial.min.js"></script>
+    
+    <style>
+        @keyframes pulse-buy {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+            50% { box-shadow: 0 0 0 20px rgba(34, 197, 94, 0); }
+        }
+        @keyframes pulse-sell {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            50% { box-shadow: 0 0 0 20px rgba(239, 68, 68, 0); }
+        }
+        .signal-buy {
+            background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+            animation: pulse-buy 2s infinite;
+        }
+        .signal-sell {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            animation: pulse-sell 2s infinite;
+        }
+        .signal-hold {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        }
+        .indicator-good { color: #22c55e; }
+        .indicator-bad { color: #ef4444; }
+        .indicator-neutral { color: #f59e0b; }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100">
+    
+    {% include 'components/nav.html' %}
+    
+    <div class="container mx-auto px-4 py-6">
+        
+        <!-- Header avec sélecteur de ticker -->
+        <div class="bg-gradient-to-r from-blue-900/50 to-purple-900/50 rounded-lg p-6 mb-6 border border-blue-700">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h1 class="text-3xl font-bold mb-2">
+                        <i class="fas fa-chart-line text-yellow-400 mr-2"></i>
+                        Trading Signals Dashboard
+                    </h1>
+                    <p class="text-gray-300">Analyse en temps réel avec signaux BUY/SELL</p>
+                </div>
+                <div class="flex gap-4 items-center">
+                    <!-- Sélecteur de ticker -->
+                    <div>
+                        <label class="text-sm text-gray-400 mb-1 block">Ticker</label>
+                        <input type="text" id="ticker-input" value="NVDA" 
+                               class="px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white font-mono text-lg focus:outline-none focus:border-blue-500"
+                               placeholder="NVDA">
+                    </div>
+                    <!-- Timeframe -->
+                    <div>
+                        <label class="text-sm text-gray-400 mb-1 block">Timeframe</label>
+                        <select id="timeframe-select" class="px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500">
+                            <option value="1">1 min</option>
+                            <option value="5" selected>5 min</option>
+                            <option value="15">15 min</option>
+                        </select>
+                    </div>
+                    <!-- Bouton start -->
+                    <div class="mt-5">
+                        <button id="start-btn" class="px-6 py-2 bg-green-600 hover:bg-green-700 rounded-lg font-bold transition">
+                            <i class="fas fa-play mr-2"></i>Démarrer
+                        </button>
+                        <button id="stop-btn" class="px-6 py-2 bg-red-600 hover:bg-red-700 rounded-lg font-bold transition hidden">
+                            <i class="fas fa-stop mr-2"></i>Arrêter
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- COLONNE 1 : SIGNAL PRINCIPAL (1/3) -->
+            <div class="lg:col-span-1 space-y-6">
+                
+                <!-- SIGNAL D'ACTION -->
+                <div class="bg-gray-800 rounded-lg p-6">
+                    <h3 class="font-bold text-xl mb-4 text-center">Signal Actuel</h3>
+                    
+                    <div id="main-signal" class="signal-hold rounded-xl p-8 text-center mb-4">
+                        <div class="text-6xl font-bold mb-2" id="signal-text">HOLD</div>
+                        <div class="text-2xl" id="signal-price">$0.00</div>
+                    </div>
+                    
+                    <div class="bg-gray-700 rounded-lg p-4 mb-4">
+                        <div class="text-sm text-gray-400 mb-1">Confiance</div>
+                        <div class="flex items-center gap-3">
+                            <div class="flex-1 bg-gray-600 rounded-full h-3">
+                                <div id="confidence-bar" class="bg-blue-500 h-3 rounded-full transition-all" style="width: 0%"></div>
+                            </div>
+                            <div class="text-xl font-bold" id="confidence-text">0%</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Raisons du signal -->
+                    <div class="bg-gray-700 rounded-lg p-4">
+                        <div class="text-sm text-gray-400 mb-2">⚙️ Raisons :</div>
+                        <ul id="signal-reasons" class="text-sm space-y-1">
+                            <li class="text-gray-500">En attente de données...</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <!-- INDICATEURS CLÉS -->
+                <div class="bg-gray-800 rounded-lg p-6">
+                    <h3 class="font-bold text-xl mb-4">📊 Indicateurs Techniques</h3>
+                    
+                    <div class="space-y-3">
+                        <!-- RSI -->
+                        <div class="bg-gray-700 rounded-lg p-3">
+                            <div class="flex justify-between items-center mb-1">
+                                <span class="text-sm text-gray-400">RSI (14)</span>
+                                <span id="rsi-value" class="font-mono font-bold">--</span>
+                            </div>
+                            <div class="bg-gray-600 rounded-full h-2">
+                                <div id="rsi-bar" class="bg-blue-500 h-2 rounded-full transition-all" style="width: 0%"></div>
+                            </div>
+                            <div class="flex justify-between text-xs text-gray-500 mt-1">
+                                <span>Survendu (30)</span>
+                                <span>Suracheté (70)</span>
+                            </div>
+                        </div>
+                        
+                        <!-- MACD -->
+                        <div class="bg-gray-700 rounded-lg p-3">
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-gray-400">MACD</span>
+                                <span id="macd-value" class="font-mono font-bold">--</span>
+                            </div>
+                            <div class="text-xs text-gray-500 mt-1" id="macd-status">Neutre</div>
+                        </div>
+                        
+                        <!-- Volume -->
+                        <div class="bg-gray-700 rounded-lg p-3">
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-gray-400">Volume Ratio</span>
+                                <span id="volume-value" class="font-mono font-bold">--</span>
+                            </div>
+                            <div class="text-xs text-gray-500 mt-1" id="volume-status">--</div>
+                        </div>
+                        
+                        <!-- Bollinger Bands -->
+                        <div class="bg-gray-700 rounded-lg p-3">
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-gray-400">Bollinger Bands</span>
+                                <span id="bb-value" class="font-mono font-bold">--</span>
+                            </div>
+                            <div class="text-xs text-gray-500 mt-1" id="bb-status">--</div>
+                        </div>
+                    </div>
+                </div>
+                
+            </div>
+            
+            <!-- COLONNE 2 : GRAPHIQUE + HISTORIQUE (2/3) -->
+            <div class="lg:col-span-2 space-y-6">
+                
+                <!-- GRAPHIQUE DE PRIX -->
+                <div class="bg-gray-800 rounded-lg p-6">
+                    <h3 class="font-bold text-xl mb-4">📈 Prix en Temps Réel</h3>
+                    <div class="h-96">
+                        <canvas id="price-chart"></canvas>
+                    </div>
+                </div>
+                
+                <!-- HISTORIQUE DES SIGNAUX -->
+                <div class="bg-gray-800 rounded-lg p-6">
+                    <h3 class="font-bold text-xl mb-4">📜 Historique des Signaux</h3>
+                    <div id="signals-history" class="space-y-2 max-h-96 overflow-y-auto">
+                        <div class="text-center text-gray-500 py-8">
+                            <i class="fas fa-clock text-3xl mb-2"></i>
+                            <p class="text-sm">Aucun signal pour le moment</p>
+                        </div>
+                    </div>
+                </div>
+                
+            </div>
+            
+        </div>
+        
+    </div>
+    
+    <footer class="bg-gray-800 mt-8 py-4">
+        <div class="container mx-auto px-4 text-center text-gray-400 text-sm">
+            © 2025 Ploutos V8 Oracle - Trading Signals Dashboard
+        </div>
+    </footer>
+    
+    <script>
+        let monitoring = false;
+        let eventSource = null;
+        let priceChart = null;
+        let priceData = [];
+        
+        // Elements
+        const startBtn = document.getElementById('start-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const tickerInput = document.getElementById('ticker-input');
+        const timeframeSelect = document.getElementById('timeframe-select');
+        
+        // Initialiser le graphique
+        const ctx = document.getElementById('price-chart').getContext('2d');
+        priceChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Prix',
+                    data: [],
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    tension: 0.4,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        grid: { color: '#374151' },
+                        ticks: { color: '#9ca3af' }
+                    },
+                    x: {
+                        grid: { color: '#374151' },
+                        ticks: { color: '#9ca3af', maxTicksLimit: 10 }
+                    }
+                },
+                plugins: {
+                    legend: { labels: { color: '#9ca3af' } }
+                }
+            }
+        });
+        
+        // Démarrer le monitoring
+        startBtn.addEventListener('click', async () => {
+            const ticker = tickerInput.value.trim().toUpperCase();
+            const timeframe = parseInt(timeframeSelect.value);
+            
+            if (!ticker) {
+                alert('Veuillez entrer un ticker');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/live/start', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({tickers: [ticker], timeframe})
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'started') {
+                    monitoring = true;
+                    startBtn.classList.add('hidden');
+                    stopBtn.classList.remove('hidden');
+                    tickerInput.disabled = true;
+                    timeframeSelect.disabled = true;
+                    
+                    connectSSE();
+                }
+            } catch (error) {
+                alert('Erreur: ' + error);
+            }
+        });
+        
+        // Arrêter le monitoring
+        stopBtn.addEventListener('click', async () => {
+            try {
+                await fetch('/api/live/stop', {method: 'POST'});
+                monitoring = false;
+                startBtn.classList.remove('hidden');
+                stopBtn.classList.add('hidden');
+                tickerInput.disabled = false;
+                timeframeSelect.disabled = false;
+                
+                if (eventSource) {
+                    eventSource.close();
+                }
+            } catch (error) {
+                alert('Erreur: ' + error);
+            }
+        });
+        
+        // Connexion SSE
+        function connectSSE() {
+            eventSource = new EventSource('/api/live/stream');
+            
+            eventSource.addEventListener('bar', (event) => {
+                const bar = JSON.parse(event.data);
+                updatePriceChart(bar);
+            });
+            
+            eventSource.addEventListener('signal', (event) => {
+                const signal = JSON.parse(event.data);
+                updateSignal(signal);
+                addToHistory(signal);
+            });
+            
+            eventSource.onerror = (error) => {
+                console.error('SSE error:', error);
+            };
+        }
+        
+        // Mettre à jour le graphique
+        function updatePriceChart(bar) {
+            const time = new Date(bar.timestamp).toLocaleTimeString('fr-FR');
+            priceData.push({time, price: bar.close});
+            
+            // Garder seulement les 50 dernières barres
+            if (priceData.length > 50) {
+                priceData.shift();
+            }
+            
+            priceChart.data.labels = priceData.map(d => d.time);
+            priceChart.data.datasets[0].data = priceData.map(d => d.price);
+            priceChart.update('none');
+        }
+        
+        // Mettre à jour le signal principal
+        function updateSignal(signal) {
+            const mainSignal = document.getElementById('main-signal');
+            const signalText = document.getElementById('signal-text');
+            const signalPrice = document.getElementById('signal-price');
+            const confidenceBar = document.getElementById('confidence-bar');
+            const confidenceText = document.getElementById('confidence-text');
+            const signalReasons = document.getElementById('signal-reasons');
+            
+            // Mettre à jour le signal
+            signalText.textContent = signal.signal;
+            signalPrice.textContent = `$${signal.current_price.toFixed(2)}`;
+            
+            // Changer la couleur
+            mainSignal.className = 'rounded-xl p-8 text-center mb-4 ';
+            if (signal.signal === 'BUY') {
+                mainSignal.classList.add('signal-buy');
+            } else if (signal.signal === 'SELL') {
+                mainSignal.classList.add('signal-sell');
+            } else {
+                mainSignal.classList.add('signal-hold');
+            }
+            
+            // Confiance
+            confidenceBar.style.width = signal.confidence + '%';
+            confidenceText.textContent = signal.confidence + '%';
+            
+            if (signal.confidence >= 70) {
+                confidenceBar.className = 'bg-green-500 h-3 rounded-full transition-all';
+            } else if (signal.confidence >= 40) {
+                confidenceBar.className = 'bg-yellow-500 h-3 rounded-full transition-all';
+            } else {
+                confidenceBar.className = 'bg-red-500 h-3 rounded-full transition-all';
+            }
+            
+            // Raisons
+            signalReasons.innerHTML = signal.reasons.map(r => `<li class="text-sm">• ${r}</li>`).join('');
+            
+            // Mettre à jour les indicateurs
+            updateIndicators(signal.indicators);
+        }
+        
+        // Mettre à jour les indicateurs
+        function updateIndicators(indicators) {
+            // RSI
+            const rsi = indicators.RSI || 0;
+            document.getElementById('rsi-value').textContent = rsi.toFixed(1);
+            document.getElementById('rsi-bar').style.width = rsi + '%';
+            document.getElementById('rsi-value').className = 'font-mono font-bold ' + (rsi < 30 ? 'indicator-good' : rsi > 70 ? 'indicator-bad' : 'indicator-neutral');
+            
+            // MACD
+            const macd = indicators.MACD || 0;
+            document.getElementById('macd-value').textContent = macd.toFixed(4);
+            document.getElementById('macd-value').className = 'font-mono font-bold ' + (macd > 0 ? 'indicator-good' : 'indicator-bad');
+            document.getElementById('macd-status').textContent = macd > 0 ? 'Haussier' : 'Baissier';
+            
+            // Volume
+            const volume = indicators.Volume_Ratio || 0;
+            document.getElementById('volume-value').textContent = volume.toFixed(2) + 'x';
+            document.getElementById('volume-value').className = 'font-mono font-bold ' + (volume > 1.5 ? 'indicator-good' : 'indicator-neutral');
+            document.getElementById('volume-status').textContent = volume > 1.5 ? 'Volume élevé' : 'Volume normal';
+            
+            // Bollinger Bands
+            const bb = indicators.BB_Position || 0;
+            document.getElementById('bb-value').textContent = (bb * 100).toFixed(1) + '%';
+            document.getElementById('bb-value').className = 'font-mono font-bold ' + (bb < 0.2 ? 'indicator-good' : bb > 0.8 ? 'indicator-bad' : 'indicator-neutral');
+            document.getElementById('bb-status').textContent = bb < 0.2 ? 'Proche bande inf.' : bb > 0.8 ? 'Proche bande sup.' : 'Milieu de bande';
+        }
+        
+        // Ajouter à l'historique
+        function addToHistory(signal) {
+            const history = document.getElementById('signals-history');
+            
+            // Retirer le message "Aucun signal"
+            if (history.querySelector('.text-gray-500')) {
+                history.innerHTML = '';
+            }
+            
+            const time = new Date(signal.timestamp).toLocaleTimeString('fr-FR');
+            const signalClass = signal.signal === 'BUY' ? 'bg-green-900/30 border-green-500' : signal.signal === 'SELL' ? 'bg-red-900/30 border-red-500' : 'bg-yellow-900/30 border-yellow-500';
+            
+            const html = `
+                <div class="${signalClass} border-l-4 rounded-lg p-3">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <div class="font-bold text-lg">${signal.signal} ${signal.ticker}</div>
+                            <div class="text-sm text-gray-400">${time}</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-xl font-bold">$${signal.current_price.toFixed(2)}</div>
+                            <div class="text-sm text-gray-400">Conf: ${signal.confidence}%</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            history.insertAdjacentHTML('afterbegin', html);
+            
+            // Garder seulement les 20 derniers
+            while (history.children.length > 20) {
+                history.removeChild(history.lastChild);
+            }
+        }
+    </script>
+    
+</body>
+</html>
