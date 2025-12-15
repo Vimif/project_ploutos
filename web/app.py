@@ -15,6 +15,8 @@ import yfinance as yf
 from datetime import datetime, timedelta
 from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS
+from dataclasses import is_dataclass, asdict
+from enum import Enum
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -81,27 +83,47 @@ except ImportError:
 
 
 def clean_for_json(obj):
+    """
+    Convertit récursivement les objets Python en types JSON-sérialisables
+    Gère : numpy, pandas, dataclasses, enums, etc.
+    """
+    # Dataclasses
+    if is_dataclass(obj) and not isinstance(obj, type):
+        return clean_for_json(asdict(obj))
+    
+    # Enums
+    if isinstance(obj, Enum):
+        return obj.value
+    
+    # Numpy/Pandas types
+    if isinstance(obj, (np.integer, np.int32, np.int64)):
+        return int(obj)
+    
+    if isinstance(obj, (np.floating, np.float32, np.float64)):
+        if np.isnan(obj) or np.isinf(obj):
+            return None
+        return float(obj)
+    
+    if isinstance(obj, np.ndarray):
+        return [clean_for_json(x) for x in obj.tolist()]
+    
+    if isinstance(obj, pd.Timestamp):
+        return obj.isoformat()
+    
+    # Collections
+    if isinstance(obj, dict):
+        return {k: clean_for_json(v) for k, v in obj.items()}
+    
+    if isinstance(obj, (list, tuple)):
+        return [clean_for_json(item) for item in obj]
+    
+    # Float/Int standards
     if isinstance(obj, float):
         if np.isnan(obj) or np.isinf(obj):
             return None
         return float(obj)
-    elif isinstance(obj, np.ndarray):
-        return [clean_for_json(x) for x in obj.tolist()]
-    elif isinstance(obj, (np.float32, np.float64)):
-        if np.isnan(obj) or np.isinf(obj):
-            return None
-        return float(obj)
-    elif isinstance(obj, (np.int32, np.int64)):
-        return int(obj)
-    elif isinstance(obj, pd.Timestamp):
-        return obj.isoformat()
-    elif isinstance(obj, dict):
-        return {k: clean_for_json(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [clean_for_json(item) for item in obj]
-    elif hasattr(obj, '__dict__'):
-        # Dataclass ou objet custom
-        return clean_for_json(obj.__dict__)
+    
+    # Fallback
     return obj
 
 
@@ -305,7 +327,7 @@ def api_pro_analysis(ticker):
         if df.empty:
             return jsonify({'error': 'Aucune donnée'}), 404
         
-        # Analyse complte
+        # Analyse complète
         report = pro_analyzer.analyze(df, ticker=ticker)
         
         # Convertir en dict JSON-friendly
