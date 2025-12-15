@@ -9,7 +9,7 @@ import asyncio
 import os
 import sys
 from datetime import datetime
-from typing import List, Dict, Callable
+from typing import List, Dict, Callable, Optional
 import json
 
 # Ajouter le répertoire parent au path
@@ -25,21 +25,33 @@ from config.settings import ALPACA_API_KEY, ALPACA_SECRET_KEY
 class LiveAnalyzer:
     """Analyseur temps réel avec Alpaca WebSocket"""
     
-    def __init__(self, tickers: List[str], timeframe_minutes: int = 1):
+    def __init__(self, tickers: List[str], timeframe_minutes: int = 1, use_websocket_manager: bool = False):
         """
         Args:
             tickers: Liste des tickers à surveiller
             timeframe_minutes: Intervalle des barres (1, 5, 15 min)
+            use_websocket_manager: Si True, utilise le WebSocketManager singleton (recommandé)
         """
         self.tickers = tickers
         self.timeframe_minutes = timeframe_minutes
+        self.use_websocket_manager = use_websocket_manager
         
-        # WebSocket Alpaca
-        self.stream = StockDataStream(
-            api_key=ALPACA_API_KEY,
-            secret_key=ALPACA_SECRET_KEY,
-            feed=DataFeed.IEX  # ✅ FIX: Utiliser l'enum au lieu de string
-        )
+        # === GESTION WEBSOCKET ===
+        if use_websocket_manager:
+            # Utiliser le singleton (1 seule connexion partagée)
+            from streaming.websocket_manager import WebSocketManager
+            self.ws_manager = WebSocketManager.get_instance()
+            self.stream = None  # Pas de stream direct
+            print("🔗 Utilisation du WebSocketManager singleton")
+        else:
+            # Connexion WebSocket dédiée (ancien mode, peut causer "connection limit exceeded")
+            self.stream = StockDataStream(
+                api_key=ALPACA_API_KEY,
+                secret_key=ALPACA_SECRET_KEY,
+                feed=DataFeed.IEX  # ✅ FIX: Utiliser l'enum au lieu de string
+            )
+            self.ws_manager = None
+            print("⚠️ Utilisation d'une connexion WebSocket dédiée (peut causer limite)")
         
         # Créer un détecteur par ticker
         self.detectors = {
@@ -54,6 +66,7 @@ class LiveAnalyzer:
         self.total_bars_received = 0
         self.total_signals_generated = 0
         self.start_time = None
+        self._running = False
         
         print(f"✅ LiveAnalyzer initialisé pour {len(tickers)} tickers (timeframe: {timeframe_minutes}min)")
     
@@ -140,27 +153,52 @@ class LiveAnalyzer:
         Démarre le monitoring temps réel
         """
         self.start_time = datetime.now()
+        self._running = True
         
         print(f"\n🚀 Démarrage du Live Analyzer...")
         print(f"Tickers surveillés: {', '.join(self.tickers)}")
         print(f"Timeframe: {self.timeframe_minutes} minute(s)")
         print(f"{'='*80}\n")
         
-        # S'abonner aux barres pour chaque ticker
-        self.stream.subscribe_bars(self.on_bar, *self.tickers)
+        if self.use_websocket_manager:
+            # === MODE SINGLETON ===
+            # S'abonner via le WebSocketManager (connexion partagée)
+            for ticker in self.tickers:
+                self.ws_manager.subscribe(ticker, self.on_bar)
+            
+            print("✅ Abonné aux tickers via WebSocketManager")
+            print("⚠️  Le WebSocket tourne en arrière-plan (géré par Flask)")
+            
+            # Attendre tant que le monitoring est actif
+            while self._running:
+                await asyncio.sleep(1)
         
-        # Lancer le stream (bloquant)
-        try:
-            await self.stream._run_forever()
-        except KeyboardInterrupt:
-            print("\n⚠️ Arrêt demandé par l'utilisateur")
-            self.stop()
+        else:
+            # === MODE DIRECT (ANCIEN) ===
+            # S'abonner aux barres pour chaque ticker
+            self.stream.subscribe_bars(self.on_bar, *self.tickers)
+            
+            # Lancer le stream (bloquant)
+            try:
+                await self.stream._run_forever()
+            except KeyboardInterrupt:
+                print("\n⚠️ Arrêt demandé par l'utilisateur")
+                self.stop()
     
     
     def stop(self):
         """
         Arrête le monitoring et affiche les stats
         """
+        self._running = False
+        
+        # Désabonner du WebSocketManager si utilisé
+        if self.use_websocket_manager and self.ws_manager:
+            for ticker in self.tickers:
+                self.ws_manager.unsubscribe(ticker, self.on_bar)
+            print("🚫 Désabonnement des tickers du WebSocketManager")
+        
+        # Afficher stats
         if self.start_time:
             duration = datetime.now() - self.start_time
             print(f"\n{'='*80}")
@@ -203,7 +241,8 @@ async def main():
     WATCHLIST = ["NVDA", "AAPL", "MSFT", "GOOGL", "TSLA"]
     
     # Créer l'analyseur (barres de 1 minute)
-    analyzer = LiveAnalyzer(WATCHLIST, timeframe_minutes=1)
+    # use_websocket_manager=True RECOMMANDÉ pour éviter "connection limit exceeded"
+    analyzer = LiveAnalyzer(WATCHLIST, timeframe_minutes=1, use_websocket_manager=True)
     
     # Ajouter un callback personnalisé
     def on_signal(signal):
