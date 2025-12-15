@@ -9,6 +9,7 @@ Solution :
 - Singleton pattern : 1 seule instance de connexion WebSocket partagée
 - Multiplexage des callbacks : plusieurs consommateurs sur la même connexion
 - Auto-reconnexion en cas de déconnexion
+- Compatible avec Flask (pas de conflit d'event loop)
 """
 
 import asyncio
@@ -38,7 +39,15 @@ class WebSocketManager:
     Usage:
         manager = WebSocketManager.get_instance()
         manager.subscribe('NVDA', my_callback)
-        await manager.start()
+        
+        # Dans un thread séparé
+        def run():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(manager.start())
+        
+        thread = threading.Thread(target=run, daemon=True)
+        thread.start()
     """
     
     _instance: Optional['WebSocketManager'] = None
@@ -64,6 +73,7 @@ class WebSocketManager:
         self.is_running = False
         self.reconnect_attempts = 0
         self.max_reconnect_attempts = 5
+        self._running_task: Optional[asyncio.Task] = None
         
         logger.info("✅ WebSocketManager initialisé (singleton)")
     
@@ -160,7 +170,18 @@ class WebSocketManager:
         """
         Démarre la connexion WebSocket (bloquant).
         
-        IMPORTANT: Utiliser dans un thread séparé ou avec asyncio.create_task()
+        IMPORTANT: 
+        - Doit être appelé dans un thread avec son propre event loop
+        - Ne PAS utiliser asyncio.run() si un event loop existe déjà
+        
+        Utilisation:
+            def run_in_thread():
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(manager.start())
+            
+            thread = threading.Thread(target=run_in_thread, daemon=True)
+            thread.start()
         """
         if self.is_running:
             logger.warning("⚠️ WebSocket déjà en cours d'exécution")
@@ -170,7 +191,8 @@ class WebSocketManager:
         logger.info("🚀 Démarrage WebSocket Alpaca...")
         
         try:
-            await self.stream.run()
+            # Utiliser _run_forever() au lieu de run() pour éviter les conflits d'event loop
+            await self.stream._run_forever()
         except Exception as e:
             logger.error(f"❌ Erreur WebSocket: {e}", exc_info=True)
             self.is_running = False
@@ -195,12 +217,19 @@ class WebSocketManager:
             return
         
         try:
-            self.stream.stop()
+            # Utiliser stop_ws() au lieu de stop() pour éviter AttributeError
+            if hasattr(self.stream, 'stop_ws'):
+                self.stream.stop_ws()
+            elif hasattr(self.stream, '_stop_ws'):
+                self.stream._stop_ws()
+            
             self.is_running = False
             self.reconnect_attempts = 0
             logger.info("🛑 WebSocket arrêté")
         except Exception as e:
             logger.error(f"❌ Erreur arrêt WebSocket: {e}")
+            # Forcer l'arrêt quand même
+            self.is_running = False
     
     def get_stats(self) -> dict:
         """
@@ -215,21 +244,53 @@ class WebSocketManager:
         }
 
 
+# === HELPER FUNCTION ===
+def start_websocket_in_thread(manager: WebSocketManager) -> threading.Thread:
+    """
+    Helper pour démarrer le WebSocket dans un thread séparé.
+    
+    Usage:
+        manager = WebSocketManager.get_instance()
+        thread = start_websocket_in_thread(manager)
+    """
+    def run():
+        try:
+            # Créer un nouvel event loop pour ce thread
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(manager.start())
+        except Exception as e:
+            logger.error(f"❌ Erreur thread WebSocket: {e}", exc_info=True)
+        finally:
+            loop.close()
+    
+    thread = threading.Thread(target=run, daemon=True, name="AlpacaWebSocket")
+    thread.start()
+    logger.info(f"🧵 WebSocket démarré dans thread: {thread.name}")
+    return thread
+
+
 # === EXEMPLE D'UTILISATION ===
 if __name__ == "__main__":
-    async def main():
-        # Récupérer l'instance unique
-        manager = WebSocketManager.get_instance()
-        
-        # Définir un callback
-        def on_nvda_bar(bar: Bar):
-            print(f"NVDA: {bar.close} à {bar.timestamp}")
-        
-        # S'abonner
-        manager.subscribe('NVDA', on_nvda_bar)
-        manager.subscribe('AAPL', lambda bar: print(f"AAPL: {bar.close}"))
-        
-        # Démarrer (bloquant)
-        await manager.start()
+    # Récupérer l'instance unique
+    manager = WebSocketManager.get_instance()
     
-    asyncio.run(main())
+    # Définir un callback
+    def on_nvda_bar(bar: Bar):
+        print(f"NVDA: {bar.close} à {bar.timestamp}")
+    
+    # S'abonner
+    manager.subscribe('NVDA', on_nvda_bar)
+    manager.subscribe('AAPL', lambda bar: print(f"AAPL: {bar.close}"))
+    
+    # Démarrer dans un thread
+    thread = start_websocket_in_thread(manager)
+    
+    # Le programme continue pendant que le WebSocket tourne
+    import time
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("\nArrêt...")
+        manager.stop()
