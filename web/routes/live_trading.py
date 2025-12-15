@@ -23,7 +23,7 @@ try:
     from pathlib import Path
     sys.path.append(str(Path(__file__).parent.parent.parent))
     from streaming.live_analyzer import LiveAnalyzer
-    from streaming.websocket_manager import WebSocketManager
+    from streaming.websocket_manager import WebSocketManager, start_websocket_in_thread
     LIVE_ANALYZER_AVAILABLE = True
 except ImportError as e:
     logger.error(f"❌ LiveAnalyzer non disponible: {e}")
@@ -77,7 +77,6 @@ def start_monitoring():
             return jsonify({'error': 'Timeframe invalide (1, 5, 15, 30, 60 minutes)'}), 400
         
         # === UTILISER LE SINGLETON WEBSOCKET ===
-        # Au lieu de créer une nouvelle connexion, on utilise l'instance partagée
         ws_manager = WebSocketManager.get_instance()
         
         # Créer l'analyzer SANS créer de connexion WebSocket interne
@@ -98,17 +97,8 @@ def start_monitoring():
         
         # === DÉMARRER LE WEBSOCKET (UNE SEULE FOIS) ===
         if not ws_manager.is_running:
-            def run_websocket():
-                """Thread pour exécuter le WebSocket en arrière-plan"""
-                try:
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    loop.run_until_complete(ws_manager.start())
-                except Exception as e:
-                    logger.error(f"❌ Erreur WebSocket: {e}", exc_info=True)
-            
-            websocket_thread = threading.Thread(target=run_websocket, daemon=True)
-            websocket_thread.start()
+            # Utiliser la helper function qui gère correctement l'event loop
+            websocket_thread = start_websocket_in_thread(ws_manager)
             logger.info("🚀 WebSocket Alpaca démarré (singleton)")
         else:
             logger.info("🔗 WebSocket déjà actif (réutilisation)")
@@ -116,11 +106,16 @@ def start_monitoring():
         # Démarrer l'analyzer dans un thread séparé
         def run_analyzer():
             try:
-                asyncio.run(live_analyzer.start())
+                # Créer un nouvel event loop pour ce thread
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(live_analyzer.start())
             except Exception as e:
                 logger.error(f"❌ Erreur run analyzer: {e}", exc_info=True)
+            finally:
+                loop.close()
         
-        monitoring_thread = threading.Thread(target=run_analyzer, daemon=True)
+        monitoring_thread = threading.Thread(target=run_analyzer, daemon=True, name="LiveAnalyzer")
         monitoring_thread.start()
         
         logger.info(f"✅ Monitoring démarré pour {len(tickers)} tickers (timeframe: {timeframe}min)")
@@ -196,8 +191,11 @@ def get_state():
         state = live_analyzer.get_current_state()
         
         # Stats du WebSocket Manager
-        ws_manager = WebSocketManager.get_instance()
-        ws_stats = ws_manager.get_stats()
+        try:
+            ws_manager = WebSocketManager.get_instance()
+            ws_stats = ws_manager.get_stats()
+        except:
+            ws_stats = {'error': 'WebSocket non initialisé'}
         
         return jsonify({
             'monitoring': True,
@@ -299,8 +297,11 @@ def reset_websocket():
     REDÉMARRAGE FORCÉ du WebSocket (debug uniquement)
     ⚠️  Utiliser seulement en cas de problème
     """
+    global websocket_thread
+    
     try:
         WebSocketManager.reset_instance()
+        websocket_thread = None
         logger.warning("♻️ WebSocket redémarré (reset forcé)")
         return jsonify({
             'status': 'reset',
