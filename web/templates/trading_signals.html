@@ -8,7 +8,6 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.2.1/dist/chartjs-chart-financial.min.js"></script>
     
     <style>
         @keyframes pulse-buy {
@@ -272,6 +271,8 @@
                     timeframeSelect.disabled = true;
                     
                     connectSSE();
+                } else {
+                    alert('Erreur: ' + (data.error || data.message || 'Inconnu'));
                 }
             } catch (error) {
                 alert('Erreur: ' + error);
