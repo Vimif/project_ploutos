@@ -10,23 +10,24 @@ class ProAnalysis {
         this.currentData = null;
         this.currentTicker = null;
         this.isLoading = false;
-        this.cache = {}; // Cache pour éviter les appels multiples
+        this.cache = {}; // Cache court (2 min)
+        this.refreshInterval = null;
         this.initEventListeners();
     }
     
     /**
      * 🔄 Charger l'analyse pour un ticker
      */
-    async loadAnalysis(ticker) {
-        // ⚠️ ANTI-DOUBLON : Si déjà en cours ou même ticker, skip
-        if (this.isLoading || ticker === this.currentTicker) {
-            console.log(`⏭️ Skip pro-analysis ${ticker} (déjà chargé ou en cours)`);
+    async loadAnalysis(ticker, forceRefresh = false) {
+        // ⚠️ ANTI-DOUBLON : Si déjà en cours, skip
+        if (this.isLoading) {
+            console.log(`⏭️ Skip pro-analysis ${ticker} (chargement en cours)`);
             return;
         }
         
-        // 📂 Vérifier le cache (valide 5 min)
-        if (this.cache[ticker] && (Date.now() - this.cache[ticker].timestamp < 300000)) {
-            console.log(`💾 Utilisation cache pour ${ticker}`);
+        // 📂 Vérifier le cache (valide 2 min seulement)
+        if (!forceRefresh && this.cache[ticker] && (Date.now() - this.cache[ticker].timestamp < 120000)) {
+            console.log(`💾 Cache pro-analysis ${ticker}`);
             this.currentData = this.cache[ticker].data;
             this.currentTicker = ticker;
             this.renderSummary();
@@ -36,7 +37,7 @@ class ProAnalysis {
         
         try {
             this.isLoading = true;
-            console.log(`🎯 Chargement analyse pro pour ${ticker}...`);
+            console.log(`🎯 ${forceRefresh ? '🔄 Rafraîchissement' : 'Chargement'} analyse pro pour ${ticker}...`);
             
             const response = await fetch(`/api/pro-analysis/${ticker}`);
             
@@ -47,22 +48,56 @@ class ProAnalysis {
             this.currentData = await response.json();
             this.currentTicker = ticker;
             
-            // 💾 Mise en cache
+            // 💾 Mise en cache (2 min)
             this.cache[ticker] = {
                 data: this.currentData,
                 timestamp: Date.now()
             };
             
-            console.log('✅ Analyse pro chargée:', this.currentData.overall_signal, this.currentData.confidence + '%');
+            console.log('✅ Analyse pro:', this.currentData.overall_signal, this.currentData.confidence + '%');
             
             this.renderSummary();
             this.renderDetails();
+            
+            // 🔄 Démarrer l'auto-refresh si pas déjà actif
+            this.startAutoRefresh();
             
         } catch (error) {
             console.error('❌ Erreur chargement analyse pro:', error);
             this.renderError(error.message);
         } finally {
             this.isLoading = false;
+        }
+    }
+    
+    /**
+     * 🔄 Auto-refresh toutes les 2 minutes
+     */
+    startAutoRefresh() {
+        // Arrêter l'ancien interval si existe
+        if (this.refreshInterval) {
+            clearInterval(this.refreshInterval);
+        }
+        
+        // Nouveau refresh toutes les 2 minutes (120 000 ms)
+        this.refreshInterval = setInterval(() => {
+            if (this.currentTicker && !this.isLoading) {
+                console.log(`🔄 Auto-refresh pro-analysis ${this.currentTicker}`);
+                this.loadAnalysis(this.currentTicker, true); // forceRefresh = true
+            }
+        }, 120000); // 2 minutes
+        
+        console.log('⏰ Auto-refresh activé (toutes les 2 min)');
+    }
+    
+    /**
+     * ⏸️ Arrêter l'auto-refresh
+     */
+    stopAutoRefresh() {
+        if (this.refreshInterval) {
+            clearInterval(this.refreshInterval);
+            this.refreshInterval = null;
+            console.log('⏸️ Auto-refresh désactivé');
         }
     }
     
@@ -76,6 +111,10 @@ class ProAnalysis {
         const data = this.currentData;
         const signalClass = `signal-${data.overall_signal.replace('_', '-')}`;
         const riskClass = `risk-${data.risk_level}`;
+        
+        // Afficher l'âge du cache
+        const cacheAge = this.cache[this.currentTicker] ? 
+            Math.floor((Date.now() - this.cache[this.currentTicker].timestamp) / 1000) : 0;
         
         container.innerHTML = `
             <div class="signal-badge ${signalClass} mb-3">
@@ -98,6 +137,7 @@ class ProAnalysis {
             <div class="text-xs bg-gray-800 p-2 rounded mt-3">
                 <div class="text-gray-400 mb-1">Prix actuel</div>
                 <div class="text-xl font-bold">${data.current_price.toFixed(2)} $</div>
+                <div class="text-gray-500 text-xs mt-1">🔄 il y a ${cacheAge}s</div>
             </div>
         `;
     }
@@ -287,6 +327,19 @@ class ProAnalysis {
                 setTimeout(() => {
                     this.loadAnalysis(event.detail.ticker);
                 }, 500);
+            }
+        });
+        
+        // Arrêter l'auto-refresh quand l'onglet est inactif (optimisation)
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                console.log('💤 Onglet inactif - pause auto-refresh');
+                this.stopAutoRefresh();
+            } else {
+                console.log('👁️ Onglet actif - reprise auto-refresh');
+                if (this.currentTicker) {
+                    this.startAutoRefresh();
+                }
             }
         });
     }
