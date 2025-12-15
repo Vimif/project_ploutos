@@ -77,6 +77,11 @@ def api_pro_analysis(symbol):
         # Prix actuel
         current_price = float(df['Close'].iloc[-1])
         
+        # 🔥 FIX: Valeurs par défaut pour stop_loss/take_profit si None
+        entry_price = signal.entry_price if signal.entry_price is not None else current_price
+        stop_loss = signal.stop_loss if signal.stop_loss is not None else current_price * 0.98  # -2%
+        take_profit = signal.take_profit if signal.take_profit is not None else current_price * 1.03  # +3%
+        
         # === RSI ANALYSIS ===
         rsi_value = float(indicators.get('rsi', 50.0))
         if rsi_value > 70:
@@ -162,11 +167,14 @@ def api_pro_analysis(symbol):
         adx_value = float(indicators.get('adx', 0.0))
         
         # === PLAN DE TRADING ===
+        stop_pct = ((stop_loss - current_price) / current_price * 100)
+        target_pct = ((take_profit - current_price) / current_price * 100)
+        
         trading_plan = f"""SIGNAL: {overall_signal}
 
-🎯 ENTRÉE: ${signal.entry_price:.2f}
-🛑 STOP LOSS: ${signal.stop_loss:.2f} ({((signal.stop_loss - current_price) / current_price * 100):.1f}%)
-🎯 TAKE PROFIT: ${signal.take_profit:.2f} ({((signal.take_profit - current_price) / current_price * 100):.1f}%)
+🎯 ENTRÉE: ${entry_price:.2f}
+🛑 STOP LOSS: ${stop_loss:.2f} ({stop_pct:.1f}%)
+🎯 TAKE PROFIT: ${take_profit:.2f} ({target_pct:.1f}%)
 
 ⚠️ RISQUE: {risk_level}
 🎯 CONFIANCE: {signal.confidence:.0f}%
@@ -188,8 +196,8 @@ def api_pro_analysis(symbol):
                 'explanation': f"Tendance {signal.trend.lower()} détectée avec force {signal.strength:.0f}%",
                 'price_vs_sma200': price_vs_sma200,
                 'golden_cross': golden_cross,
-                'support_level': signal.stop_loss,
-                'resistance_level': signal.take_profit,
+                'support_level': stop_loss,
+                'resistance_level': take_profit,
                 'adx': adx_value
             },
             
