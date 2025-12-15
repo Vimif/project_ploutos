@@ -58,7 +58,15 @@ async function analyzeStock() {
         generateAIAnalysis(data);
         
         // Update timestamp
-        document.getElementById('last-update').textContent = new Date().toLocaleTimeString('fr-FR');
+        const timestampEl = document.getElementById('last-update');
+        if (timestampEl) {
+            timestampEl.textContent = new Date().toLocaleTimeString('fr-FR');
+        }
+        
+        // 🔥 Dispatch event for Pro Analysis
+        window.dispatchEvent(new CustomEvent('chartDataLoaded', {
+            detail: { ticker, period, data }
+        }));
         
     } catch (error) {
         console.error('Error:', error);
@@ -69,6 +77,9 @@ async function analyzeStock() {
 // ========== CHART RENDERING ==========
 
 function renderMainChart(data) {
+    const chartEl = document.getElementById('main-chart');
+    if (!chartEl) return;
+    
     const traces = [];
     
     // Candlestick
@@ -189,6 +200,9 @@ function renderMainChart(data) {
 
 function renderRSIChart(data) {
     if (!data.indicators.rsi) return;
+    const chartEl = document.getElementById('rsi-chart');
+    if (!chartEl) return;
+    
     const trace = {
         type: 'scatter', x: data.dates, y: data.indicators.rsi,
         name: 'RSI', line: {color: '#3b82f6', width: 2}, fill: 'tozeroy'
@@ -208,6 +222,9 @@ function renderRSIChart(data) {
 
 function renderMACDChart(data) {
     if (!data.indicators.macd) return;
+    const chartEl = document.getElementById('macd-chart');
+    if (!chartEl) return;
+    
     const traces = [
         {type: 'scatter', x: data.dates, y: data.indicators.macd, name: 'MACD', line: {color: '#3b82f6', width: 1.5}},
         {type: 'scatter', x: data.dates, y: data.indicators.macd_signal, name: 'Signal', line: {color: '#f59e0b', width: 1.5}},
@@ -223,6 +240,9 @@ function renderMACDChart(data) {
 
 function renderStochChart(data) {
     if (!data.indicators.stoch_k) return;
+    const chartEl = document.getElementById('stoch-chart');
+    if (!chartEl) return;
+    
     const traces = [
         {type: 'scatter', x: data.dates, y: data.indicators.stoch_k, name: '%K', line: {color: '#3b82f6', width: 1.5}},
         {type: 'scatter', x: data.dates, y: data.indicators.stoch_d, name: '%D', line: {color: '#f59e0b', width: 1.5}}
@@ -237,6 +257,9 @@ function renderStochChart(data) {
 
 function renderADXChart(data) {
     if (!data.indicators.adx) return;
+    const chartEl = document.getElementById('adx-chart');
+    if (!chartEl) return;
+    
     const trace = {type: 'scatter', x: data.dates, y: data.indicators.adx, line: {color: '#10b981', width: 2}, fill: 'tozeroy'};
     const layout = {
         xaxis: {gridcolor: '#374151'}, yaxis: {gridcolor: '#374151'},
@@ -248,6 +271,9 @@ function renderADXChart(data) {
 
 function renderATRChart(data) {
     if (!data.indicators.atr) return;
+    const chartEl = document.getElementById('atr-chart');
+    if (!chartEl) return;
+    
     const trace = {type: 'scatter', x: data.dates, y: data.indicators.atr, line: {color: '#ef4444', width: 2}, fill: 'tozeroy'};
     const layout = {
         xaxis: {gridcolor: '#374151'}, yaxis: {gridcolor: '#374151'},
@@ -259,6 +285,9 @@ function renderATRChart(data) {
 
 function renderOBVChart(data) {
     if (!data.indicators.obv) return;
+    const chartEl = document.getElementById('obv-chart');
+    if (!chartEl) return;
+    
     const trace = {type: 'scatter', x: data.dates, y: data.indicators.obv, line: {color: '#8b5cf6', width: 2}};
     const layout = {
         xaxis: {gridcolor: '#374151'}, yaxis: {gridcolor: '#374151'},
@@ -272,8 +301,10 @@ function renderOBVChart(data) {
 
 function updateQuickStats(data) {
     if (!data.quick_stats) return;
-    const stats = data.quick_stats;
     const container = document.getElementById('quick-stats');
+    if (!container) return;
+    
+    const stats = data.quick_stats;
     container.innerHTML = `
         <div class="text-sm space-y-2">
             <div class="flex justify-between"><span class="text-gray-400">Prix</span><span class="font-bold text-lg">${stats.price.toFixed(2)} $</span></div>
@@ -299,8 +330,10 @@ function formatVolume(vol) {
 // ========== INDICATORS SUMMARY ==========
 
 function updateIndicatorsSummary(data) {
-    const signals = data.signals;
     const container = document.getElementById('indicators-summary');
+    if (!container) return;
+    
+    const signals = data.signals;
     if (!signals || typeof signals !== 'object') {
         container.innerHTML = '<div class="text-sm text-gray-400 text-center py-4">⚠️ Aucun signal</div>';
         return;
@@ -337,8 +370,11 @@ async function loadMultiTimeframe(ticker) {
         const res = await fetch(`${API_BASE}/api/mtf/${ticker}`);
         const mtf = await res.json();
         
+        const container = document.getElementById('mtf-matrix');
+        if (!container) return;
+        
         if (mtf.error) {
-            document.getElementById('mtf-matrix').innerHTML = '<div class="text-red-400 text-center py-2">❌ Erreur MTF</div>';
+            container.innerHTML = '<div class="text-red-400 text-center py-2">❌ Erreur MTF</div>';
             return;
         }
         
@@ -377,16 +413,20 @@ async function loadMultiTimeframe(ticker) {
             </div>
         `;
         
-        document.getElementById('mtf-matrix').innerHTML = html;
+        container.innerHTML = html;
         
     } catch (error) {
         console.error('MTF error:', error);
-        document.getElementById('mtf-matrix').innerHTML = '<div class="text-red-400 text-center py-2">❌ Erreur</div>';
+        const container = document.getElementById('mtf-matrix');
+        if (container) {
+            container.innerHTML = '<div class="text-red-400 text-center py-2">❌ Erreur</div>';
+        }
     }
 }
 
 function updatePatternsPanel(patterns) {
     const container = document.getElementById('patterns-list');
+    if (!container) return;
     
     if (!patterns || !patterns.candlestick_patterns) {
         container.innerHTML = '<div class="text-gray-400 text-center py-2">Aucun pattern</div>';
@@ -418,6 +458,7 @@ function updatePatternsPanel(patterns) {
 
 function updateFibonacciPanel(fib) {
     const container = document.getElementById('fibonacci-levels');
+    if (!container) return;
     
     if (!fib || fib.error) {
         container.innerHTML = '<div class="text-gray-400 text-center py-2">Non disponible</div>';
@@ -449,6 +490,7 @@ function updateFibonacciPanel(fib) {
 
 function updateSupportResistancePanel(sr) {
     const container = document.getElementById('sr-levels');
+    if (!container) return;
     
     if (!sr || sr.error) {
         container.innerHTML = '<div class="text-gray-400 text-center py-2">Non disponible</div>';
@@ -492,6 +534,11 @@ function generateAIAnalysis(data) {
 
 function addAIMessage(text, sender = 'ai') {
     const container = document.getElementById('chat-messages');
+    if (!container) {
+        console.warn('Chat container not found, skipping message');
+        return;
+    }
+    
     const msgDiv = document.createElement('div');
     msgDiv.className = 'chat-message';
     const bgColor = sender === 'ai' ? 'bg-blue-900/30 border-blue-500' : 'bg-gray-700 border-gray-600';
@@ -503,6 +550,8 @@ function addAIMessage(text, sender = 'ai') {
 
 async function sendChatMessage() {
     const input = document.getElementById('chat-input');
+    if (!input) return;
+    
     const message = input.value.trim();
     if (!message || !currentData) return;
     addAIMessage(message, 'user');
@@ -522,25 +571,45 @@ async function sendChatMessage() {
 
 // ========== EVENT LISTENERS ==========
 
-document.getElementById('analyze-btn').addEventListener('click', analyzeStock);
-document.getElementById('ticker-input').addEventListener('keypress', (e) => { if (e.key === 'Enter') analyzeStock(); });
-document.getElementById('chat-send').addEventListener('click', sendChatMessage);
-document.getElementById('chat-input').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendChatMessage(); });
-
-document.querySelectorAll('.indicator-toggle').forEach(btn => {
-    btn.addEventListener('click', () => {
-        const indicator = btn.dataset.indicator;
-        if (activeIndicators.has(indicator)) {
-            activeIndicators.delete(indicator);
-            btn.classList.remove('active', 'bg-blue-600');
-            btn.classList.add('bg-gray-700');
-        } else {
-            activeIndicators.add(indicator);
-            btn.classList.add('active', 'bg-blue-600');
-            btn.classList.remove('bg-gray-700');
-        }
-        if (currentData) renderMainChart(currentData);
+function initEventListeners() {
+    const analyzeBtn = document.getElementById('analyze-btn');
+    if (analyzeBtn) {
+        analyzeBtn.addEventListener('click', analyzeStock);
+    }
+    
+    const tickerInput = document.getElementById('ticker-input');
+    if (tickerInput) {
+        tickerInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') analyzeStock(); });
+    }
+    
+    const chatSend = document.getElementById('chat-send');
+    if (chatSend) {
+        chatSend.addEventListener('click', sendChatMessage);
+    }
+    
+    const chatInput = document.getElementById('chat-input');
+    if (chatInput) {
+        chatInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendChatMessage(); });
+    }
+    
+    document.querySelectorAll('.indicator-toggle').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const indicator = btn.dataset.indicator;
+            if (activeIndicators.has(indicator)) {
+                activeIndicators.delete(indicator);
+                btn.classList.remove('active', 'bg-blue-600');
+                btn.classList.add('bg-gray-700');
+            } else {
+                activeIndicators.add(indicator);
+                btn.classList.add('active', 'bg-blue-600');
+                btn.classList.remove('bg-gray-700');
+            }
+            if (currentData) renderMainChart(currentData);
+        });
     });
-});
+}
 
-window.addEventListener('load', () => { analyzeStock(); });
+window.addEventListener('load', () => {
+    initEventListeners();
+    analyzeStock();
+});
