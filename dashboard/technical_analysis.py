@@ -5,7 +5,7 @@ et les signaux d'achat/vente sur les actions en temps réel.
 
 Auteur: Ploutos Team
 Date: 2025-12-15
-Version: 1.0.0
+Version: 1.1.0 - Ajout cache anti-rate-limit
 """
 
 import sys
@@ -18,10 +18,15 @@ import yfinance as yf
 from typing import Dict, List, Tuple, Optional
 from datetime import datetime, timedelta
 from dataclasses import dataclass, asdict
+import time
 
 from core.utils import setup_logging
 
 logger = setup_logging(__name__, 'technical_analysis.log')
+
+# 💾 CACHE GLOBAL POUR ÉVITER RATE LIMIT YAHOO FINANCE
+_DATA_CACHE = {}
+_CACHE_TTL = 60  # Secondes
 
 
 @dataclass
@@ -59,10 +64,35 @@ class TechnicalAnalyzer:
         self.df = None
         self._fetch_data()
     
+    def _get_cache_key(self) -> str:
+        """Générer clé de cache unique"""
+        return f"{self.symbol}_{self.period}_{self.interval}"
+    
     def _fetch_data(self) -> None:
-        """Récupérer les données depuis Yahoo Finance"""
+        """
+        Récupérer les données depuis Yahoo Finance avec cache anti-rate-limit
+        
+        Cache les données pendant 60 secondes pour éviter les rate limits
+        """
+        cache_key = self._get_cache_key()
+        current_time = time.time()
+        
+        # Vérifier le cache
+        if cache_key in _DATA_CACHE:
+            cached_data, cached_time = _DATA_CACHE[cache_key]
+            
+            # Si données toujours valides (< 60s)
+            if current_time - cached_time < _CACHE_TTL:
+                self.df = cached_data.copy()
+                age = int(current_time - cached_time)
+                logger.info(f"⚙️ Cache HIT pour {self.symbol} (age: {age}s)")
+                return
+            else:
+                logger.info(f"🔄 Cache EXPIRED pour {self.symbol}")
+        
+        # Télécharger depuis Yahoo Finance
         try:
-            logger.info(f"📥 Téléchargement données {self.symbol} ({self.period}, {self.interval})")
+            logger.info(f"📶 Téléchargement données {self.symbol} ({self.period}, {self.interval})")
             ticker = yf.Ticker(self.symbol)
             self.df = ticker.history(period=self.period, interval=self.interval)
             
@@ -70,14 +100,39 @@ class TechnicalAnalyzer:
                 logger.error(f"❌ Aucune donnée pour {self.symbol}")
                 raise ValueError(f"Pas de données pour {self.symbol}")
             
-            logger.info(f"✅ {len(self.df)} barres téléchargées pour {self.symbol}")
+            # Mettre en cache
+            _DATA_CACHE[cache_key] = (self.df.copy(), current_time)
+            
+            logger.info(f"✅ {len(self.df)} barres téléchargées pour {self.symbol} (mis en cache)")
             
         except Exception as e:
+            error_msg = str(e)
+            
+            # Si rate limit, attendre 5s et réessayer UNE FOIS
+            if "Rate limit" in error_msg or "Too Many Requests" in error_msg:
+                logger.warning(f"⚠️ Rate limit détecté pour {self.symbol}, attente 5s...")
+                time.sleep(5)
+                
+                try:
+                    ticker = yf.Ticker(self.symbol)
+                    self.df = ticker.history(period=self.period, interval=self.interval)
+                    
+                    if not self.df.empty:
+                        _DATA_CACHE[cache_key] = (self.df.copy(), current_time)
+                        logger.info(f"✅ {len(self.df)} barres téléchargées pour {self.symbol} (retry OK)")
+                        return
+                except Exception as retry_error:
+                    logger.error(f"❌ Retry échoué pour {self.symbol}: {retry_error}")
+            
             logger.error(f"❌ Erreur téléchargement {self.symbol}: {e}")
             raise
     
     def refresh_data(self) -> None:
-        """Rafraîchir les données (pour mise à jour temps réel)"""
+        """Rafraîchir les données (invalidate cache et retelecharge)"""
+        cache_key = self._get_cache_key()
+        if cache_key in _DATA_CACHE:
+            del _DATA_CACHE[cache_key]
+            logger.info(f"🗑️ Cache invalidé pour {self.symbol}")
         self._fetch_data()
     
     # ========== INDICATEURS DE TENDANCE ==========
