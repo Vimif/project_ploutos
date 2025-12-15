@@ -399,28 +399,47 @@ def api_chart_data(symbol):
         indicators = analyzer.get_all_indicators()
         signal = analyzer.generate_signal()
         
-        # Calculer indicateurs pour chaque point (pour affichage sur chart)
+        # 🔥 FIX: Calculer indicateurs complèts pour advanced_chart.js
         sma_20 = analyzer.calculate_sma(20)
         sma_50 = analyzer.calculate_sma(50)
+        sma_200 = analyzer.calculate_sma(200)
+        ema_12 = analyzer.calculate_ema(12)
         ema_20 = analyzer.calculate_ema(20)
+        ema_26 = analyzer.calculate_ema(26)
         rsi = analyzer.calculate_rsi()
         macd_line, signal_line, histogram = analyzer.calculate_macd()
         upper, middle, lower = analyzer.calculate_bollinger_bands()
         
-        # Ajouter indicateurs à chaque point OHLCV
-        for i, data_point in enumerate(ohlcv_data):
-            data_point['sma_20'] = float(sma_20.iloc[i]) if i < len(sma_20) and not pd.isna(sma_20.iloc[i]) else None
-            data_point['sma_50'] = float(sma_50.iloc[i]) if i < len(sma_50) and not pd.isna(sma_50.iloc[i]) else None
-            data_point['ema_20'] = float(ema_20.iloc[i]) if i < len(ema_20) and not pd.isna(ema_20.iloc[i]) else None
-            data_point['rsi'] = float(rsi.iloc[i]) if i < len(rsi) and not pd.isna(rsi.iloc[i]) else None
-            data_point['macd'] = float(macd_line.iloc[i]) if i < len(macd_line) and not pd.isna(macd_line.iloc[i]) else None
-            data_point['macd_signal'] = float(signal_line.iloc[i]) if i < len(signal_line) and not pd.isna(signal_line.iloc[i]) else None
-            data_point['macd_histogram'] = float(histogram.iloc[i]) if i < len(histogram) and not pd.isna(histogram.iloc[i]) else None
-            data_point['bb_upper'] = float(upper.iloc[i]) if i < len(upper) and not pd.isna(upper.iloc[i]) else None
-            data_point['bb_middle'] = float(middle.iloc[i]) if i < len(middle) and not pd.isna(middle.iloc[i]) else None
-            data_point['bb_lower'] = float(lower.iloc[i]) if i < len(lower) and not pd.isna(lower.iloc[i]) else None
+        # Calculer indicateurs supplémentaires (Stochastic, ADX, ATR, OBV)
+        import ta as ta_lib
+        stoch = ta_lib.momentum.StochasticOscillator(df['High'], df['Low'], df['Close'])
+        adx_calc = ta_lib.trend.ADXIndicator(df['High'], df['Low'], df['Close'])
+        atr_calc = ta_lib.volatility.AverageTrueRange(df['High'], df['Low'], df['Close'])
+        obv_calc = ta_lib.volume.OnBalanceVolumeIndicator(df['Close'], df['Volume'])
         
-        # 🔥 FIX: Créer quick_stats pour advanced_chart.js
+        # 🔥 Extraire arrays pour JavaScript
+        indicators_arrays = {
+            'sma_20': [float(v) if not pd.isna(v) else None for v in sma_20],
+            'sma_50': [float(v) if not pd.isna(v) else None for v in sma_50],
+            'sma_200': [float(v) if not pd.isna(v) else None for v in sma_200] if len(sma_200) > 0 else [],
+            'ema_12': [float(v) if not pd.isna(v) else None for v in ema_12],
+            'ema_20': [float(v) if not pd.isna(v) else None for v in ema_20],
+            'ema_26': [float(v) if not pd.isna(v) else None for v in ema_26],
+            'rsi': [float(v) if not pd.isna(v) else None for v in rsi],
+            'macd': [float(v) if not pd.isna(v) else None for v in macd_line],
+            'macd_signal': [float(v) if not pd.isna(v) else None for v in signal_line],
+            'macd_hist': [float(v) if not pd.isna(v) else None for v in histogram],
+            'bb_upper': [float(v) if not pd.isna(v) else None for v in upper],
+            'bb_middle': [float(v) if not pd.isna(v) else None for v in middle],
+            'bb_lower': [float(v) if not pd.isna(v) else None for v in lower],
+            'stoch_k': [float(v) if not pd.isna(v) else None for v in stoch.stoch()],
+            'stoch_d': [float(v) if not pd.isna(v) else None for v in stoch.stoch_signal()],
+            'adx': [float(v) if not pd.isna(v) else None for v in adx_calc.adx()],
+            'atr': [float(v) if not pd.isna(v) else None for v in atr_calc.average_true_range()],
+            'obv': [float(v) if not pd.isna(v) else None for v in obv_calc.on_balance_volume()]
+        }
+        
+        # 🔥 quick_stats pour advanced_chart.js
         rsi_current = float(rsi.iloc[-1]) if len(rsi) > 0 and not pd.isna(rsi.iloc[-1]) else 50.0
         
         # Générer recommendation simple
@@ -445,7 +464,7 @@ def api_chart_data(symbol):
         return jsonify({
             'success': True,
             'symbol': symbol.upper(),
-            'ticker': symbol.upper(),  # Alias pour compatibilité
+            'ticker': symbol.upper(),
             'period': period,
             'current_price': current_price,
             'price_change_24h': price_change_24h,
@@ -462,14 +481,14 @@ def api_chart_data(symbol):
                 'low': low_24h,
                 'open': float(df['Open'].iloc[-1])
             },
-            'quick_stats': quick_stats,  # 🔥 NOUVEAU - pour advanced_chart.js
+            'quick_stats': quick_stats,
             'dates': [d['date'] for d in ohlcv_data],
             'open': [d['open'] for d in ohlcv_data],
             'high': [d['high'] for d in ohlcv_data],
             'low': [d['low'] for d in ohlcv_data],
             'close': [d['close'] for d in ohlcv_data],
             'data': ohlcv_data,
-            'indicators': indicators,
+            'indicators': indicators_arrays,  # 🔥 Arrays complets pour JS
             'signal': {
                 'signal': signal.signal,
                 'strength': signal.strength,
@@ -480,7 +499,7 @@ def api_chart_data(symbol):
                 'take_profit': signal.take_profit,
                 'reasons': signal.reasons
             },
-            'signals': {}  # Pour compatibilité, peut être rempli plus tard
+            'signals': {}  # Pour compatibilité
         })
         
     except Exception as e:
