@@ -35,6 +35,16 @@ class ScalperTradingView {
     setupTradingView() {
         console.log('📈 Chargement TradingView Widget...');
         
+        // Détruire l'ancien widget si existe
+        if (this.widget) {
+            try {
+                this.widget.remove();
+                console.log('🗑️ Ancien widget détruit');
+            } catch (e) {
+                console.warn('⚠️ Erreur destruction widget:', e);
+            }
+        }
+        
         this.widget = new TradingView.widget({
             container_id: 'tradingview_chart',
             autosize: true,
@@ -125,12 +135,11 @@ class ScalperTradingView {
         // Reset des données affichées
         this.resetDisplay();
         
-        // Mettre à jour TradingView
-        if (this.widget) {
-            this.widget.setSymbol(`NASDAQ:${this.currentTicker}`, this.currentTimeframe, () => {
-                console.log(`✅ TradingView ticker changé: ${this.currentTicker}`);
-            });
-        }
+        // RECRÉER le widget TradingView au lieu de setSymbol()
+        console.log('🔄 Recréation du widget TradingView...');
+        setTimeout(() => {
+            this.setupTradingView();
+        }, 500); // Délai pour laisser le temps de détruire l'ancien
         
         // S'abonner au nouveau ticker
         if (this.socket && this.socket.connected) {
@@ -139,7 +148,9 @@ class ScalperTradingView {
         }
         
         // Charger indicateurs immédiatement
-        this.loadIndicators();
+        setTimeout(() => {
+            this.loadIndicators();
+        }, 1000);
     }
 
     resetDisplay() {
@@ -162,8 +173,11 @@ class ScalperTradingView {
         
         // Reset signals
         document.getElementById('sigRSI').textContent = 'NEUTRE';
+        document.getElementById('sigRSI').className = 'indicator-signal signal-neutral';
         document.getElementById('sigMACD').textContent = 'NEUTRE';
+        document.getElementById('sigMACD').className = 'indicator-signal signal-neutral';
         document.getElementById('sigSTOCH').textContent = 'NEUTRE';
+        document.getElementById('sigSTOCH').className = 'indicator-signal signal-neutral';
         document.getElementById('sigADX').textContent = 'FAIBLE';
         
         this.indicators = {};
@@ -172,11 +186,11 @@ class ScalperTradingView {
     changeTimeframe(tf) {
         this.currentTimeframe = tf;
         
-        if (this.widget) {
-            this.widget.setSymbol(`NASDAQ:${this.currentTicker}`, tf, () => {
-                console.log(`✅ Timeframe changé: ${tf}`);
-            });
-        }
+        // Recréer le widget avec le nouveau timeframe
+        console.log(`🔄 Changement timeframe: ${tf}`);
+        setTimeout(() => {
+            this.setupTradingView();
+        }, 500);
     }
 
     // ========== WEBSOCKET ==========
@@ -247,7 +261,7 @@ class ScalperTradingView {
     handlePriceUpdate(data) {
         // Vérifier que les données concernent bien le ticker actuel
         if (data.ticker !== this.currentTicker) {
-            console.log(`⚠️ Données ignorées (ticker: ${data.ticker}, actuel: ${this.currentTicker})`);
+            console.log(`⚠️ Données prix ignorées (ticker: ${data.ticker}, actuel: ${this.currentTicker})`);
             return;
         }
         
