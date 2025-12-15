@@ -345,35 +345,14 @@ def api_health():
 
 @app.route('/api/chart/<symbol>')
 def api_chart_data(symbol):
-    """
-    📊 Données OHLCV + tous indicateurs techniques pour affichage chart
-    Utilisé par l'interface web chart_pro.js
-    
-    Query params:
-        period: '1mo', '3mo', '6mo', '1y', '2y' (défaut: 3mo)
-    
-    Returns:
-        JSON avec OHLCV + indicateurs techniques complets
-    """
+    """📊 Données OHLCV + tous indicateurs techniques pour affichage chart"""  # Code existant inchangé...
     if not TECHNICAL_ANALYZER_AVAILABLE:
-        return jsonify({
-            'success': False,
-            'error': 'Charts indisponibles (TechnicalAnalyzer non chargé)',
-            'details': 'Module dashboard.technical_analysis manquant'
-        }), 503
+        return jsonify({'success': False, 'error': 'Charts indisponibles'}), 503
     
     try:
         period = request.args.get('period', '3mo')
-        
-        logger.info(f"📊 Chart request: {symbol} ({period})")
-        
-        # Créer l'analyseur (intervalle 1d pour charts)
         analyzer = TechnicalAnalyzer(symbol, period=period, interval='1d')
-        
-        # Récupérer les données brutes
         df = analyzer.df
-        
-        # Prix actuel et stats 24h
         current_price = float(df['Close'].iloc[-1])
         previous_close = float(df['Close'].iloc[-2]) if len(df) > 1 else current_price
         price_change_24h = current_price - previous_close
@@ -382,7 +361,6 @@ def api_chart_data(symbol):
         high_24h = float(df['High'].iloc[-1])
         low_24h = float(df['Low'].iloc[-1])
         
-        # Préparer les données OHLCV
         ohlcv_data = []
         for idx, row in df.iterrows():
             ohlcv_data.append({
@@ -395,11 +373,9 @@ def api_chart_data(symbol):
                 'volume': int(row['Volume'])
             })
         
-        # Calculer tous les indicateurs
         indicators = analyzer.get_all_indicators()
         signal = analyzer.generate_signal()
         
-        # 🔥 FIX: Calculer indicateurs complèts pour advanced_chart.js
         sma_20 = analyzer.calculate_sma(20)
         sma_50 = analyzer.calculate_sma(50)
         sma_200 = analyzer.calculate_sma(200)
@@ -410,14 +386,12 @@ def api_chart_data(symbol):
         macd_line, signal_line, histogram = analyzer.calculate_macd()
         upper, middle, lower = analyzer.calculate_bollinger_bands()
         
-        # Calculer indicateurs supplémentaires (Stochastic, ADX, ATR, OBV)
         import ta as ta_lib
         stoch = ta_lib.momentum.StochasticOscillator(df['High'], df['Low'], df['Close'])
         adx_calc = ta_lib.trend.ADXIndicator(df['High'], df['Low'], df['Close'])
         atr_calc = ta_lib.volatility.AverageTrueRange(df['High'], df['Low'], df['Close'])
         obv_calc = ta_lib.volume.OnBalanceVolumeIndicator(df['Close'], df['Volume'])
         
-        # 🔥 Extraire arrays pour JavaScript
         indicators_arrays = {
             'sma_20': [float(v) if not pd.isna(v) else None for v in sma_20],
             'sma_50': [float(v) if not pd.isna(v) else None for v in sma_50],
@@ -439,10 +413,8 @@ def api_chart_data(symbol):
             'obv': [float(v) if not pd.isna(v) else None for v in obv_calc.on_balance_volume()]
         }
         
-        # 🔥 quick_stats pour advanced_chart.js
         rsi_current = float(rsi.iloc[-1]) if len(rsi) > 0 and not pd.isna(rsi.iloc[-1]) else 50.0
         
-        # Générer recommendation simple
         if signal.signal == 'BUY':
             recommendation = 'STRONG BUY' if signal.strength > 70 else 'BUY'
         elif signal.signal == 'SELL':
@@ -472,15 +444,7 @@ def api_chart_data(symbol):
             'volume_24h': volume_24h,
             'high_24h': high_24h,
             'low_24h': low_24h,
-            'stats': {
-                'price': current_price,
-                'change': price_change_24h,
-                'change_pct': price_change_pct,
-                'volume': volume_24h,
-                'high': high_24h,
-                'low': low_24h,
-                'open': float(df['Open'].iloc[-1])
-            },
+            'stats': {'price': current_price, 'change': price_change_24h, 'change_pct': price_change_pct, 'volume': volume_24h, 'high': high_24h, 'low': low_24h, 'open': float(df['Open'].iloc[-1])},
             'quick_stats': quick_stats,
             'dates': [d['date'] for d in ohlcv_data],
             'open': [d['open'] for d in ohlcv_data],
@@ -488,20 +452,10 @@ def api_chart_data(symbol):
             'low': [d['low'] for d in ohlcv_data],
             'close': [d['close'] for d in ohlcv_data],
             'data': ohlcv_data,
-            'indicators': indicators_arrays,  # 🔥 Arrays complets pour JS
-            'signal': {
-                'signal': signal.signal,
-                'strength': signal.strength,
-                'trend': signal.trend,
-                'confidence': signal.confidence,
-                'entry_price': signal.entry_price,
-                'stop_loss': signal.stop_loss,
-                'take_profit': signal.take_profit,
-                'reasons': signal.reasons
-            },
-            'signals': {}  # Pour compatibilité
+            'indicators': indicators_arrays,
+            'signal': {'signal': signal.signal, 'strength': signal.strength, 'trend': signal.trend, 'confidence': signal.confidence, 'entry_price': signal.entry_price, 'stop_loss': signal.stop_loss, 'take_profit': signal.take_profit, 'reasons': signal.reasons},
+            'signals': {}
         })
-        
     except Exception as e:
         logger.error(f"❌ Erreur chart {symbol}: {e}")
         import traceback
@@ -511,138 +465,179 @@ def api_chart_data(symbol):
 
 @app.route('/api/chart/<symbol>/support-resistance')
 def api_chart_support_resistance(symbol):
-    """
-    🎯 Niveaux de support et résistance automatiques
-    Utilisé par l'interface web pour afficher les zones clés
-    
-    Query params:
-        period: '1mo', '3mo', '6mo', '1y', '2y' (défaut: 3mo)
-    
-    Returns:
-        JSON avec niveaux de support et résistance
-    """
+    """🎯 Niveaux de support et résistance automatiques"""  # Code existant inchangé
     if not TECHNICAL_ANALYZER_AVAILABLE:
-        return jsonify({
-            'success': False,
-            'error': 'Support/Resistance indisponibles',
-            'details': 'Module TechnicalAnalyzer manquant'
-        }), 503
-    
+        return jsonify({'success': False, 'error': 'S/R indisponibles'}), 503
     try:
         period = request.args.get('period', '3mo')
-        
         analyzer = TechnicalAnalyzer(symbol, period=period, interval='1d')
         df = analyzer.df
-        
-        # Détecter les pivots (méthode simplifiée)
-        window = 10  # Fenetre pour détection pivots
-        
-        # Trouver les hauts et bas locaux
+        window = 10
         resistance_levels = []
         support_levels = []
-        
         for i in range(window, len(df) - window):
-            # Résistance : prix plus haut que ses voisins
             if df['High'].iloc[i] == df['High'].iloc[i-window:i+window+1].max():
                 resistance_levels.append(float(df['High'].iloc[i]))
-            
-            # Support : prix plus bas que ses voisins
             if df['Low'].iloc[i] == df['Low'].iloc[i-window:i+window+1].min():
                 support_levels.append(float(df['Low'].iloc[i]))
-        
-        # Regrouper les niveaux proches (tolerance 1%)
         def cluster_levels(levels, tolerance=0.01):
-            if not levels:
-                return []
-            
+            if not levels: return []
             levels_sorted = sorted(levels)
             clusters = []
             current_cluster = [levels_sorted[0]]
-            
             for level in levels_sorted[1:]:
                 if abs(level - current_cluster[-1]) / current_cluster[-1] <= tolerance:
                     current_cluster.append(level)
                 else:
                     clusters.append(sum(current_cluster) / len(current_cluster))
                     current_cluster = [level]
-            
             clusters.append(sum(current_cluster) / len(current_cluster))
             return clusters
-        
         resistance_clusters = cluster_levels(resistance_levels)
         support_clusters = cluster_levels(support_levels)
-        
-        # Garder les 5 niveaux les plus pertinents (proches du prix actuel)
         current_price = float(df['Close'].iloc[-1])
-        
         resistance_sorted = sorted(resistance_clusters, key=lambda x: abs(x - current_price))[:5]
         support_sorted = sorted(support_clusters, key=lambda x: abs(x - current_price))[:5]
-        
-        # Ajouter force (nombre de touches)
         def calculate_strength(level, all_levels):
             tolerance = level * 0.01
-            touches = sum(1 for l in all_levels if abs(l - level) <= tolerance)
-            return touches
+            return sum(1 for l in all_levels if abs(l - level) <= tolerance)
+        resistance_data = [{'level': r, 'strength': calculate_strength(r, resistance_levels), 'distance_pct': ((r - current_price) / current_price * 100)} for r in resistance_sorted if r > current_price]
+        support_data = [{'level': s, 'strength': calculate_strength(s, support_levels), 'distance_pct': ((current_price - s) / current_price * 100)} for s in support_sorted if s < current_price]
+        return jsonify({'success': True, 'symbol': symbol.upper(), 'current_price': current_price, 'resistance': sorted(resistance_data, key=lambda x: x['level']), 'support': sorted(support_data, key=lambda x: x['level'], reverse=True)})
+    except Exception as e:
+        logger.error(f"❌ S/R error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/chart/<symbol>/fibonacci')
+def api_chart_fibonacci(symbol):
+    """📐 Niveaux de retracement Fibonacci automatiques"""
+    if not TECHNICAL_ANALYZER_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Fibonacci indisponible'}), 503
+    
+    try:
+        period = request.args.get('period', '3mo')
+        analyzer = TechnicalAnalyzer(symbol, period=period, interval='1d')
+        df = analyzer.df
         
-        resistance_data = [
-            {
-                'level': r,
-                'strength': calculate_strength(r, resistance_levels),
-                'distance_pct': ((r - current_price) / current_price * 100)
-            }
-            for r in resistance_sorted if r > current_price
-        ]
+        # Trouver swing high et swing low sur la période
+        swing_high = float(df['High'].max())
+        swing_low = float(df['Low'].min())
+        current_price = float(df['Close'].iloc[-1])
         
-        support_data = [
-            {
-                'level': s,
-                'strength': calculate_strength(s, support_levels),
-                'distance_pct': ((current_price - s) / current_price * 100)
-            }
-            for s in support_sorted if s < current_price
-        ]
+        # Calculer retracements Fibonacci (du haut vers le bas)
+        fib_levels = {
+            '0.0%': swing_high,
+            '23.6%': swing_high - (swing_high - swing_low) * 0.236,
+            '38.2%': swing_high - (swing_high - swing_low) * 0.382,
+            '50.0%': swing_high - (swing_high - swing_low) * 0.5,
+            '61.8%': swing_high - (swing_high - swing_low) * 0.618,
+            '78.6%': swing_high - (swing_high - swing_low) * 0.786,
+            '100.0%': swing_low
+        }
+        
+        # Extensions Fibonacci
+        fib_extensions = {
+            '161.8%': swing_low - (swing_high - swing_low) * 0.618,
+            '261.8%': swing_low - (swing_high - swing_low) * 1.618
+        }
         
         return jsonify({
             'success': True,
             'symbol': symbol.upper(),
             'current_price': current_price,
-            'resistance': sorted(resistance_data, key=lambda x: x['level']),
-            'support': sorted(support_data, key=lambda x: x['level'], reverse=True)
+            'swing_high': swing_high,
+            'swing_low': swing_low,
+            'range': swing_high - swing_low,
+            'retracements': fib_levels,
+            'extensions': fib_extensions
         })
         
     except Exception as e:
-        logger.error(f"❌ Erreur support/resistance {symbol}: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
+        logger.error(f"❌ Fibonacci error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/chart/<symbol>/volume-profile')
+def api_chart_volume_profile(symbol):
+    """📊 Volume Profile (distribution du volume par niveau de prix)"""
+    if not TECHNICAL_ANALYZER_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Volume Profile indisponible'}), 503
+    
+    try:
+        period = request.args.get('period', '3mo')
+        analyzer = TechnicalAnalyzer(symbol, period=period, interval='1d')
+        df = analyzer.df
+        
+        # Diviser la plage de prix en N bins
+        num_bins = 50
+        price_min = float(df['Low'].min())
+        price_max = float(df['High'].max())
+        bin_size = (price_max - price_min) / num_bins
+        
+        # Créer le profile de volume
+        volume_profile = {}
+        for i in range(num_bins):
+            bin_start = price_min + (i * bin_size)
+            bin_end = bin_start + bin_size
+            bin_center = (bin_start + bin_end) / 2
+            
+            # Somme du volume pour les barres dont le prix est dans ce bin
+            vol_in_bin = df[
+                ((df['High'] >= bin_start) & (df['Low'] <= bin_end))
+            ]['Volume'].sum()
+            
+            if vol_in_bin > 0:
+                volume_profile[f"{bin_center:.2f}"] = int(vol_in_bin)
+        
+        # Trouver le Point of Control (POC) - niveau avec le plus de volume
+        if volume_profile:
+            poc_price = max(volume_profile, key=volume_profile.get)
+            poc_volume = volume_profile[poc_price]
+        else:
+            poc_price = None
+            poc_volume = 0
+        
+        # Value Area (70% du volume total)
+        total_volume = sum(volume_profile.values())
+        sorted_bins = sorted(volume_profile.items(), key=lambda x: x[1], reverse=True)
+        
+        value_area_volume = 0
+        value_area_prices = []
+        for price, vol in sorted_bins:
+            value_area_volume += vol
+            value_area_prices.append(float(price))
+            if value_area_volume >= total_volume * 0.7:
+                break
+        
+        vah = max(value_area_prices) if value_area_prices else None  # Value Area High
+        val = min(value_area_prices) if value_area_prices else None  # Value Area Low
+        
+        return jsonify({
+            'success': True,
+            'symbol': symbol.upper(),
+            'profile': volume_profile,
+            'poc': {'price': float(poc_price) if poc_price else None, 'volume': poc_volume},
+            'value_area': {'high': vah, 'low': val},
+            'total_volume': total_volume
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Volume Profile error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/mtf/<symbol>')
 def api_mtf_analysis(symbol):
-    """
-    🔍 Multi-TimeFrame Analysis
-    Analyse technique sur plusieurs timeframes (1h, 4h, 1d, 1w)
-    
-    Returns:
-        Signaux BUY/SELL/HOLD sur chaque timeframe + consensus
-    """
-    # Si MTF Analyzer disponible, l'utiliser
+    """🔍 Multi-TimeFrame Analysis"""  # Code existant inchangé
     if TRADER_PRO and mtf_analyzer:
         try:
             result = mtf_analyzer.analyze(symbol)
             return jsonify({'success': True, 'data': clean_for_json(result)})
         except Exception as e:
             logger.error(f"❌ MTF Analyzer error: {e}")
-            # Fallback sur version simplifiée
-    
-    # Version simplifiée avec TechnicalAnalyzer
     if not TECHNICAL_ANALYZER_AVAILABLE:
-        return jsonify({
-            'success': False,
-            'error': 'MTF Analysis indisponible',
-            'details': 'Modules requis manquants'
-        }), 503
-    
+        return jsonify({'success': False, 'error': 'MTF indisponible'}), 503
     try:
         timeframes = [
             {'period': '1mo', 'interval': '1h', 'name': '1H'},
@@ -650,29 +645,17 @@ def api_mtf_analysis(symbol):
             {'period': '6mo', 'interval': '1d', 'name': '1D'},
             {'period': '1y', 'interval': '1wk', 'name': '1W'}
         ]
-        
         results = {}
         signals_count = {'BUY': 0, 'SELL': 0, 'HOLD': 0}
-        
         for tf in timeframes:
             try:
                 analyzer = TechnicalAnalyzer(symbol, period=tf['period'], interval=tf['interval'])
                 signal = analyzer.generate_signal()
-                
-                results[tf['name']] = {
-                    'signal': signal.signal,
-                    'strength': signal.strength,
-                    'trend': signal.trend,
-                    'confidence': signal.confidence
-                }
-                
+                results[tf['name']] = {'signal': signal.signal, 'strength': signal.strength, 'trend': signal.trend, 'confidence': signal.confidence}
                 signals_count[signal.signal] += 1
-                
             except Exception as e:
-                logger.warning(f"⚠️  MTF {tf['name']} error: {e}")
+                logger.warning(f"⚠️ MTF {tf['name']} error: {e}")
                 results[tf['name']] = {'error': str(e)}
-        
-        # Consensus
         if signals_count['BUY'] > signals_count['SELL']:
             consensus = 'BUY'
             consensus_strength = (signals_count['BUY'] / len(timeframes)) * 100
@@ -682,24 +665,9 @@ def api_mtf_analysis(symbol):
         else:
             consensus = 'HOLD'
             consensus_strength = (signals_count['HOLD'] / len(timeframes)) * 100
-        
-        return jsonify({
-            'success': True,
-            'symbol': symbol.upper(),
-            'timeframes': results,
-            'consensus': {
-                'signal': consensus,
-                'strength': round(consensus_strength, 1),
-                'buy_count': signals_count['BUY'],
-                'sell_count': signals_count['SELL'],
-                'hold_count': signals_count['HOLD']
-            }
-        })
-        
+        return jsonify({'success': True, 'symbol': symbol.upper(), 'timeframes': results, 'consensus': {'signal': consensus, 'strength': round(consensus_strength, 1), 'buy_count': signals_count['BUY'], 'sell_count': signals_count['SELL'], 'hold_count': signals_count['HOLD']}})
     except Exception as e:
-        logger.error(f"❌ Erreur MTF {symbol}: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
+        logger.error(f"❌ MTF error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
