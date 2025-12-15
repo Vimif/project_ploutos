@@ -78,7 +78,7 @@ def api_pro_analysis(symbol):
         current_price = float(df['Close'].iloc[-1])
         
         # === RSI ANALYSIS ===
-        rsi_value = indicators.get('rsi', 50.0)
+        rsi_value = float(indicators.get('rsi', 50.0))
         if rsi_value > 70:
             rsi_zone = 'overbought'
             rsi_signal = 'SELL'
@@ -90,9 +90,17 @@ def api_pro_analysis(symbol):
             rsi_signal = 'HOLD'
         
         # === MACD ANALYSIS ===
-        macd_value = indicators.get('macd', 0.0)
-        macd_signal_value = indicators.get('macd_signal', 0.0)
-        macd_histogram = indicators.get('macd_histogram', 0.0)
+        # 🔥 FIX: indicators peut retourner un dict ou un float
+        macd_data = indicators.get('macd', {})
+        if isinstance(macd_data, dict):
+            macd_value = float(macd_data.get('macd', 0.0))
+            macd_signal_value = float(macd_data.get('signal', 0.0))
+            macd_histogram = float(macd_data.get('histogram', 0.0))
+        else:
+            # Fallback si c'est un float direct
+            macd_value = float(macd_data) if macd_data else 0.0
+            macd_signal_value = 0.0
+            macd_histogram = 0.0
         
         macd_signal = 'BUY' if macd_value > macd_signal_value else 'SELL'
         macd_crossover = None
@@ -102,9 +110,16 @@ def api_pro_analysis(symbol):
             macd_crossover = 'bearish'
         
         # === BOLLINGER BANDS ===
-        bb_upper = indicators.get('bb_upper', current_price * 1.02)
-        bb_middle = indicators.get('bb_middle', current_price)
-        bb_lower = indicators.get('bb_lower', current_price * 0.98)
+        bb_data = indicators.get('bollinger_bands', {})
+        if isinstance(bb_data, dict):
+            bb_upper = float(bb_data.get('upper', current_price * 1.02))
+            bb_middle = float(bb_data.get('middle', current_price))
+            bb_lower = float(bb_data.get('lower', current_price * 0.98))
+        else:
+            # Fallback : utiliser les valeurs individuelles
+            bb_upper = float(indicators.get('bb_upper', current_price * 1.02))
+            bb_middle = float(indicators.get('bb_middle', current_price))
+            bb_lower = float(indicators.get('bb_lower', current_price * 0.98))
         
         if bb_middle > 0:
             bb_width = ((bb_upper - bb_lower) / bb_middle * 100)
@@ -137,11 +152,14 @@ def api_pro_analysis(symbol):
             risk_level = 'LOW'
         
         # === SMA 200 ===
-        sma_200 = indicators.get('sma_200', current_price)
+        sma_200 = float(indicators.get('sma_200', current_price))
         price_vs_sma200 = 'above' if current_price > sma_200 else 'below'
         
-        sma_50 = indicators.get('sma_50', current_price)
+        sma_50 = float(indicators.get('sma_50', current_price))
         golden_cross = sma_50 > sma_200
+        
+        # === ADX (Force de tendance) ===
+        adx_value = float(indicators.get('adx', 0.0))
         
         # === PLAN DE TRADING ===
         trading_plan = f"""SIGNAL: {overall_signal}
@@ -152,6 +170,7 @@ def api_pro_analysis(symbol):
 
 ⚠️ RISQUE: {risk_level}
 🎯 CONFIANCE: {signal.confidence:.0f}%
+📊 ADX: {adx_value:.1f}
 
 📊 RAISONS:
 """ + '\n'.join(f"  • {r}" for r in signal.reasons)
@@ -170,7 +189,8 @@ def api_pro_analysis(symbol):
                 'price_vs_sma200': price_vs_sma200,
                 'golden_cross': golden_cross,
                 'support_level': signal.stop_loss,
-                'resistance_level': signal.take_profit
+                'resistance_level': signal.take_profit,
+                'adx': adx_value
             },
             
             'momentum': {
