@@ -20,17 +20,22 @@ except ImportError:
     TECHNICAL_ANALYZER_AVAILABLE = False
     logger.warning("⚠️  TechnicalAnalyzer non disponible pour pro_analysis")
 
-try:
-    from web.utils.pro_technical_analyzer import ProTechnicalAnalyzer
-    PRO_ANALYZER_AVAILABLE = True
-    pro_analyzer_instance = ProTechnicalAnalyzer()
-except ImportError:
-    PRO_ANALYZER_AVAILABLE = False
-    pro_analyzer_instance = None
-except Exception as e:
-    PRO_ANALYZER_AVAILABLE = False
-    pro_analyzer_instance = None
-    logger.warning(f"⚠️  ProTechnicalAnalyzer init error: {e}")
+# 🔥 TEMPORAIREMENT DÉSACTIVÉ : ProTechnicalAnalyzer attend un DataFrame, pas un symbol
+# TODO: Adapter ProTechnicalAnalyzer.analyze(symbol, period) au lieu de analyze(df)
+PRO_ANALYZER_AVAILABLE = False
+pro_analyzer_instance = None
+
+# try:
+#     from web.utils.pro_technical_analyzer import ProTechnicalAnalyzer
+#     PRO_ANALYZER_AVAILABLE = True
+#     pro_analyzer_instance = ProTechnicalAnalyzer()
+# except ImportError:
+#     PRO_ANALYZER_AVAILABLE = False
+#     pro_analyzer_instance = None
+# except Exception as e:
+#     PRO_ANALYZER_AVAILABLE = False
+#     pro_analyzer_instance = None
+#     logger.warning(f"⚠️  ProTechnicalAnalyzer init error: {e}")
 
 
 @pro_analysis_bp.route('/api/pro-analysis/<symbol>')
@@ -55,16 +60,7 @@ def api_pro_analysis(symbol):
         - trading_plan: Plan de trading textuel
     """
     
-    # 🔥 Priorité 1 : Utiliser ProTechnicalAnalyzer si disponible
-    if PRO_ANALYZER_AVAILABLE and pro_analyzer_instance:
-        try:
-            result = pro_analyzer_instance.analyze(symbol)
-            return jsonify(result)
-        except Exception as e:
-            logger.error(f"❌ ProTechnicalAnalyzer error: {e}")
-            # Fallback sur version simplifiée
-    
-    # 🔥 Fallback : Version simplifiée avec TechnicalAnalyzer
+    # Version simplifiée avec TechnicalAnalyzer
     if not TECHNICAL_ANALYZER_AVAILABLE:
         return jsonify({
             'error': 'Pro Analysis indisponible',
@@ -81,7 +77,7 @@ def api_pro_analysis(symbol):
         # Prix actuel
         current_price = float(df['Close'].iloc[-1])
         
-        # 🔥 FIX: Valeurs par défaut pour stop_loss/take_profit si None
+        # Valeurs par défaut pour stop_loss/take_profit si None
         entry_price = signal.entry_price if signal.entry_price is not None else current_price
         stop_loss = signal.stop_loss if signal.stop_loss is not None else current_price * 0.98  # -2%
         take_profit = signal.take_profit if signal.take_profit is not None else current_price * 1.03  # +3%
@@ -99,14 +95,12 @@ def api_pro_analysis(symbol):
             rsi_signal = 'HOLD'
         
         # === MACD ANALYSIS ===
-        # 🔥 FIX: indicators peut retourner un dict ou un float
         macd_data = indicators.get('macd', {})
         if isinstance(macd_data, dict):
             macd_value = float(macd_data.get('macd', 0.0))
             macd_signal_value = float(macd_data.get('signal', 0.0))
             macd_histogram = float(macd_data.get('histogram', 0.0))
         else:
-            # Fallback si c'est un float direct
             macd_value = float(macd_data) if macd_data else 0.0
             macd_signal_value = 0.0
             macd_histogram = 0.0
@@ -125,7 +119,6 @@ def api_pro_analysis(symbol):
             bb_middle = float(bb_data.get('middle', current_price))
             bb_lower = float(bb_data.get('lower', current_price * 0.98))
         else:
-            # Fallback : utiliser les valeurs individuelles
             bb_upper = float(indicators.get('bb_upper', current_price * 1.02))
             bb_middle = float(indicators.get('bb_middle', current_price))
             bb_lower = float(indicators.get('bb_lower', current_price * 0.98))
