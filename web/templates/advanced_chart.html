@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ploutos Trader Pro - Advanced Chart</title>
+    <title>Chart Pro - Ploutos</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -112,16 +112,20 @@
         }
     </style>
 </head>
-<body class="p-4">
-    <div class="max-w-[98%] mx-auto chart-container">
+<body>
+    
+    <!-- 🧠 NAVIGATION HEADER -->
+    {% include 'components/nav.html' %}
+    
+    <div class="max-w-[98%] mx-auto p-4 chart-container">
         
         <!-- 🔥 Chart Pro Controls sera injecté ici automatiquement par chart_pro.js -->
         
-        <!-- Header -->
+        <!-- Search Bar -->
         <div class="glass rounded-lg p-4 mb-4 flex justify-between items-center header">
             <div class="flex items-center gap-4">
-                <h1 class="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-600 bg-clip-text text-transparent">
-                    📊 Ploutos Trader Pro
+                <h1 class="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-600 bg-clip-text text-transparent">
+                    📈 Chart Pro
                 </h1>
                 <div class="flex gap-2">
                     <input type="text" id="ticker-input" 
@@ -308,7 +312,7 @@
     </div>
 
     <!-- 🔥 KEYBOARD SHORTCUTS HINT -->
-    <div class="keyboard-hint">
+    <div class="keyboard-hint" style="position: fixed; bottom: 20px; right: 20px; background: rgba(31, 41, 55, 0.9); padding: 12px; border-radius: 8px; font-size: 11px; border: 1px solid rgba(75, 85, 99, 0.5); z-index: 100;">
         <div style="font-weight: 700; margin-bottom: 8px; color: #00f260;">⌨️ RACCOURCIS</div>
         <kbd>F</kbd> Fibonacci &nbsp;
         <kbd>V</kbd> Volume Profile &nbsp;
