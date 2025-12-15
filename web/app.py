@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🌐 PLOUTOS WEB DASHBOARD - V8 ORACLE + TRADER PRO + 5 TOOLS + CHART PRO
+🌐 PLOUTOS WEB DASHBOARD - V8 ORACLE + TRADER PRO + 5 TOOLS + CHART PRO + PRO ANALYSIS
 """
 
 import sys
@@ -60,6 +60,14 @@ except Exception as e:
     logger.error(f"❌ Chart Tools non disponibles: {e}")
 
 try:
+    from web.utils.pro_technical_analyzer import ProTechnicalAnalyzer
+    PRO_ANALYZER_AVAILABLE = True
+    logger.info("✅ Pro Technical Analyzer chargé")
+except Exception as e:
+    PRO_ANALYZER_AVAILABLE = False
+    logger.error(f"❌ Pro Technical Analyzer non disponible: {e}")
+
+try:
     from trading.alpaca_client import AlpacaClient
     ALPACA_AVAILABLE = True
 except ImportError:
@@ -91,6 +99,9 @@ def clean_for_json(obj):
         return {k: clean_for_json(v) for k, v in obj.items()}
     elif isinstance(obj, list):
         return [clean_for_json(item) for item in obj]
+    elif hasattr(obj, '__dict__'):
+        # Dataclass ou objet custom
+        return clean_for_json(obj.__dict__)
     return obj
 
 
@@ -161,6 +172,11 @@ chart_tools = None
 if CHART_TOOLS_AVAILABLE:
     chart_tools = ChartTools()
     logger.info("✅ Chart Tools initialisé")
+
+pro_analyzer = None
+if PRO_ANALYZER_AVAILABLE:
+    pro_analyzer = ProTechnicalAnalyzer()
+    logger.info("✅ Pro Technical Analyzer initialisé")
 
 cache = {'account': None, 'positions': None, 'last_update': None, 'chart_cache': {}}
 DEFAULT_WATCHLIST = ['AAPL', 'NVDA', 'MSFT', 'GOOGL', 'AMZN', 'META', 'TSLA', 'JPM', 'BAC']
@@ -267,6 +283,40 @@ def api_chart_data(ticker):
         
     except Exception as e:
         logger.error(f"Erreur chart {ticker}: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+# ========== PRO TECHNICAL ANALYSIS ROUTE ==========
+
+@app.route('/api/pro-analysis/<ticker>')
+def api_pro_analysis(ticker):
+    """
+    Analyse technique professionnelle avec les 5 indicateurs clés
+    """
+    if not pro_analyzer:
+        return jsonify({'error': 'Pro analyzer non disponible'}), 503
+    
+    try:
+        ticker = ticker.upper()
+        period = request.args.get('period', '1y')  # Plus de données pour SMA 200
+        
+        df = yf.download(ticker, period=period, progress=False)
+        
+        if df.empty:
+            return jsonify({'error': 'Aucune donnée'}), 404
+        
+        # Analyse complte
+        report = pro_analyzer.analyze(df, ticker=ticker)
+        
+        # Convertir en dict JSON-friendly
+        result = clean_for_json(report)
+        
+        logger.info(f"✅ Pro analysis pour {ticker}: {report.overall_signal} ({report.confidence:.0f}%)")
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        logger.error(f"Erreur pro-analysis {ticker}: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 
@@ -530,21 +580,42 @@ def generate_quick_stats(df: pd.DataFrame, indicators: dict, signals: dict) -> d
 
 @app.route('/api/health')
 def api_health():
-    return jsonify({'status': 'healthy', 'modules': {'complete_indicators': COMPLETE_INDICATORS, 'trader_pro': TRADER_PRO, 'pattern_detector': pattern_detector is not None, 'mtf_analyzer': mtf_analyzer is not None, 'ai_analyzer': ai_analyzer is not None, 'v8_oracle': v8_oracle is not None, 'tools': TOOLS_AVAILABLE, 'screener': screener is not None, 'alerts': alert_system is not None, 'backtester': backtester is not None, 'correlation': corr_analyzer is not None, 'portfolio': portfolio is not None, 'chart_tools': chart_tools is not None}}), 200
+    return jsonify({
+        'status': 'healthy', 
+        'modules': {
+            'complete_indicators': COMPLETE_INDICATORS, 
+            'trader_pro': TRADER_PRO, 
+            'pattern_detector': pattern_detector is not None, 
+            'mtf_analyzer': mtf_analyzer is not None, 
+            'ai_analyzer': ai_analyzer is not None, 
+            'v8_oracle': v8_oracle is not None, 
+            'tools': TOOLS_AVAILABLE, 
+            'screener': screener is not None, 
+            'alerts': alert_system is not None, 
+            'backtester': backtester is not None, 
+            'correlation': corr_analyzer is not None, 
+            'portfolio': portfolio is not None, 
+            'chart_tools': chart_tools is not None,
+            'pro_analyzer': pro_analyzer is not None
+        }
+    }), 200
 
 if __name__ == '__main__':
     import os
     host = os.getenv('DASHBOARD_HOST', '0.0.0.0')
     port = int(os.getenv('DASHBOARD_PORT', 5000))
     print("\n" + "="*70)
-    print("🌐 PLOUTOS - V8 + TRADER PRO + 5 TOOLS + CHART PRO")
+    print("🌐 PLOUTOS - V8 + TRADER PRO + 5 TOOLS + CHART PRO + PRO ANALYSIS")
     print("="*70)
     print(f"\n🚀 http://{host}:{port}")
     if TOOLS_AVAILABLE:
         print("🛠️ 5 TOOLS activés")
     if CHART_TOOLS_AVAILABLE:
         print("📈 CHART PRO: Fibonacci / Volume Profile / S/R")
+    if PRO_ANALYZER_AVAILABLE:
+        print("🎯 PRO ANALYSIS: 5 indicateurs clés + divergences + plan de trading")
     print("\n✅ Pages: /, /chart, /tools")
     print("🩺 Test: /api/health")
+    print("📊 Nouveau: /api/pro-analysis/<ticker>")
     print("\n" + "="*70 + "\n")
     app.run(host=host, port=port, debug=False)
