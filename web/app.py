@@ -365,22 +365,26 @@ def api_chart_data(symbol):
         macd_line, signal_line, histogram = analyzer.calculate_macd()
         upper, middle, lower = analyzer.calculate_bollinger_bands()
         
-        # Calcul sécurisé des indicateurs ta-lib
+        # 🔥 Calcul sécurisé des indicateurs ta-lib (WRAPPER AUSSI L'INIT)
         import ta as ta_lib
         
-        def safe_indicator_array(calc_func, default=[]):
-            """Wrapper sécurisé pour indicateurs ta-lib"""
+        def safe_indicator_array(indicator_class, *args, method_name='', default=[]):
+            """
+            Wrapper sécurisé pour indicateurs ta-lib
+            Gère les erreurs à l'INIT et à l'appel de méthode
+            """
             try:
-                result = calc_func()
+                # Tentative de création de l'indicateur
+                indicator = indicator_class(*args)
+                # Tentative d'appel de la méthode
+                if method_name:
+                    result = getattr(indicator, method_name)()
+                else:
+                    result = indicator
                 return [float(v) if not pd.isna(v) else None for v in result]
             except (IndexError, ValueError, Exception) as e:
                 logger.warning(f"⚠️  Indicateur ignoré (données insuffisantes): {e}")
                 return default
-        
-        stoch = ta_lib.momentum.StochasticOscillator(df['High'], df['Low'], df['Close'])
-        adx_calc = ta_lib.trend.ADXIndicator(df['High'], df['Low'], df['Close'])
-        atr_calc = ta_lib.volatility.AverageTrueRange(df['High'], df['Low'], df['Close'])
-        obv_calc = ta_lib.volume.OnBalanceVolumeIndicator(df['Close'], df['Volume'])
         
         indicators_arrays = {
             'sma_20': [float(v) if not pd.isna(v) else None for v in sma_20],
@@ -396,11 +400,11 @@ def api_chart_data(symbol):
             'bb_upper': [float(v) if not pd.isna(v) else None for v in upper],
             'bb_middle': [float(v) if not pd.isna(v) else None for v in middle],
             'bb_lower': [float(v) if not pd.isna(v) else None for v in lower],
-            'stoch_k': safe_indicator_array(stoch.stoch),
-            'stoch_d': safe_indicator_array(stoch.stoch_signal),
-            'adx': safe_indicator_array(adx_calc.adx),
-            'atr': safe_indicator_array(atr_calc.average_true_range),
-            'obv': safe_indicator_array(obv_calc.on_balance_volume)
+            'stoch_k': safe_indicator_array(ta_lib.momentum.StochasticOscillator, df['High'], df['Low'], df['Close'], method_name='stoch'),
+            'stoch_d': safe_indicator_array(ta_lib.momentum.StochasticOscillator, df['High'], df['Low'], df['Close'], method_name='stoch_signal'),
+            'adx': safe_indicator_array(ta_lib.trend.ADXIndicator, df['High'], df['Low'], df['Close'], method_name='adx'),
+            'atr': safe_indicator_array(ta_lib.volatility.AverageTrueRange, df['High'], df['Low'], df['Close'], method_name='average_true_range'),
+            'obv': safe_indicator_array(ta_lib.volume.OnBalanceVolumeIndicator, df['Close'], df['Volume'], method_name='on_balance_volume')
         }
         
         rsi_current = float(rsi.iloc[-1]) if len(rsi) > 0 and not pd.isna(rsi.iloc[-1]) else 50.0
