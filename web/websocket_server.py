@@ -219,7 +219,11 @@ def send_indicators(ticker):
         
         # Envoyer via WebSocket
         socketio.emit('indicator_update', indicators_data, room=ticker)
-        logger.info(f"✅ Indicateurs {ticker} envoyés: RSI={indicators_data['indicators']['rsi']:.1f if indicators_data['indicators']['rsi'] else 'N/A'}")
+        
+        # Log avec format correct
+        rsi_value = indicators_data['indicators']['rsi']
+        rsi_display = f"{rsi_value:.1f}" if rsi_value is not None else "N/A"
+        logger.info(f"✅ Indicateurs {ticker} envoyés: RSI={rsi_display}")
         
     except Exception as e:
         logger.error(f"❌ Erreur calcul indicateurs {ticker}: {e}")
