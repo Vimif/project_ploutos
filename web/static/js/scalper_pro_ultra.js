@@ -9,19 +9,13 @@ class ScalperProUltra {
         this.currentTimeframe = '5m';
         this.refreshInterval = 5000; // 5 secondes
         this.chart = null;
-        this.currentChartData = null; // Stocke les dernières données
+        this.currentChartData = null;
         
-        // Watchlist avec tickers liquides et actifs uniquement
         this.watchlist = [
-            // Tech Giants
             'AAPL', 'NVDA', 'MSFT', 'GOOGL', 'AMZN', 'META', 'TSLA',
-            // Semiconducteurs
             'AMD', 'INTC', 'AVGO', 'QCOM', 'TXN',
-            // Finance
             'JPM', 'BAC', 'WFC', 'GS', 'C', 'AXP',
-            // Paiements & FinTech
             'V', 'MA', 'PYPL', 'BLOCK',
-            // Média
             'NFLX', 'DIS', 'CMCSA'
         ];
         
@@ -74,7 +68,7 @@ class ScalperProUltra {
                 this.currentChartData = data;
                 this.updatePriceStats(data);
                 this.renderChart(data);
-                this.renderIndicators(data); // 🔥 NOUVEAU
+                this.renderIndicators(data);
             } else {
                 console.error('Erreur chargement chart:', data.error);
                 this.showChartError(`Erreur: ${data.error}`);
@@ -215,27 +209,26 @@ class ScalperProUltra {
         const adx = this.getLastValue(indicators.adx);
         const atr = this.getLastValue(indicators.atr);
         
+        // 🔥 CALCUL INTELLIGENT DE LA RECOMMANDATION
+        const recommendation = this.calculateRecommendation(rsi, macd, macdSignal, stochK, adx, data.price_change_pct);
+        
         // Générer signaux pour chaque indicateur
         const rsiSignal = rsi < 30 ? 'buy' : rsi > 70 ? 'sell' : 'neutral';
         const macdSignal_type = macd > macdSignal ? 'buy' : macd < macdSignal ? 'sell' : 'neutral';
         const stochSignal = stochK < 20 ? 'buy' : stochK > 80 ? 'sell' : 'neutral';
         const adxSignal = adx > 25 ? 'buy' : 'neutral';
         
-        // Recommandation globale
-        const recommendation = data.signal?.signal || 'HOLD';
-        const confidence = data.signal?.confidence || 50;
-        
         container.innerHTML = `
             <!-- Recommandation Globale -->
             <div class="recommendation-card" style="grid-column: 1 / -1;">
                 <div>
                     <div style="font-size: 11px; color: #9ca3af; margin-bottom: 4px;">RECOMMANDATION</div>
-                    <div class="recommendation-badge ${recommendation.toLowerCase()}">${recommendation}</div>
+                    <div class="recommendation-badge ${recommendation.signal.toLowerCase()}">${recommendation.signal}</div>
                 </div>
                 <div style="text-align: right;">
-                    <div style="font-size: 11px; color: #9ca3af; margin-bottom: 6px;">Confiance: ${confidence.toFixed(0)}%</div>
+                    <div style="font-size: 11px; color: #9ca3af; margin-bottom: 6px;">Confiance: ${recommendation.confidence.toFixed(0)}%</div>
                     <div class="confidence-bar">
-                        <div class="confidence-fill" style="width: ${confidence}%;"></div>
+                        <div class="confidence-fill" style="width: ${recommendation.confidence}%;"></div>
                     </div>
                 </div>
             </div>
@@ -296,6 +289,63 @@ class ScalperProUltra {
         `;
     }
 
+    /**
+     * 🔥 CALCUL INTELLIGENT DE LA RECOMMANDATION
+     * Combine 4 indicateurs + momentum prix
+     */
+    calculateRecommendation(rsi, macd, macdSignal, stochK, adx, priceChangePct) {
+        let score = 50; // Score neutre de base
+        
+        // RSI (poids: 25%)
+        if (rsi !== null) {
+            if (rsi < 30) score += 15;      // Survendu = bullish
+            else if (rsi < 40) score += 8;
+            else if (rsi > 70) score -= 15; // Suracheté = bearish
+            else if (rsi > 60) score -= 8;
+        }
+        
+        // MACD (poids: 25%)
+        if (macd !== null && macdSignal !== null) {
+            const macdDiff = macd - macdSignal;
+            if (macdDiff > 0) score += 12;  // Bullish
+            else if (macdDiff < 0) score -= 12; // Bearish
+        }
+        
+        // Stochastique (poids: 20%)
+        if (stochK !== null) {
+            if (stochK < 20) score += 10;      // Survendu
+            else if (stochK < 30) score += 5;
+            else if (stochK > 80) score -= 10; // Suracheté
+            else if (stochK > 70) score -= 5;
+        }
+        
+        // ADX (poids: 15% - force du trend)
+        if (adx !== null && adx > 25) {
+            // Trend fort: amplifier le signal
+            if (score > 50) score += 8;
+            else if (score < 50) score -= 8;
+        }
+        
+        // Momentum Prix (poids: 15%)
+        if (priceChangePct > 2) score += 8;      // Strong momentum up
+        else if (priceChangePct > 0) score += 3;
+        else if (priceChangePct < -2) score -= 8; // Strong momentum down
+        else if (priceChangePct < 0) score -= 3;
+        
+        // Limiter entre 0 et 100
+        score = Math.max(0, Math.min(100, score));
+        
+        // Déterminer signal final
+        let signal;
+        if (score >= 65) signal = 'BUY';
+        else if (score >= 55) signal = 'WEAK BUY';
+        else if (score <= 35) signal = 'SELL';
+        else if (score <= 45) signal = 'WEAK SELL';
+        else signal = 'HOLD';
+        
+        return { signal, confidence: score };
+    }
+
     getLastValue(arr) {
         if (!arr || arr.length === 0) return null;
         for (let i = arr.length - 1; i >= 0; i--) {
@@ -308,8 +358,8 @@ class ScalperProUltra {
 
     getIndicatorColor(value, lowThreshold, highThreshold) {
         if (value === null) return '#9ca3af';
-        if (value < lowThreshold) return '#00ff88'; // Survendu = buy
-        if (value > highThreshold) return '#ff3366'; // Suracheté = sell
+        if (value < lowThreshold) return '#00ff88';
+        if (value > highThreshold) return '#ff3366';
         return '#e5e7eb';
     }
 
