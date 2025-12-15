@@ -11,14 +11,20 @@ import time
 from threading import Thread, Event
 from datetime import datetime
 
-from flask import Flask
+from flask import Flask, request
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from flask_cors import CORS
 
 import yfinance as yf
-from alpaca.data.live import StockDataStream
-from alpaca.data.requests import StockLatestQuoteRequest
-from alpaca.data.historical import StockHistoricalDataClient
+
+try:
+    from alpaca.data.live import StockDataStream
+    from alpaca.data.requests import StockLatestQuoteRequest
+    from alpaca.data.historical import StockHistoricalDataClient
+    ALPACA_AVAILABLE = True
+except ImportError:
+    logger.warning("⚠️ alpaca-py non installé, mode DEMO uniquement")
+    ALPACA_AVAILABLE = False
 
 # Configuration logging
 logging.basicConfig(
@@ -45,7 +51,7 @@ socketio = SocketIO(
 ALPACA_API_KEY = os.getenv('ALPACA_API_KEY')
 ALPACA_SECRET_KEY = os.getenv('ALPACA_SECRET_KEY')
 
-if not ALPACA_API_KEY or not ALPACA_SECRET_KEY:
+if not ALPACA_AVAILABLE or not ALPACA_API_KEY or not ALPACA_SECRET_KEY:
     logger.warning("⚠️ Alpaca credentials manquantes, mode démo activé")
     DEMO_MODE = True
 else:
@@ -303,7 +309,6 @@ if __name__ == '__main__':
             use_reloader=False
         )
     except KeyboardInterrupt:
-        logger.info("
-⚠️ Arrêt du serveur...")
+        logger.info("\n⚠️ Arrêt du serveur...")
         stream_stop_event.set()
         sys.exit(0)
