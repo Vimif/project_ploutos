@@ -17,6 +17,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from alpaca.data.live import StockDataStream
 from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
+from alpaca.data.enums import DataFeed  # ✅ FIX: Import DataFeed enum
 from streaming.signal_detector import SignalDetector
 from config.settings import ALPACA_API_KEY, ALPACA_SECRET_KEY
 
@@ -37,7 +38,7 @@ class LiveAnalyzer:
         self.stream = StockDataStream(
             api_key=ALPACA_API_KEY,
             secret_key=ALPACA_SECRET_KEY,
-            feed='iex'  # IEX = gratuit, SIP = payant
+            feed=DataFeed.IEX  # ✅ FIX: Utiliser l'enum au lieu de string
         )
         
         # Créer un détecteur par ticker
