@@ -90,6 +90,14 @@ try:
 except ImportError:
     V8_ORACLE_AVAILABLE = False
 
+# 💾 DATABASE
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+    DB_AVAILABLE = True
+except ImportError:
+    DB_AVAILABLE = False
+
 
 def clean_for_json(obj):
     """
@@ -221,6 +229,21 @@ if PRO_ANALYZER_AVAILABLE:
 cache = {'account': None, 'positions': None, 'last_update': None, 'chart_cache': {}}
 DEFAULT_WATCHLIST = ['AAPL', 'NVDA', 'MSFT', 'GOOGL', 'AMZN', 'META', 'TSLA', 'JPM', 'BAC']
 
+
+def get_db_connection():
+    """💾 Connexion PostgreSQL"""
+    try:
+        return psycopg2.connect(
+            host="localhost",
+            database="ploutos",
+            user="ploutos",
+            password="ploutos_password"
+        )
+    except Exception as e:
+        logger.error(f"❌ Erreur connexion DB: {e}")
+        return None
+
+
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -232,6 +255,146 @@ def chart_page():
 @app.route('/tools')
 def tools_page():
     return render_template('tools.html')
+
+
+# ========== ACCOUNT & TRADING ENDPOINTS ==========
+
+@app.route('/api/account')
+def api_account():
+    """
+    💰 Récupère les infos du compte Alpaca
+    """
+    if not alpaca_client:
+        return jsonify({
+            'error': 'Alpaca non disponible',
+            'mock': True,
+            'portfolio_value': 100000,
+            'cash': 50000,
+            'buying_power': 50000,
+            'equity': 100000
+        }), 200
+    
+    try:
+        account = alpaca_client.get_account()
+        
+        return jsonify({
+            'portfolio_value': float(account.portfolio_value),
+            'cash': float(account.cash),
+            'buying_power': float(account.buying_power),
+            'equity': float(account.equity),
+            'last_equity': float(account.last_equity),
+            'profit_loss': float(account.equity) - float(account.last_equity),
+            'profit_loss_pct': ((float(account.equity) - float(account.last_equity)) / float(account.last_equity) * 100) if float(account.last_equity) > 0 else 0
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur API account: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/positions')
+def api_positions():
+    """
+    💼 Récupère les positions Alpaca
+    """
+    if not alpaca_client:
+        return jsonify({
+            'error': 'Alpaca non disponible',
+            'mock': True,
+            'positions': []
+        }), 200
+    
+    try:
+        positions = alpaca_client.get_positions()
+        
+        result = []
+        for pos in positions:
+            result.append({
+                'symbol': pos.symbol,
+                'qty': float(pos.qty),
+                'avg_entry_price': float(pos.avg_entry_price),
+                'current_price': float(pos.current_price),
+                'market_value': float(pos.market_value),
+                'cost_basis': float(pos.cost_basis),
+                'unrealized_pl': float(pos.unrealized_pl),
+                'unrealized_plpc': float(pos.unrealized_plpc) * 100,
+                'side': pos.side
+            })
+        
+        return jsonify({'positions': result, 'count': len(result)})
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur API positions: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/trades')
+def api_trades():
+    """
+    📊 Récupère les trades depuis PostgreSQL
+    """
+    days = int(request.args.get('days', 7))
+    
+    if not DB_AVAILABLE:
+        return jsonify({
+            'error': 'PostgreSQL non disponible',
+            'mock': True,
+            'trades': []
+        }), 200
+    
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'error': 'DB non disponible'}), 503
+        
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Trades des N derniers jours
+        query = """
+            SELECT 
+                id,
+                ticker,
+                action,
+                quantity,
+                price,
+                timestamp,
+                pnl,
+                strategy
+            FROM trades
+            WHERE timestamp >= NOW() - INTERVAL '%s days'
+            ORDER BY timestamp DESC
+            LIMIT 50
+        """
+        
+        cursor.execute(query, (days,))
+        trades = cursor.fetchall()
+        
+        cursor.close()
+        conn.close()
+        
+        # Convertir en dict standard
+        result = []
+        for trade in trades:
+            result.append({
+                'id': trade['id'],
+                'ticker': trade['ticker'],
+                'action': trade['action'],
+                'quantity': float(trade['quantity']) if trade['quantity'] else 0,
+                'price': float(trade['price']) if trade['price'] else 0,
+                'timestamp': trade['timestamp'].isoformat() if trade['timestamp'] else None,
+                'pnl': float(trade['pnl']) if trade['pnl'] else 0,
+                'strategy': trade['strategy']
+            })
+        
+        return jsonify({
+            'trades': result,
+            'count': len(result),
+            'days': days
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur API trades: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
 
 
 # ========== ROUTE CHART PRINCIPALE ==========
@@ -637,7 +800,9 @@ def api_health():
             'portfolio': portfolio is not None, 
             'chart_tools': chart_tools is not None,
             'pro_analyzer': pro_analyzer is not None,
-            'watchlists': WATCHLISTS_AVAILABLE
+            'watchlists': WATCHLISTS_AVAILABLE,
+            'alpaca': alpaca_client is not None,
+            'database': DB_AVAILABLE
         }
     }), 200
 
@@ -660,5 +825,6 @@ if __name__ == '__main__':
     print("\n✅ Pages: /, /chart, /tools")
     print("🩺 Test: /api/health")
     print("📊 Watchlists: /api/watchlists")
+    print("💰 Trading: /api/account, /api/positions, /api/trades")
     print("\n" + "="*70 + "\n")
     app.run(host=host, port=port, debug=False)
