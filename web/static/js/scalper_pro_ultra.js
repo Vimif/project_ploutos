@@ -9,6 +9,7 @@ class ScalperProUltra {
         this.currentTimeframe = '5m';
         this.refreshInterval = 5000; // 5 secondes
         this.chart = null;
+        this.currentChartData = null; // Stocke les dernières données
         
         // Watchlist avec tickers liquides et actifs uniquement
         this.watchlist = [
@@ -19,7 +20,7 @@ class ScalperProUltra {
             // Finance
             'JPM', 'BAC', 'WFC', 'GS', 'C', 'AXP',
             // Paiements & FinTech
-            'V', 'MA', 'PYPL', 'BLOCK',  // BLOCK = ancien SQ (Square)
+            'V', 'MA', 'PYPL', 'BLOCK',
             // Média
             'NFLX', 'DIS', 'CMCSA'
         ];
@@ -33,29 +34,23 @@ class ScalperProUltra {
     init() {
         console.log('⚡ Initialisation Scalper Pro Ultra...');
         
-        // Event listeners
         this.setupEventListeners();
-        
-        // Chargement initial
         this.loadMainChart();
         this.loadHeatmap();
         this.loadSignals();
         this.updateServerTime();
         
-        // Auto-refresh
         setInterval(() => this.refreshAll(), this.refreshInterval);
         setInterval(() => this.updateServerTime(), 1000);
     }
 
     setupEventListeners() {
-        // Ticker input
         const tickerInput = document.getElementById('tickerInput');
         tickerInput.addEventListener('change', (e) => {
             this.currentTicker = e.target.value.toUpperCase();
             this.loadMainChart();
         });
 
-        // Timeframe pills
         document.querySelectorAll('.timeframe-pill').forEach(pill => {
             pill.addEventListener('click', (e) => {
                 document.querySelectorAll('.timeframe-pill').forEach(p => p.classList.remove('active'));
@@ -65,7 +60,6 @@ class ScalperProUltra {
             });
         });
 
-        // Quick Buy/Sell
         document.getElementById('btnQuickBuy').addEventListener('click', () => this.quickTrade('BUY'));
         document.getElementById('btnQuickSell').addEventListener('click', () => this.quickTrade('SELL'));
     }
@@ -77,8 +71,10 @@ class ScalperProUltra {
             const data = await response.json();
 
             if (data.success) {
+                this.currentChartData = data;
                 this.updatePriceStats(data);
                 this.renderChart(data);
+                this.renderIndicators(data); // 🔥 NOUVEAU
             } else {
                 console.error('Erreur chargement chart:', data.error);
                 this.showChartError(`Erreur: ${data.error}`);
@@ -101,7 +97,7 @@ class ScalperProUltra {
 
     timeframeToPeriod(tf) {
         const mapping = {
-            '1m': '5d',   // FIX: au lieu de '1d' qui retourne 1 seule barre
+            '1m': '5d',
             '5m': '5d',
             '15m': '1mo',
             '1h': '3mo',
@@ -207,9 +203,127 @@ class ScalperProUltra {
         });
     }
 
+    renderIndicators(data) {
+        const container = document.getElementById('indicatorsGrid');
+        
+        // Extraire valeurs actuelles des indicateurs
+        const indicators = data.indicators;
+        const rsi = this.getLastValue(indicators.rsi);
+        const macd = this.getLastValue(indicators.macd);
+        const macdSignal = this.getLastValue(indicators.macd_signal);
+        const stochK = this.getLastValue(indicators.stoch_k);
+        const adx = this.getLastValue(indicators.adx);
+        const atr = this.getLastValue(indicators.atr);
+        
+        // Générer signaux pour chaque indicateur
+        const rsiSignal = rsi < 30 ? 'buy' : rsi > 70 ? 'sell' : 'neutral';
+        const macdSignal_type = macd > macdSignal ? 'buy' : macd < macdSignal ? 'sell' : 'neutral';
+        const stochSignal = stochK < 20 ? 'buy' : stochK > 80 ? 'sell' : 'neutral';
+        const adxSignal = adx > 25 ? 'buy' : 'neutral';
+        
+        // Recommandation globale
+        const recommendation = data.signal?.signal || 'HOLD';
+        const confidence = data.signal?.confidence || 50;
+        
+        container.innerHTML = `
+            <!-- Recommandation Globale -->
+            <div class="recommendation-card" style="grid-column: 1 / -1;">
+                <div>
+                    <div style="font-size: 11px; color: #9ca3af; margin-bottom: 4px;">RECOMMANDATION</div>
+                    <div class="recommendation-badge ${recommendation.toLowerCase()}">${recommendation}</div>
+                </div>
+                <div style="text-align: right;">
+                    <div style="font-size: 11px; color: #9ca3af; margin-bottom: 6px;">Confiance: ${confidence.toFixed(0)}%</div>
+                    <div class="confidence-bar">
+                        <div class="confidence-fill" style="width: ${confidence}%;"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- RSI -->
+            <div class="indicator-card">
+                <div class="indicator-name">RSI (14)</div>
+                <div class="indicator-value" style="color: ${this.getIndicatorColor(rsi, 30, 70)};">
+                    ${rsi !== null ? rsi.toFixed(1) : '--'}
+                </div>
+                <span class="indicator-signal ${rsiSignal}">${this.translateSignal(rsiSignal)}</span>
+            </div>
+            
+            <!-- MACD -->
+            <div class="indicator-card">
+                <div class="indicator-name">MACD</div>
+                <div class="indicator-value" style="color: ${macd > 0 ? '#00ff88' : '#ff3366'};">
+                    ${macd !== null ? macd.toFixed(2) : '--'}
+                </div>
+                <span class="indicator-signal ${macdSignal_type}">${this.translateSignal(macdSignal_type)}</span>
+            </div>
+            
+            <!-- Stochastique -->
+            <div class="indicator-card">
+                <div class="indicator-name">Stochastique</div>
+                <div class="indicator-value" style="color: ${this.getIndicatorColor(stochK, 20, 80)};">
+                    ${stochK !== null ? stochK.toFixed(1) : '--'}
+                </div>
+                <span class="indicator-signal ${stochSignal}">${this.translateSignal(stochSignal)}</span>
+            </div>
+            
+            <!-- ADX -->
+            <div class="indicator-card">
+                <div class="indicator-name">ADX (Trend)</div>
+                <div class="indicator-value" style="color: ${adx > 25 ? '#00d4ff' : '#9ca3af'};">
+                    ${adx !== null ? adx.toFixed(1) : '--'}
+                </div>
+                <span class="indicator-signal ${adxSignal}">${adx > 25 ? 'Trend Fort' : 'Trend Faible'}</span>
+            </div>
+            
+            <!-- ATR -->
+            <div class="indicator-card">
+                <div class="indicator-name">ATR (Volatilité)</div>
+                <div class="indicator-value" style="color: #ffd700;">
+                    ${atr !== null ? atr.toFixed(2) : '--'}
+                </div>
+                <span class="indicator-signal neutral">Volatility</span>
+            </div>
+            
+            <!-- Volume -->
+            <div class="indicator-card">
+                <div class="indicator-name">Volume 24h</div>
+                <div class="indicator-value" style="color: #00d4ff; font-size: 16px;">
+                    ${this.formatVolume(data.volume_24h)}
+                </div>
+                <span class="indicator-signal neutral">Vol</span>
+            </div>
+        `;
+    }
+
+    getLastValue(arr) {
+        if (!arr || arr.length === 0) return null;
+        for (let i = arr.length - 1; i >= 0; i--) {
+            if (arr[i] !== null && arr[i] !== undefined && !isNaN(arr[i])) {
+                return arr[i];
+            }
+        }
+        return null;
+    }
+
+    getIndicatorColor(value, lowThreshold, highThreshold) {
+        if (value === null) return '#9ca3af';
+        if (value < lowThreshold) return '#00ff88'; // Survendu = buy
+        if (value > highThreshold) return '#ff3366'; // Suracheté = sell
+        return '#e5e7eb';
+    }
+
+    translateSignal(signal) {
+        const translations = {
+            'buy': 'ACHAT',
+            'sell': 'VENTE',
+            'neutral': 'NEUTRE'
+        };
+        return translations[signal] || signal.toUpperCase();
+    }
+
     async loadHeatmap() {
         try {
-            // 🔥 FIX: Utiliser period=5d au lieu de 1d pour avoir assez de données
             const promises = this.watchlist.slice(0, 20).map(ticker => 
                 fetch(`/api/chart/${ticker}?period=5d`)
                     .then(r => r.json())
@@ -270,7 +384,6 @@ class ScalperProUltra {
 
     async loadSignals() {
         try {
-            // Générer signaux pour top 10 tickers actifs
             const topTickers = ['AAPL', 'NVDA', 'MSFT', 'GOOGL', 'AMZN', 'META', 'TSLA', 'AMD', 'NFLX', 'JPM'];
             
             const promises = topTickers.map(ticker => 
@@ -302,7 +415,6 @@ class ScalperProUltra {
     }
 
     calculateStrength(data) {
-        // Score composé : confidence + trend + momentum
         let score = data.confidence || 50;
         if (data.trend?.strength) score += data.trend.strength * 0.3;
         if (data.momentum?.rsi_value) {
@@ -313,11 +425,11 @@ class ScalperProUltra {
     }
 
     renderSignals() {
-        const container = document.getElementById('signalsContainer');
+        const container = document.getElementById('signalsGrid');
         
         if (this.signals.length === 0) {
             container.innerHTML = `
-                <div style="text-align: center; color: #9ca3af; padding: 40px 20px;">
+                <div style="text-align: center; color: #9ca3af; padding: 40px 20px; grid-column: 1 / -1;">
                     <i class="bi bi-hourglass-split" style="font-size: 32px; opacity: 0.5;"></i>
                     <p style="margin-top: 12px;">Aucun signal fort détecté</p>
                 </div>
@@ -365,7 +477,6 @@ class ScalperProUltra {
         const confirmation = confirm(`⚠️ Confirmer ${action} ${this.currentTicker} ?`);
         if (!confirmation) return;
         
-        // TODO: Intégration Alpaca API
         alert(`⚡ ${action} order placé pour ${this.currentTicker}\n(Intégration Alpaca en cours...)`);
     }
 
@@ -383,7 +494,6 @@ class ScalperProUltra {
     }
 }
 
-// Init au chargement
 document.addEventListener('DOMContentLoaded', () => {
     window.scalperPro = new ScalperProUltra();
 });
