@@ -106,6 +106,35 @@ WANDB_CONFIG = {
     'entity': 'vimif-perso',
 }
 
-print(f"🖥️  Machine: {HOSTNAME}")
+# ========== ALPACA API CONFIGURATION ==========
+# Clés API pour Alpaca (Paper Trading)
+# Priorité : Variables d'environnement > Fichier .env > Valeurs par défaut
+
+# Charger .env si disponible
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # dotenv pas installé, utiliser variables d'environnement
+
+ALPACA_API_KEY = os.getenv('ALPACA_API_KEY', '')
+ALPACA_SECRET_KEY = os.getenv('ALPACA_SECRET_KEY', '')
+ALPACA_BASE_URL = os.getenv('ALPACA_BASE_URL', 'https://paper-api.alpaca.markets')
+
+# Validation
+if not ALPACA_API_KEY or not ALPACA_SECRET_KEY:
+    import warnings
+    warnings.warn(
+        "⚠️  ALPACA_API_KEY ou ALPACA_SECRET_KEY non configurés.\n"
+        "Définissez-les dans les variables d'environnement ou dans un fichier .env\n"
+        "Exemple:\n"
+        "  export ALPACA_API_KEY='PKxxxxxxxxxx'\n"
+        "  export ALPACA_SECRET_KEY='xxxxxxxxxx'",
+        UserWarning
+    )
+
+print(f"🔖  Machine: {HOSTNAME}")
 print(f"🎭 Rôle: {ROLE}")
 print(f"📂 DATA_DIR: {DATA_DIR}")
+if ALPACA_API_KEY:
+    print(f"🔑 Alpaca API: {'*' * 10}{ALPACA_API_KEY[-4:]} (Paper Trading)")
