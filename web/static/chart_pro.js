@@ -100,16 +100,16 @@ class ChartPro {
         panel.innerHTML = `
             <div class="control-group">
                 <button id="btn-fibonacci" class="control-btn" title="Toggle Fibonacci (F)">
-                    📊 Fibonacci
+                    📐 Fibonacci
                 </button>
                 <button id="btn-volume-profile" class="control-btn" title="Toggle Volume Profile (V)">
-                    📉 Volume Profile
+                    📊 Volume Profile
                 </button>
                 <button id="btn-support-resistance" class="control-btn active" title="Toggle S/R (S)">
                     🎯 Support/Resistance
                 </button>
                 <button id="btn-annotations" class="control-btn active" title="Toggle Annotations (A)">
-                    ⭐ Annotations
+                    📝 Annotations
                 </button>
                 <button id="btn-zen-mode" class="control-btn" title="Zen Mode (Z)">
                     🧘 Zen
@@ -148,6 +148,7 @@ class ChartPro {
     async toggleFibonacci() {
         this.showFibonacci = !this.showFibonacci;
         document.getElementById('btn-fibonacci').classList.toggle('active');
+        console.log(`📐 Fibonacci: ${this.showFibonacci ? 'ON' : 'OFF'}`);
         
         if (this.showFibonacci && !this.fibonacciData) {
             await this.loadFibonacci();
@@ -159,6 +160,7 @@ class ChartPro {
     async toggleVolumeProfile() {
         this.showVolumeProfile = !this.showVolumeProfile;
         document.getElementById('btn-volume-profile').classList.toggle('active');
+        console.log(`📊 Volume Profile: ${this.showVolumeProfile ? 'ON' : 'OFF'}`);
         
         if (this.showVolumeProfile && !this.volumeProfileData) {
             await this.loadVolumeProfile();
@@ -170,6 +172,7 @@ class ChartPro {
     async toggleSupportResistance() {
         this.showSupportResistance = !this.showSupportResistance;
         document.getElementById('btn-support-resistance').classList.toggle('active');
+        console.log(`🎯 S/R: ${this.showSupportResistance ? 'ON' : 'OFF'}`);
         
         if (this.showSupportResistance && !this.supportResistanceData) {
             await this.loadSupportResistance();
@@ -181,6 +184,7 @@ class ChartPro {
     toggleAnnotations() {
         this.showAnnotations = !this.showAnnotations;
         document.getElementById('btn-annotations').classList.toggle('active');
+        console.log(`📝 Annotations: ${this.showAnnotations ? 'ON' : 'OFF'}`);
         this.updateChart();
     }
     
@@ -188,6 +192,7 @@ class ChartPro {
         this.zenMode = !this.zenMode;
         document.getElementById('btn-zen-mode').classList.toggle('active');
         document.body.classList.toggle('zen-mode');
+        console.log(`🧘 Zen Mode: ${this.zenMode ? 'ON' : 'OFF'}`);
         
         const hideElements = ['.header', '.nav', '.sidebar', '.footer'];
         hideElements.forEach(selector => {
@@ -205,7 +210,14 @@ class ChartPro {
         try {
             console.log(`🔄 Loading Fibonacci for ${this.currentTicker}...`);
             const response = await fetch(`/api/chart/${this.currentTicker}/fibonacci?period=${this.currentPeriod}`);
-            this.fibonacciData = await response.json();
+            const data = await response.json();
+            
+            if (!data.success) {
+                console.error('❌ Fibonacci API error:', data.error);
+                return;
+            }
+            
+            this.fibonacciData = data;
             console.log('✅ Fibonacci loaded:', this.fibonacciData);
             this.updateChart();
         } catch (error) {
@@ -217,7 +229,14 @@ class ChartPro {
         try {
             console.log(`🔄 Loading Volume Profile for ${this.currentTicker}...`);
             const response = await fetch(`/api/chart/${this.currentTicker}/volume-profile?period=${this.currentPeriod}`);
-            this.volumeProfileData = await response.json();
+            const data = await response.json();
+            
+            if (!data.success) {
+                console.error('❌ Volume Profile API error:', data.error);
+                return;
+            }
+            
+            this.volumeProfileData = data;
             console.log('✅ Volume Profile loaded:', this.volumeProfileData);
             this.renderVolumeProfile();
         } catch (error) {
@@ -229,7 +248,14 @@ class ChartPro {
         try {
             console.log(`🔄 Loading Support/Resistance for ${this.currentTicker}...`);
             const response = await fetch(`/api/chart/${this.currentTicker}/support-resistance?period=${this.currentPeriod}`);
-            this.supportResistanceData = await response.json();
+            const data = await response.json();
+            
+            if (!data.success) {
+                console.error('❌ S/R API error:', data.error);
+                return;
+            }
+            
+            this.supportResistanceData = data;
             console.log('✅ Support/Resistance loaded:', this.supportResistanceData);
             this.updateChart();
         } catch (error) {
@@ -274,32 +300,21 @@ class ChartPro {
         const annotations = [];
         
         // 📊 Fibonacci Levels
-        if (this.showFibonacci && this.fibonacciData && this.fibonacciData.levels) {
+        if (this.showFibonacci && this.fibonacciData && this.fibonacciData.retracements) {
             const fib = this.fibonacciData;
             const colors = {
-                '0.0': '#ff4757',
-                '23.6': '#ffa502',
-                '38.2': '#fffa65',
-                '50.0': '#3742fa',
-                '61.8': '#2ed573',
-                '78.6': '#1e90ff',
-                '100.0': '#ff4757',
-                '161.8': '#a29bfe',
-                '261.8': '#fd79a8'
+                '0.0%': '#ff4757',
+                '23.6%': '#ffa502',
+                '38.2%': '#fffa65',
+                '50.0%': '#3742fa',
+                '61.8%': '#2ed573',
+                '78.6%': '#1e90ff',
+                '100.0%': '#ff4757'
             };
             
-            // Déterminer la plage visible du chart
-            const visibleMin = fib.swing_low * 0.95;
-            const visibleMax = fib.swing_high * 1.05;
+            console.log(`📐 Affichage Fibonacci...`, fib.retracements);
             
-            let fibCount = 0;
-            Object.entries(fib.levels).forEach(([level, price]) => {
-                // 🔥 Filtre: ignorer les niveaux hors zone visible
-                if (price < visibleMin || price > visibleMax) {
-                    console.log(`⚠️ Fibonacci ${level}% ($${price.toFixed(2)}) hors zone visible - ignoré`);
-                    return;
-                }
-                
+            Object.entries(fib.retracements).forEach(([level, price]) => {
                 shapes.push({
                     type: 'line',
                     x0: 0,
@@ -309,60 +324,52 @@ class ChartPro {
                     y1: price,
                     line: {
                         color: colors[level] || '#95a5a6',
-                        width: level === '50.0' ? 2 : 1,
+                        width: level === '50.0%' ? 2 : 1,
                         dash: 'dot'
                     }
                 });
-                
-                // 🔥 FIX: Format amélioré pour éviter la troncature
-                const levelNum = parseFloat(level);
-                let labelText;
-                
-                if (levelNum >= 100) {
-                    // Extensions: format court "E1.62" au lieu de "Fib 161.8%"
-                    labelText = `E${(levelNum / 100).toFixed(2)} $${price.toFixed(2)}`;
-                } else {
-                    // Retracements: format court "${levelNum.toFixed(1)}%"
-                    labelText = `${levelNum.toFixed(1)}% $${price.toFixed(2)}`;
-                }
                 
                 annotations.push({
                     x: 0.98,
                     xref: 'paper',
                     y: price,
                     xanchor: 'right',
-                    text: labelText,
+                    text: `${level} $${price.toFixed(2)}`,
                     showarrow: false,
                     font: {
                         size: 9,
                         color: colors[level] || '#95a5a6',
-                        family: 'monospace'  // 🔥 Police monospace pour alignement
+                        family: 'monospace'
                     },
                     bgcolor: 'rgba(0,0,0,0.8)',
                     borderpad: 3,
                     bordercolor: colors[level] || '#95a5a6',
                     borderwidth: 1
                 });
-                
-                fibCount++;
             });
             
-            console.log(`✅ ${fibCount} Fibonacci levels added (visible: $${visibleMin.toFixed(2)} - $${visibleMax.toFixed(2)})`);
+            console.log(`✅ ${Object.keys(fib.retracements).length} Fibonacci levels added`);
         }
         
         // 🎯 Support/Resistance
         if (this.showSupportResistance && this.supportResistanceData) {
-            (this.supportResistanceData.supports || []).forEach(support => {
+            console.log(`🎯 Affichage S/R...`, this.supportResistanceData);
+            
+            // Supports
+            (this.supportResistanceData.support || []).forEach(s => {
+                const price = s.level || s.price || s;
+                const strength = s.strength || 2;
+                
                 shapes.push({
                     type: 'line',
                     x0: 0,
                     x1: 1,
                     xref: 'paper',
-                    y0: support.price,
-                    y1: support.price,
+                    y0: price,
+                    y1: price,
                     line: {
                         color: '#00f260',
-                        width: Math.min(support.strength || 2, 3),
+                        width: Math.min(strength, 3),
                         dash: 'dash'
                     }
                 });
@@ -370,9 +377,9 @@ class ChartPro {
                 annotations.push({
                     x: 0.02,
                     xref: 'paper',
-                    y: support.price,
+                    y: price,
                     xanchor: 'left',
-                    text: `🔻 $${support.price.toFixed(2)}`,  // 🔥 Emoji pour Support
+                    text: `🔻 S $${price.toFixed(2)}`,
                     showarrow: false,
                     font: { 
                         size: 9, 
@@ -384,17 +391,21 @@ class ChartPro {
                 });
             });
             
-            (this.supportResistanceData.resistances || []).forEach(resistance => {
+            // Resistances
+            (this.supportResistanceData.resistance || []).forEach(r => {
+                const price = r.level || r.price || r;
+                const strength = r.strength || 2;
+                
                 shapes.push({
                     type: 'line',
                     x0: 0,
                     x1: 1,
                     xref: 'paper',
-                    y0: resistance.price,
-                    y1: resistance.price,
+                    y0: price,
+                    y1: price,
                     line: {
                         color: '#ff4757',
-                        width: Math.min(resistance.strength || 2, 3),
+                        width: Math.min(strength, 3),
                         dash: 'dash'
                     }
                 });
@@ -402,9 +413,9 @@ class ChartPro {
                 annotations.push({
                     x: 0.02,
                     xref: 'paper',
-                    y: resistance.price,
+                    y: price,
                     xanchor: 'left',
-                    text: `🔺 $${resistance.price.toFixed(2)}`,  // 🔥 Emoji pour Resistance
+                    text: `🔺 R $${price.toFixed(2)}`,
                     showarrow: false,
                     font: { 
                         size: 9, 
@@ -416,7 +427,7 @@ class ChartPro {
                 });
             });
             
-            const totalSR = (this.supportResistanceData.supports?.length || 0) + (this.supportResistanceData.resistances?.length || 0);
+            const totalSR = (this.supportResistanceData.support?.length || 0) + (this.supportResistanceData.resistance?.length || 0);
             console.log(`✅ ${totalSR} Support/Resistance levels added`);
         }
         
@@ -426,7 +437,7 @@ class ChartPro {
                 shapes: shapes,
                 annotations: annotations
             });
-            console.log(`✅ Chart updated with ${shapes.length} shapes and ${annotations.length} annotations`);
+            console.log(`✅ Chart updated: ${shapes.length} shapes, ${annotations.length} annotations`);
         } catch (error) {
             console.error('❌ Erreur Plotly.relayout:', error);
         }
@@ -455,21 +466,26 @@ class ChartPro {
         }
         
         const vp = this.volumeProfileData;
-        const maxVolume = Math.max(...vp.profile.map(p => p.volume));
+        const profile = Object.entries(vp.profile).map(([price, volume]) => ({
+            price: parseFloat(price),
+            volume: volume
+        }));
+        
+        const maxVolume = Math.max(...profile.map(p => p.volume));
         
         let html = `
-            <h3>📉 Volume Profile</h3>
+            <h3>📊 Volume Profile</h3>
             <div class="vp-stats">
-                <div>POC: <strong>$${vp.poc_price.toFixed(2)}</strong></div>
-                <div>VA: $${vp.value_area_low.toFixed(2)} - $${vp.value_area_high.toFixed(2)}</div>
+                <div>POC: <strong>$${vp.poc.price?.toFixed(2) || 'N/A'}</strong></div>
+                <div>VA: $${vp.value_area.low?.toFixed(2) || 'N/A'} - $${vp.value_area.high?.toFixed(2) || 'N/A'}</div>
             </div>
             <div class="vp-bars">
         `;
         
-        vp.profile.slice().reverse().forEach(level => {
+        profile.sort((a, b) => b.price - a.price).forEach(level => {
             const widthPct = (level.volume / maxVolume * 100).toFixed(1);
-            const isPoc = Math.abs(level.price - vp.poc_price) < 0.01;
-            const inVa = level.price >= vp.value_area_low && level.price <= vp.value_area_high;
+            const isPoc = vp.poc.price && Math.abs(level.price - vp.poc.price) < 0.5;
+            const inVa = vp.value_area.low && vp.value_area.high && level.price >= vp.value_area.low && level.price <= vp.value_area.high;
             
             const barClass = isPoc ? 'poc' : (inVa ? 'value-area' : '');
             
