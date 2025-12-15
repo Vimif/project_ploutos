@@ -1,268 +1,61 @@
-<!-- 🧠 PLOUTOS - UNIFIED NAVIGATION BAR -->
-<header class="bg-gradient-to-r from-gray-800 via-gray-900 to-gray-800 shadow-lg sticky top-0 z-50">
+<nav class="bg-gray-800 border-b border-gray-700">
     <div class="container mx-auto px-4">
-        <div class="flex justify-between items-center py-3">
+        <div class="flex items-center justify-between h-16">
             
-            <!-- Logo & Title -->
+            <!-- Logo -->
             <div class="flex items-center space-x-4">
-                <button id="toggle-sidebar" class="text-2xl hover:text-blue-400 transition lg:hidden">
-                    <i class="fas fa-bars"></i>
-                </button>
-                <div class="flex items-center space-x-3">
-                    <div class="relative">
-                        <i class="fas fa-brain text-4xl text-blue-500"></i>
-                        <span class="absolute -top-1 -right-1 bg-cyan-500 text-white text-xs font-bold px-1 rounded">V8</span>
-                    </div>
-                    <div>
-                        <h1 class="text-xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
-                            PLOUTOS
-                        </h1>
-                        <p class="text-xs text-gray-400">AI Trading System</p>
-                    </div>
+                <a href="/" class="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">
+                    ⚡ PLOUTOS
+                </a>
+                <span class="text-xs text-gray-500 font-mono">V8 Oracle</span>
+            </div>
+            
+            <!-- Menu -->
+            <div class="flex items-center space-x-1">
+                <a href="/" class="px-4 py-2 rounded-lg text-gray-300 hover:bg-gray-700 hover:text-white transition">
+                    <i class="fas fa-home mr-2"></i>Dashboard
+                </a>
+                <a href="/chart" class="px-4 py-2 rounded-lg text-gray-300 hover:bg-gray-700 hover:text-white transition">
+                    <i class="fas fa-chart-line mr-2"></i>Charts
+                </a>
+                <a href="/tools" class="px-4 py-2 rounded-lg text-gray-300 hover:bg-gray-700 hover:text-white transition">
+                    <i class="fas fa-tools mr-2"></i>Tools
+                </a>
+                <a href="/live" class="px-4 py-2 rounded-lg text-gray-300 hover:bg-gray-700 hover:text-white transition relative">
+                    <i class="fas fa-bolt text-yellow-400 mr-2"></i>Live Trading
+                    <span class="absolute top-1 right-1 flex h-2 w-2">
+                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                    </span>
+                </a>
+            </div>
+            
+            <!-- User -->
+            <div class="flex items-center space-x-4">
+                <div class="text-sm text-gray-400">
+                    <i class="fas fa-server mr-1"></i>
+                    <span id="server-status" class="text-green-400">En ligne</span>
                 </div>
             </div>
             
-            <!-- Main Navigation -->
-            <nav class="hidden md:flex items-center space-x-1">
-                <a href="/" class="nav-link px-4 py-2 rounded-lg hover:bg-gray-700 transition flex items-center space-x-2">
-                    <i class="fas fa-home"></i>
-                    <span>Dashboard</span>
-                </a>
-                <a href="/chart" class="nav-link px-4 py-2 rounded-lg hover:bg-gray-700 transition flex items-center space-x-2">
-                    <i class="fas fa-chart-line"></i>
-                    <span>Chart Pro</span>
-                </a>
-                <a href="/tools" class="nav-link px-4 py-2 rounded-lg hover:bg-gray-700 transition flex items-center space-x-2">
-                    <i class="fas fa-tools"></i>
-                    <span>Tools</span>
-                </a>
-                
-                <!-- Dropdown: Analyses -->
-                <div class="relative group">
-                    <button class="nav-link px-4 py-2 rounded-lg hover:bg-gray-700 transition flex items-center space-x-2">
-                        <i class="fas fa-brain"></i>
-                        <span>Analyses</span>
-                        <i class="fas fa-chevron-down text-xs"></i>
-                    </button>
-                    <div class="absolute hidden group-hover:block top-full left-0 mt-2 bg-gray-800 rounded-lg shadow-xl border border-gray-700 min-w-[200px] z-50">
-                        <a href="/?tab=v8oracle" class="block px-4 py-2 hover:bg-gray-700 rounded-t-lg">
-                            <i class="fas fa-crystal-ball text-cyan-400 mr-2"></i>V8 Oracle
-                        </a>
-                        <a href="/?tab=v7analysis" class="block px-4 py-2 hover:bg-gray-700">
-                            <i class="fas fa-sparkles text-yellow-400 mr-2"></i>V7 Legacy
-                        </a>
-                        <a href="/chart" class="block px-4 py-2 hover:bg-gray-700 rounded-b-lg">
-                            <i class="fas fa-chart-candlestick text-purple-400 mr-2"></i>Analyse Technique
-                        </a>
-                    </div>
-                </div>
-                
-                <!-- Dropdown: Watchlists -->
-                <div class="relative group">
-                    <button class="nav-link px-4 py-2 rounded-lg hover:bg-gray-700 transition flex items-center space-x-2">
-                        <i class="fas fa-list"></i>
-                        <span>Watchlists</span>
-                        <i class="fas fa-chevron-down text-xs"></i>
-                    </button>
-                    <div class="absolute hidden group-hover:block top-full left-0 mt-2 bg-gray-800 rounded-lg shadow-xl border border-gray-700 min-w-[250px] max-h-[400px] overflow-y-auto z-50">
-                        <div class="px-3 py-2 border-b border-gray-700">
-                            <input type="text" id="nav-watchlist-search" placeholder="Rechercher..." 
-                                   class="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-xs text-white focus:outline-none focus:border-blue-500">
-                        </div>
-                        <div id="nav-watchlist-dropdown" class="py-2">
-                            <div class="px-4 py-2 text-gray-400 text-sm">
-                                <i class="fas fa-spinner fa-spin mr-2"></i>Chargement...
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </nav>
-            
-            <!-- Right Section: Status & Actions -->
-            <div class="flex items-center space-x-3">
-                <!-- Quick Search -->
-                <div class="relative hidden lg:block">
-                    <input type="text" id="quick-search" placeholder="Recherche rapide (ticker)" 
-                           class="w-48 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-sm text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:w-64 transition-all">
-                    <i class="fas fa-search absolute right-3 top-2.5 text-gray-400"></i>
-                </div>
-                
-                <!-- Status Badge -->
-                <div class="flex items-center space-x-2 px-3 py-1 bg-gray-700 rounded-lg">
-                    <div class="flex items-center space-x-1">
-                        <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                        <span class="text-xs text-gray-300">Live</span>
-                    </div>
-                    <div class="text-xs text-gray-400" id="last-update">-</div>
-                </div>
-                
-                <!-- Account Info -->
-                <div class="hidden md:flex items-center space-x-2 px-3 py-1 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600 transition" id="account-info">
-                    <i class="fas fa-wallet text-green-400"></i>
-                    <span class="text-sm font-semibold" id="nav-portfolio-value">-</span>
-                </div>
-                
-                <!-- Mobile Menu Toggle -->
-                <button class="md:hidden text-2xl hover:text-blue-400 transition" id="mobile-menu-toggle">
-                    <i class="fas fa-ellipsis-v"></i>
-                </button>
-            </div>
-            
-        </div>
-        
-        <!-- Mobile Menu -->
-        <div id="mobile-menu" class="md:hidden hidden border-t border-gray-700 py-3">
-            <nav class="flex flex-col space-y-1">
-                <a href="/" class="px-4 py-2 hover:bg-gray-700 rounded flex items-center space-x-2">
-                    <i class="fas fa-home w-5"></i>
-                    <span>Dashboard</span>
-                </a>
-                <a href="/chart" class="px-4 py-2 hover:bg-gray-700 rounded flex items-center space-x-2">
-                    <i class="fas fa-chart-line w-5"></i>
-                    <span>Chart Pro</span>
-                </a>
-                <a href="/tools" class="px-4 py-2 hover:bg-gray-700 rounded flex items-center space-x-2">
-                    <i class="fas fa-tools w-5"></i>
-                    <span>Tools</span>
-                </a>
-                <a href="/?tab=v8oracle" class="px-4 py-2 hover:bg-gray-700 rounded flex items-center space-x-2">
-                    <i class="fas fa-crystal-ball w-5 text-cyan-400"></i>
-                    <span>V8 Oracle</span>
-                </a>
-                <a href="/?tab=v7analysis" class="px-4 py-2 hover:bg-gray-700 rounded flex items-center space-x-2">
-                    <i class="fas fa-sparkles w-5 text-yellow-400"></i>
-                    <span>V7 Legacy</span>
-                </a>
-            </nav>
         </div>
     </div>
-</header>
+</nav>
 
-<!-- Navigation Script -->
 <script>
-// Highlight active page
-document.addEventListener('DOMContentLoaded', () => {
-    const currentPath = window.location.pathname;
-    document.querySelectorAll('.nav-link').forEach(link => {
-        const href = link.getAttribute('href');
-        if (href && (href === currentPath || (currentPath === '/' && href === '/'))) {
-            link.classList.add('bg-blue-600', 'text-white');
+// Vérifier le statut du serveur
+fetch('/api/health')
+    .then(res => res.json())
+    .then(data => {
+        const status = document.getElementById('server-status');
+        if (data.status === 'healthy') {
+            status.textContent = 'En ligne';
+            status.className = 'text-green-400';
         }
+    })
+    .catch(() => {
+        const status = document.getElementById('server-status');
+        status.textContent = 'Hors ligne';
+        status.className = 'text-red-400';
     });
-    
-    // Mobile menu toggle
-    const mobileToggle = document.getElementById('mobile-menu-toggle');
-    const mobileMenu = document.getElementById('mobile-menu');
-    if (mobileToggle && mobileMenu) {
-        mobileToggle.addEventListener('click', () => {
-            mobileMenu.classList.toggle('hidden');
-        });
-    }
-    
-    // Quick search
-    const quickSearch = document.getElementById('quick-search');
-    if (quickSearch) {
-        quickSearch.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                const ticker = quickSearch.value.trim().toUpperCase();
-                if (ticker) {
-                    window.location.href = `/chart?ticker=${ticker}`;
-                }
-            }
-        });
-    }
-    
-    // Load watchlists in dropdown
-    loadWatchlistsDropdown();
-    
-    // Update account info
-    updateNavAccountInfo();
-});
-
-async function loadWatchlistsDropdown() {
-    try {
-        const res = await fetch('/api/watchlists');
-        const data = await res.json();
-        
-        const container = document.getElementById('nav-watchlist-dropdown');
-        if (!container) return;
-        
-        if (data.watchlists && data.watchlists.length > 0) {
-            container.innerHTML = data.watchlists.map(wl => `
-                <a href="/?watchlist=${wl.slug}" class="block px-4 py-2 hover:bg-gray-700 text-sm">
-                    <i class="${wl.icon || 'fas fa-star'} text-${wl.color || 'blue'}-400 mr-2"></i>
-                    ${wl.name}
-                    <span class="text-xs text-gray-500 ml-1">(${wl.tickers.length})</span>
-                </a>
-            `).join('');
-        } else {
-            container.innerHTML = '<div class="px-4 py-2 text-gray-400 text-sm">Aucune watchlist</div>';
-        }
-    } catch (error) {
-        console.error('Error loading watchlists:', error);
-    }
-}
-
-async function updateNavAccountInfo() {
-    try {
-        const res = await fetch('/api/account');
-        const data = await res.json();
-        
-        const valueEl = document.getElementById('nav-portfolio-value');
-        if (valueEl && data.portfolio_value) {
-            const value = parseFloat(data.portfolio_value);
-            valueEl.textContent = `$${value.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}`;
-        }
-    } catch (error) {
-        console.error('Error loading account:', error);
-    }
-}
-
-// Update time display
-setInterval(() => {
-    const updateEl = document.getElementById('last-update');
-    if (updateEl) {
-        updateEl.textContent = new Date().toLocaleTimeString('fr-FR', {hour: '2-digit', minute: '2-digit'});
-    }
-}, 1000);
 </script>
-
-<style>
-/* Dropdown hover fix */
-.group:hover .group-hover\:block {
-    display: block !important;
-}
-
-/* Smooth transitions */
-.nav-link {
-    transition: all 0.2s ease;
-}
-
-/* Active link */
-.nav-link.active,
-.nav-link.bg-blue-600 {
-    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-    box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.3);
-}
-
-/* Search input focus */
-#quick-search:focus {
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
-}
-
-/* Mobile menu animation */
-#mobile-menu {
-    animation: slideDown 0.3s ease;
-}
-
-@keyframes slideDown {
-    from {
-        opacity: 0;
-        transform: translateY(-10px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-</style>
