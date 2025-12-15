@@ -27,6 +27,10 @@ try:
 except ImportError:
     PRO_ANALYZER_AVAILABLE = False
     pro_analyzer_instance = None
+except Exception as e:
+    PRO_ANALYZER_AVAILABLE = False
+    pro_analyzer_instance = None
+    logger.warning(f"⚠️  ProTechnicalAnalyzer init error: {e}")
 
 
 @pro_analysis_bp.route('/api/pro-analysis/<symbol>')
