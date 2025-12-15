@@ -9,8 +9,21 @@ class ScalperProUltra {
         this.currentTimeframe = '5m';
         this.refreshInterval = 5000; // 5 secondes
         this.chart = null;
-        this.watchlist = ['AAPL', 'NVDA', 'MSFT', 'GOOGL', 'AMZN', 'META', 'TSLA', 'AMD', 'NFLX', 'INTC',
-                          'JPM', 'BAC', 'WFC', 'GS', 'MS', 'V', 'MA', 'PYPL', 'SQ', 'COIN'];
+        
+        // Watchlist avec tickers liquides et actifs uniquement
+        this.watchlist = [
+            // Tech Giants
+            'AAPL', 'NVDA', 'MSFT', 'GOOGL', 'AMZN', 'META', 'TSLA',
+            // Semiconducteurs
+            'AMD', 'INTC', 'AVGO', 'QCOM', 'TXN',
+            // Finance
+            'JPM', 'BAC', 'WFC', 'GS', 'C', 'AXP',
+            // Paiements & FinTech
+            'V', 'MA', 'PYPL', 'BLOCK',  // BLOCK = ancien SQ (Square)
+            // Média
+            'NFLX', 'DIS', 'CMCSA'
+        ];
+        
         this.signals = [];
         this.marketData = {};
         
@@ -68,10 +81,22 @@ class ScalperProUltra {
                 this.renderChart(data);
             } else {
                 console.error('Erreur chargement chart:', data.error);
+                this.showChartError(`Erreur: ${data.error}`);
             }
         } catch (error) {
             console.error('Erreur loadMainChart:', error);
+            this.showChartError('Impossible de charger les données');
         }
+    }
+
+    showChartError(message) {
+        const container = document.getElementById('mainChart');
+        container.innerHTML = `
+            <div class="chart-loading">
+                <i class="bi bi-exclamation-triangle" style="font-size: 48px; color: #ff3366; opacity: 0.5;"></i>
+                <p style="margin-top: 12px; color: #9ca3af;">${message}</p>
+            </div>
+        `;
     }
 
     timeframeToPeriod(tf) {
@@ -184,8 +209,10 @@ class ScalperProUltra {
 
     async loadHeatmap() {
         try {
-            const promises = this.watchlist.map(ticker => 
-                fetch(`/api/chart/${ticker}?period=1d`).then(r => r.json())
+            const promises = this.watchlist.slice(0, 20).map(ticker => 
+                fetch(`/api/chart/${ticker}?period=1d`)
+                    .then(r => r.json())
+                    .catch(err => ({ success: false, symbol: ticker }))
             );
             
             const results = await Promise.all(promises);
@@ -207,6 +234,12 @@ class ScalperProUltra {
 
     renderHeatmap(data) {
         const grid = document.getElementById('heatmapGrid');
+        
+        if (data.length === 0) {
+            grid.innerHTML = '<p style="color: #9ca3af; text-align: center; padding: 20px;">Aucune donnée disponible</p>';
+            return;
+        }
+        
         grid.innerHTML = '';
         
         data.forEach(item => {
@@ -236,10 +269,14 @@ class ScalperProUltra {
 
     async loadSignals() {
         try {
-            // Générer signaux pour top 10 tickers
-            const topTickers = this.watchlist.slice(0, 10);
+            // Générer signaux pour top 10 tickers actifs
+            const topTickers = ['AAPL', 'NVDA', 'MSFT', 'GOOGL', 'AMZN', 'META', 'TSLA', 'AMD', 'NFLX', 'JPM'];
+            
             const promises = topTickers.map(ticker => 
-                fetch(`/api/pro-analysis/${ticker}`).then(r => r.json())
+                fetch(`/api/pro-analysis/${ticker}`)
+                    .then(r => r.json())
+                    .then(data => ({ ...data, _ticker: ticker }))
+                    .catch(err => ({ error: true, _ticker: ticker }))
             );
             
             const results = await Promise.all(promises);
@@ -248,14 +285,14 @@ class ScalperProUltra {
                 .filter(r => !r.error)
                 .filter(r => r.overall_signal !== 'HOLD')
                 .map(r => ({
-                    ticker: r.current_price ? this.extractTicker(r) : 'UNKNOWN',
+                    ticker: r._ticker,
                     signal: r.overall_signal.includes('BUY') ? 'BUY' : 'SELL',
                     confidence: r.confidence,
                     price: r.current_price,
                     rsi: r.momentum?.rsi_value || 0,
                     strength: this.calculateStrength(r)
                 }))
-                .sort((a, b) => b.confidence - a.confidence);
+                .sort((a, b) => b.strength - a.strength);
             
             this.renderSignals();
         } catch (error) {
@@ -263,14 +300,9 @@ class ScalperProUltra {
         }
     }
 
-    extractTicker(data) {
-        // Extraire ticker depuis l'objet de réponse
-        return this.watchlist.find(t => true) || 'UNKNOWN';
-    }
-
     calculateStrength(data) {
         // Score composé : confidence + trend + momentum
-        let score = data.confidence;
+        let score = data.confidence || 50;
         if (data.trend?.strength) score += data.trend.strength * 0.3;
         if (data.momentum?.rsi_value) {
             const rsi = data.momentum.rsi_value;
@@ -293,7 +325,7 @@ class ScalperProUltra {
         }
         
         container.innerHTML = this.signals.map(signal => `
-            <div class="signal-card ${signal.signal.toLowerCase()}">
+            <div class="signal-card ${signal.signal.toLowerCase()}" onclick="scalperPro.selectTicker('${signal.ticker}')">
                 <div class="signal-header">
                     <div class="signal-ticker mono">${signal.ticker}</div>
                     <div class="signal-badge ${signal.signal.toLowerCase()}">${signal.signal}</div>
@@ -314,6 +346,12 @@ class ScalperProUltra {
                 </div>
             </div>
         `).join('');
+    }
+
+    selectTicker(ticker) {
+        this.currentTicker = ticker;
+        document.getElementById('tickerInput').value = ticker;
+        this.loadMainChart();
     }
 
     updateServerTime() {
