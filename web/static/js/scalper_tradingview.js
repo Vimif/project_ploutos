@@ -13,6 +13,7 @@ class ScalperTradingView {
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 10;
         this.indicators = {};
+        this.analysis = {};
         
         this.init();
     }
@@ -27,8 +28,11 @@ class ScalperTradingView {
         
         setInterval(() => this.updateServerTime(), 1000);
         
-        // Charger indicateurs toutes les 5s (fallback si WS déconnecté)
-        setInterval(() => this.loadIndicators(), 5000);
+        // Charger indicateurs + analyse toutes les 5s
+        setInterval(() => {
+            this.loadIndicators();
+            this.loadAnalysis();
+        }, 5000);
     }
 
     // ========== TRADINGVIEW WIDGET ==========
@@ -52,7 +56,7 @@ class ScalperTradingView {
             interval: this.currentTimeframe,
             timezone: 'America/New_York',
             theme: 'dark',
-            style: '1', // Bougie
+            style: '1',
             locale: 'fr',
             toolbar_bg: '#151b3d',
             enable_publishing: false,
@@ -60,7 +64,6 @@ class ScalperTradingView {
             allow_symbol_change: true,
             save_image: false,
             
-            // Indicateurs pré-chargés
             studies: [
                 { id: 'RSI@tv-basicstudies', inputs: { length: 14 } },
                 { id: 'MACD@tv-basicstudies', inputs: { fastLength: 12, slowLength: 26, signalLength: 9 } },
@@ -70,7 +73,6 @@ class ScalperTradingView {
                 { id: 'Volume@tv-basicstudies' }
             ],
             
-            // Design
             overrides: {
                 'paneProperties.background': '#0a0e27',
                 'paneProperties.backgroundType': 'solid',
@@ -82,24 +84,20 @@ class ScalperTradingView {
                 'mainSeriesProperties.candleStyle.wickDownColor': '#ff3366'
             },
             
-            // Features activées
             enabled_features: [
                 'study_templates',
                 'use_localstorage_for_settings',
                 'save_chart_properties_to_local_storage'
             ],
             
-            // Features désactivées
             disabled_features: [
                 'header_symbol_search',
                 'header_compare',
                 'display_market_status'
             ],
             
-            // Custom CSS
             custom_css_url: '/static/css/tradingview_custom.css',
             
-            // Loading screen
             loading_screen: { 
                 backgroundColor: '#0a0e27',
                 foregroundColor: '#00d4ff'
@@ -119,59 +117,49 @@ class ScalperTradingView {
         
         console.log(`🔄 Changement ticker: ${this.currentTicker} → ${newTicker}`);
         
-        // Désabonner l'ancien ticker
         if (this.socket && this.socket.connected && this.currentTicker) {
             console.log(`🚫 Désabonnement de ${this.currentTicker}`);
             this.socket.emit('unsubscribe', { ticker: this.currentTicker });
         }
         
-        // Mettre à jour le ticker actuel
         this.previousTicker = this.currentTicker;
         this.currentTicker = newTicker;
         
-        // Mettre à jour l'affichage
         document.getElementById('tickerSymbol').textContent = this.currentTicker;
         
-        // Reset des données affichées
         this.resetDisplay();
         
-        // RECRÉER le widget TradingView au lieu de setSymbol()
         console.log('🔄 Recréation du widget TradingView...');
         setTimeout(() => {
             this.setupTradingView();
-        }, 500); // Délai pour laisser le temps de détruire l'ancien
+        }, 500);
         
-        // S'abonner au nouveau ticker
         if (this.socket && this.socket.connected) {
             console.log(`📶 Abonnement à ${this.currentTicker}`);
             this.socket.emit('subscribe', { ticker: this.currentTicker });
         }
         
-        // Charger indicateurs immédiatement
         setTimeout(() => {
             this.loadIndicators();
+            this.loadAnalysis();
         }, 1000);
     }
 
     resetDisplay() {
-        // Reset prix
         document.getElementById('tickerPrice').textContent = '$0.00';
         document.getElementById('tickerChange').textContent = '+0.00 (+0.00%)';
         
-        // Reset stats
         document.getElementById('statVolume').textContent = '0';
         document.getElementById('statHigh').textContent = '$0.00';
         document.getElementById('statLow').textContent = '$0.00';
         document.getElementById('statOpen').textContent = '$0.00';
         
-        // Reset indicateurs
         document.getElementById('indRSI').textContent = '50.0';
         document.getElementById('indMACD').textContent = '--';
         document.getElementById('indSTOCH').textContent = '--';
         document.getElementById('indADX').textContent = '--';
         document.getElementById('indATR').textContent = '--';
         
-        // Reset signals
         document.getElementById('sigRSI').textContent = 'NEUTRE';
         document.getElementById('sigRSI').className = 'indicator-signal signal-neutral';
         document.getElementById('sigMACD').textContent = 'NEUTRE';
@@ -180,13 +168,34 @@ class ScalperTradingView {
         document.getElementById('sigSTOCH').className = 'indicator-signal signal-neutral';
         document.getElementById('sigADX').textContent = 'FAIBLE';
         
+        // Reset analyse
+        this.resetAnalysisDisplay();
+        
         this.indicators = {};
+        this.analysis = {};
+    }
+
+    resetAnalysisDisplay() {
+        const badge = document.getElementById('globalSignalBadge');
+        badge.className = 'signal-badge hold';
+        badge.innerHTML = '<i class="bi bi-dash-circle"></i><span id="globalSignalText">HOLD</span>';
+        
+        document.getElementById('signalStrength').textContent = '0%';
+        document.getElementById('strengthBar').style.width = '0%';
+        document.getElementById('signalConfidence').textContent = '0%';
+        document.getElementById('trendDirection').textContent = 'NEUTRAL';
+        
+        document.getElementById('entryPrice').textContent = '--';
+        document.getElementById('stopLoss').textContent = '--';
+        document.getElementById('takeProfit').textContent = '--';
+        document.getElementById('riskReward').textContent = '--';
+        
+        document.getElementById('reasonsList').innerHTML = '<div class="reason-item">En attente de données...</div>';
     }
 
     changeTimeframe(tf) {
         this.currentTimeframe = tf;
         
-        // Recréer le widget avec le nouveau timeframe
         console.log(`🔄 Changement timeframe: ${tf}`);
         setTimeout(() => {
             this.setupTradingView();
@@ -197,11 +206,9 @@ class ScalperTradingView {
     setupWebSocket() {
         console.log('🔌 Connexion WebSocket...');
         
-        // 🔥 CONNEXION AU BON PORT (5001)
         const wsUrl = `http://${window.location.hostname}:5001`;
         console.log(`🔗 WebSocket URL: ${wsUrl}`);
         
-        // Connexion au serveur Flask-SocketIO sur port 5001
         this.socket = io(wsUrl, {
             transports: ['websocket', 'polling'],
             reconnection: true,
@@ -210,13 +217,11 @@ class ScalperTradingView {
             reconnectionAttempts: this.maxReconnectAttempts
         });
         
-        // Événements connexion
         this.socket.on('connect', () => {
             console.log('✅ WebSocket connecté');
             this.updateWSStatus(true);
             this.reconnectAttempts = 0;
             
-            // S'abonner au ticker actuel
             console.log(`📶 Abonnement initial à ${this.currentTicker}`);
             this.socket.emit('subscribe', { ticker: this.currentTicker });
         });
@@ -235,7 +240,6 @@ class ScalperTradingView {
             console.error('❌ Erreur WebSocket:', error);
         });
         
-        // Événements données
         this.socket.on('price_update', (data) => {
             this.handlePriceUpdate(data);
         });
@@ -259,13 +263,11 @@ class ScalperTradingView {
     }
 
     handlePriceUpdate(data) {
-        // Vérifier que les données concernent bien le ticker actuel
         if (data.ticker !== this.currentTicker) {
             console.log(`⚠️ Données prix ignorées (ticker: ${data.ticker}, actuel: ${this.currentTicker})`);
             return;
         }
         
-        // Mettre à jour le prix ticker
         const price = data.price;
         const change = data.change || 0;
         const changePct = data.change_pct || 0;
@@ -276,7 +278,6 @@ class ScalperTradingView {
         changeEl.textContent = `${change >= 0 ? '+' : ''}${change.toFixed(2)} (${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%)`;
         changeEl.className = change >= 0 ? 'ticker-change positive' : 'ticker-change negative';
         
-        // Mettre à jour les stats
         if (data.volume) {
             document.getElementById('statVolume').textContent = this.formatVolume(data.volume);
         }
@@ -294,7 +295,6 @@ class ScalperTradingView {
     }
 
     handleIndicatorUpdate(data) {
-        // Vérifier que les données concernent bien le ticker actuel
         if (data.ticker !== this.currentTicker) {
             console.log(`⚠️ Indicateurs ignorés (ticker: ${data.ticker}, actuel: ${this.currentTicker})`);
             return;
@@ -332,13 +332,11 @@ class ScalperTradingView {
     updateIndicatorsDisplay() {
         const ind = this.indicators;
         
-        // RSI
         if (ind.rsi !== undefined && ind.rsi !== null) {
             document.getElementById('indRSI').textContent = ind.rsi.toFixed(1);
             this.updateIndicatorSignal('sigRSI', this.getRSISignal(ind.rsi));
         }
         
-        // MACD
         if (ind.macd !== undefined && ind.macd !== null) {
             document.getElementById('indMACD').textContent = ind.macd.toFixed(2);
             if (ind.macd_signal !== undefined) {
@@ -347,20 +345,17 @@ class ScalperTradingView {
             }
         }
         
-        // Stochastique
         if (ind.stoch !== undefined && ind.stoch !== null) {
             document.getElementById('indSTOCH').textContent = ind.stoch.toFixed(1);
             this.updateIndicatorSignal('sigSTOCH', this.getStochSignal(ind.stoch));
         }
         
-        // ADX
         if (ind.adx !== undefined && ind.adx !== null) {
             document.getElementById('indADX').textContent = ind.adx.toFixed(1);
             const adxText = ind.adx > 25 ? 'FORT' : 'FAIBLE';
             document.getElementById('sigADX').textContent = adxText;
         }
         
-        // ATR
         if (ind.atr !== undefined && ind.atr !== null) {
             document.getElementById('indATR').textContent = ind.atr.toFixed(2);
         }
@@ -391,9 +386,190 @@ class ScalperTradingView {
         el.textContent = text[signal] || signal.toUpperCase();
     }
 
+    // ========== ANALYSE TECHNIQUE ==========
+    async loadAnalysis() {
+        try {
+            const response = await fetch(`/api/pro-analysis/${this.currentTicker}`);
+            const data = await response.json();
+            
+            if (data && !data.error) {
+                this.analysis = data;
+                this.updateAnalysisDisplay();
+            }
+        } catch (error) {
+            console.error('Erreur chargement analyse:', error);
+        }
+    }
+
+    updateAnalysisDisplay() {
+        const data = this.analysis;
+        
+        // Signal global
+        const signal = this.calculateGlobalSignal(data);
+        const badge = document.getElementById('globalSignalBadge');
+        const signalText = document.getElementById('globalSignalText');
+        
+        badge.className = `signal-badge ${signal.toLowerCase()}`;
+        
+        const icons = {
+            'BUY': '<i class="bi bi-arrow-up-circle-fill"></i>',
+            'SELL': '<i class="bi bi-arrow-down-circle-fill"></i>',
+            'HOLD': '<i class="bi bi-dash-circle"></i>'
+        };
+        
+        badge.innerHTML = `${icons[signal]}<span id="globalSignalText">${signal}</span>`;
+        
+        // Force du signal
+        const strength = this.calculateSignalStrength(data);
+        document.getElementById('signalStrength').textContent = `${strength}%`;
+        document.getElementById('strengthBar').style.width = `${strength}%`;
+        
+        // Confiance
+        const confidence = this.calculateConfidence(data);
+        document.getElementById('signalConfidence').textContent = `${confidence}%`;
+        
+        // Tendance
+        const trend = this.calculateTrend(data);
+        document.getElementById('trendDirection').textContent = trend;
+        
+        // Niveaux de prix
+        this.updatePriceLevels(data);
+        
+        // Raisons
+        this.updateReasons(data, signal);
+    }
+
+    calculateGlobalSignal(data) {
+        let buyScore = 0;
+        let sellScore = 0;
+        
+        // RSI
+        const rsi = data.momentum?.rsi_value;
+        if (rsi < 30) buyScore += 2;
+        else if (rsi > 70) sellScore += 2;
+        else if (rsi < 40) buyScore += 1;
+        else if (rsi > 60) sellScore += 1;
+        
+        // MACD
+        const macd = data.momentum?.macd_value;
+        const macd_signal = data.momentum?.macd_signal;
+        if (macd && macd_signal) {
+            if (macd > macd_signal) buyScore += 2;
+            else sellScore += 2;
+        }
+        
+        // Stochastique
+        const stoch = data.momentum?.stoch_k;
+        if (stoch < 20) buyScore += 1;
+        else if (stoch > 80) sellScore += 1;
+        
+        // Décision
+        if (buyScore > sellScore + 2) return 'BUY';
+        if (sellScore > buyScore + 2) return 'SELL';
+        return 'HOLD';
+    }
+
+    calculateSignalStrength(data) {
+        const rsi = data.momentum?.rsi_value || 50;
+        const adx = data.trend?.adx_value || 0;
+        
+        // Force basée sur RSI extreme + ADX
+        let strength = 0;
+        
+        if (rsi < 30 || rsi > 70) {
+            strength = Math.abs(rsi - 50) * 2;
+        } else {
+            strength = Math.abs(rsi - 50);
+        }
+        
+        // Boost avec ADX
+        if (adx > 25) {
+            strength *= 1.5;
+        }
+        
+        return Math.min(100, Math.round(strength));
+    }
+
+    calculateConfidence(data) {
+        const adx = data.trend?.adx_value || 0;
+        const atr = data.volatility?.atr_value || 0;
+        
+        // Confiance élevée si tendance forte (ADX) et volatilité modérée
+        let confidence = 50;
+        
+        if (adx > 25) confidence += 30;
+        else if (adx > 20) confidence += 15;
+        
+        if (atr > 5) confidence -= 10; // Trop volatile = moins confiant
+        
+        return Math.max(0, Math.min(100, confidence));
+    }
+
+    calculateTrend(data) {
+        const adx = data.trend?.adx_value || 0;
+        
+        if (adx > 25) return 'BULLISH';
+        if (adx > 20) return 'NEUTRAL';
+        return 'BEARISH';
+    }
+
+    updatePriceLevels(data) {
+        const currentPrice = parseFloat(document.getElementById('tickerPrice').textContent.replace('$', '')) || 0;
+        const atr = data.volatility?.atr_value || 2;
+        
+        // Prix d'entrée = prix actuel
+        document.getElementById('entryPrice').textContent = `$${currentPrice.toFixed(2)}`;
+        
+        // Stop-Loss = prix - (2 * ATR)
+        const stopLoss = currentPrice - (2 * atr);
+        document.getElementById('stopLoss').textContent = `$${stopLoss.toFixed(2)}`;
+        
+        // Take-Profit = prix + (3 * ATR)
+        const takeProfit = currentPrice + (3 * atr);
+        document.getElementById('takeProfit').textContent = `$${takeProfit.toFixed(2)}`;
+        
+        // Risk/Reward
+        const risk = 2 * atr;
+        const reward = 3 * atr;
+        const ratio = (reward / risk).toFixed(2);
+        document.getElementById('riskReward').textContent = `1:${ratio}`;
+    }
+
+    updateReasons(data, signal) {
+        const reasons = [];
+        
+        const rsi = data.momentum?.rsi_value;
+        const macd = data.momentum?.macd_value;
+        const macd_signal = data.momentum?.macd_signal;
+        const stoch = data.momentum?.stoch_k;
+        const adx = data.trend?.adx_value;
+        
+        if (signal === 'BUY') {
+            if (rsi < 30) reasons.push('RSI en zone de survente (<30)');
+            if (macd > macd_signal) reasons.push('MACD croise au-dessus du signal');
+            if (stoch < 20) reasons.push('Stochastique en survente');
+            if (adx > 25) reasons.push('Tendance forte confirmée (ADX > 25)');
+        } else if (signal === 'SELL') {
+            if (rsi > 70) reasons.push('RSI en zone de surachat (>70)');
+            if (macd < macd_signal) reasons.push('MACD croise en-dessous du signal');
+            if (stoch > 80) reasons.push('Stochastique en surachat');
+            if (adx > 25) reasons.push('Tendance baissière forte (ADX > 25)');
+        } else {
+            reasons.push('Marché en consolidation');
+            reasons.push('Aucun signal technique clair');
+            reasons.push('Attendre une confirmation');
+        }
+        
+        if (reasons.length === 0) {
+            reasons.push('Analyse en cours...');
+        }
+        
+        const html = reasons.map(r => `<div class="reason-item">${r}</div>`).join('');
+        document.getElementById('reasonsList').innerHTML = html;
+    }
+
     // ========== EVENT LISTENERS ==========
     setupEventListeners() {
-        // Changement de ticker
         const tickerInput = document.getElementById('tickerInput');
         tickerInput.addEventListener('change', (e) => {
             this.changeTicker(e.target.value);
@@ -405,7 +581,6 @@ class ScalperTradingView {
             }
         });
         
-        // Changement de timeframe
         document.querySelectorAll('.timeframe-pill').forEach(pill => {
             pill.addEventListener('click', (e) => {
                 document.querySelectorAll('.timeframe-pill').forEach(p => p.classList.remove('active'));
@@ -414,11 +589,9 @@ class ScalperTradingView {
             });
         });
         
-        // Quick trading buttons
         document.getElementById('btnQuickBuy').addEventListener('click', () => this.quickTrade('BUY'));
         document.getElementById('btnQuickSell').addEventListener('click', () => this.quickTrade('SELL'));
         
-        // Order panel tabs
         document.querySelectorAll('.order-tab').forEach(tab => {
             tab.addEventListener('click', (e) => {
                 document.querySelectorAll('.order-tab').forEach(t => t.classList.remove('active'));
@@ -435,7 +608,6 @@ class ScalperTradingView {
             });
         });
         
-        // Order submit buttons
         document.getElementById('btnSubmitBuy').addEventListener('click', () => this.submitOrder('BUY'));
         document.getElementById('btnSubmitSell').addEventListener('click', () => this.submitOrder('SELL'));
     }
@@ -445,7 +617,6 @@ class ScalperTradingView {
         const confirmation = confirm(`⚠️ Confirmer ${side} ${this.currentTicker} ?`);
         if (!confirmation) return;
         
-        // TODO: Intégration Alpaca API
         console.log(`⚡ Quick ${side} pour ${this.currentTicker}`);
         
         alert(`⚡ Order ${side} placé pour ${this.currentTicker}\n(Intégration Alpaca en cours...)`);
@@ -473,7 +644,6 @@ class ScalperTradingView {
         
         console.log('📤 Ordre soumis:', orderData);
         
-        // TODO: Envoyer via WebSocket ou API
         alert(`⚡ Ordre ${side} soumis\nTicker: ${orderData.ticker}\nQty: ${orderData.qty}\nType: ${orderData.type}`);
     }
 
