@@ -6,6 +6,7 @@
 class ScalperTradingView {
     constructor() {
         this.currentTicker = 'AAPL';
+        this.previousTicker = null;
         this.currentTimeframe = '5';
         this.widget = null;
         this.socket = null;
@@ -99,21 +100,73 @@ class ScalperTradingView {
     }
 
     changeTicker(ticker) {
-        this.currentTicker = ticker.toUpperCase();
+        const newTicker = ticker.toUpperCase();
+        
+        if (newTicker === this.currentTicker) {
+            console.log(`⚠️ Ticker déjà actif: ${newTicker}`);
+            return;
+        }
+        
+        console.log(`🔄 Changement ticker: ${this.currentTicker} → ${newTicker}`);
+        
+        // Désabonner l'ancien ticker
+        if (this.socket && this.socket.connected && this.currentTicker) {
+            console.log(`🚫 Désabonnement de ${this.currentTicker}`);
+            this.socket.emit('unsubscribe', { ticker: this.currentTicker });
+        }
+        
+        // Mettre à jour le ticker actuel
+        this.previousTicker = this.currentTicker;
+        this.currentTicker = newTicker;
+        
+        // Mettre à jour l'affichage
         document.getElementById('tickerSymbol').textContent = this.currentTicker;
         
+        // Reset des données affichées
+        this.resetDisplay();
+        
+        // Mettre à jour TradingView
         if (this.widget) {
             this.widget.setSymbol(`NASDAQ:${this.currentTicker}`, this.currentTimeframe, () => {
-                console.log(`✅ Ticker changé: ${this.currentTicker}`);
+                console.log(`✅ TradingView ticker changé: ${this.currentTicker}`);
             });
         }
         
-        // Mettre à jour WebSocket subscription
+        // S'abonner au nouveau ticker
         if (this.socket && this.socket.connected) {
+            console.log(`📶 Abonnement à ${this.currentTicker}`);
             this.socket.emit('subscribe', { ticker: this.currentTicker });
         }
         
+        // Charger indicateurs immédiatement
         this.loadIndicators();
+    }
+
+    resetDisplay() {
+        // Reset prix
+        document.getElementById('tickerPrice').textContent = '$0.00';
+        document.getElementById('tickerChange').textContent = '+0.00 (+0.00%)';
+        
+        // Reset stats
+        document.getElementById('statVolume').textContent = '0';
+        document.getElementById('statHigh').textContent = '$0.00';
+        document.getElementById('statLow').textContent = '$0.00';
+        document.getElementById('statOpen').textContent = '$0.00';
+        
+        // Reset indicateurs
+        document.getElementById('indRSI').textContent = '50.0';
+        document.getElementById('indMACD').textContent = '--';
+        document.getElementById('indSTOCH').textContent = '--';
+        document.getElementById('indADX').textContent = '--';
+        document.getElementById('indATR').textContent = '--';
+        
+        // Reset signals
+        document.getElementById('sigRSI').textContent = 'NEUTRE';
+        document.getElementById('sigMACD').textContent = 'NEUTRE';
+        document.getElementById('sigSTOCH').textContent = 'NEUTRE';
+        document.getElementById('sigADX').textContent = 'FAIBLE';
+        
+        this.indicators = {};
     }
 
     changeTimeframe(tf) {
@@ -150,6 +203,7 @@ class ScalperTradingView {
             this.reconnectAttempts = 0;
             
             // S'abonner au ticker actuel
+            console.log(`📶 Abonnement initial à ${this.currentTicker}`);
             this.socket.emit('subscribe', { ticker: this.currentTicker });
         });
         
@@ -191,12 +245,16 @@ class ScalperTradingView {
     }
 
     handlePriceUpdate(data) {
-        if (data.ticker !== this.currentTicker) return;
+        // Vérifier que les données concernent bien le ticker actuel
+        if (data.ticker !== this.currentTicker) {
+            console.log(`⚠️ Données ignorées (ticker: ${data.ticker}, actuel: ${this.currentTicker})`);
+            return;
+        }
         
         // Mettre à jour le prix ticker
         const price = data.price;
-        const change = data.change;
-        const changePct = data.change_pct;
+        const change = data.change || 0;
+        const changePct = data.change_pct || 0;
         
         document.getElementById('tickerPrice').textContent = `$${price.toFixed(2)}`;
         
@@ -217,13 +275,21 @@ class ScalperTradingView {
         if (data.open) {
             document.getElementById('statOpen').textContent = `$${data.open.toFixed(2)}`;
         }
+        
+        console.log(`📈 Prix mis à jour ${data.ticker}: $${price.toFixed(2)}`);
     }
 
     handleIndicatorUpdate(data) {
-        if (data.ticker !== this.currentTicker) return;
+        // Vérifier que les données concernent bien le ticker actuel
+        if (data.ticker !== this.currentTicker) {
+            console.log(`⚠️ Indicateurs ignorés (ticker: ${data.ticker}, actuel: ${this.currentTicker})`);
+            return;
+        }
         
         this.indicators = data.indicators;
         this.updateIndicatorsDisplay();
+        
+        console.log(`📊 Indicateurs mis à jour ${data.ticker}`);
     }
 
     // ========== INDICATEURS ==========
