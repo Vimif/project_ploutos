@@ -84,18 +84,30 @@
                 </div>
             </div>
             
-            <!-- Tickers -->
+            <!-- Tickers + Watchlists -->
             <div class="bg-gray-800 rounded-lg p-6">
                 <h3 class="font-bold mb-4 flex items-center">
                     <i class="fas fa-list text-blue-400 mr-2"></i>
                     Tickers surveillés
                 </h3>
                 
-                <input type="text" id="tickers-input" value="NVDA,AAPL,TSLA,MSFT,GOOGL" 
-                       class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500 mb-2"
-                       placeholder="NVDA,AAPL,TSLA">
+                <!-- Watchlist selector -->
+                <div class="mb-3">
+                    <label class="text-xs text-gray-400 mb-1 block">Watchlist prédéfinie</label>
+                    <select id="watchlist-select" class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500">
+                        <option value="">-- Choisir une watchlist --</option>
+                        <option value="custom">Liste personnalisée</option>
+                    </select>
+                </div>
                 
-                <p class="text-xs text-gray-400">Séparés par des virgules</p>
+                <!-- Manual input -->
+                <div id="manual-input-container">
+                    <label class="text-xs text-gray-400 mb-1 block">Ou saisir manuellement</label>
+                    <input type="text" id="tickers-input" value="NVDA,AAPL,TSLA,MSFT,GOOGL" 
+                           class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500 mb-2"
+                           placeholder="NVDA,AAPL,TSLA">
+                    <p class="text-xs text-gray-400">Séparés par des virgules</p>
+                </div>
             </div>
             
             <!-- Timeframe -->
@@ -207,10 +219,55 @@
         const statusText = document.getElementById('status-text');
         const signalsFeed = document.getElementById('signals-feed');
         const activeTickers = document.getElementById('active-tickers');
+        const watchlistSelect = document.getElementById('watchlist-select');
+        const tickersInput = document.getElementById('tickers-input');
+        
+        // Load watchlists
+        async function loadWatchlists() {
+            try {
+                const response = await fetch('/api/watchlists');
+                const data = await response.json();
+                
+                if (data.watchlists) {
+                    // Clear existing options except first two
+                    while (watchlistSelect.options.length > 2) {
+                        watchlistSelect.remove(2);
+                    }
+                    
+                    // Add watchlists
+                    data.watchlists.forEach(wl => {
+                        const option = document.createElement('option');
+                        option.value = wl.id;
+                        option.textContent = `${wl.name} (${wl.tickers.length})`;
+                        option.dataset.tickers = wl.tickers.join(',');
+                        watchlistSelect.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Erreur chargement watchlists:', error);
+            }
+        }
+        
+        // Watchlist selection handler
+        watchlistSelect.addEventListener('change', (e) => {
+            const selectedOption = e.target.options[e.target.selectedIndex];
+            
+            if (selectedOption.value === 'custom' || selectedOption.value === '') {
+                // Enable manual input
+                tickersInput.disabled = false;
+            } else {
+                // Load watchlist tickers
+                const tickers = selectedOption.dataset.tickers;
+                if (tickers) {
+                    tickersInput.value = tickers;
+                    tickersInput.disabled = true;
+                }
+            }
+        });
         
         // Start monitoring
         startBtn.addEventListener('click', async () => {
-            const tickers = document.getElementById('tickers-input').value.split(',').map(t => t.trim());
+            const tickers = tickersInput.value.split(',').map(t => t.trim());
             const timeframe = document.getElementById('timeframe-select').value;
             
             if (tickers.length === 0) {
@@ -335,21 +392,17 @@
                 </div>
             `;
             
-            // Insert at beginning
             signalsFeed.insertAdjacentHTML('afterbegin', html);
             
-            // Keep only last 20 signals
             while (signalsFeed.children.length > 20) {
                 signalsFeed.removeChild(signalsFeed.lastChild);
             }
         }
         
-        // Update stats
         function updateStats(signal) {
             if (signal.signal === 'BUY') stats.buySignals++;
             if (signal.signal === 'SELL') stats.sellSignals++;
             stats.confidences.push(signal.confidence);
-            
             updateStatsDisplay();
         }
         
@@ -364,7 +417,6 @@
             document.getElementById('avg-confidence').textContent = avgConf + '%';
         }
         
-        // Update active tickers display
         function updateActiveTickers(tickers) {
             activeTickers.innerHTML = tickers.map(ticker => `
                 <div class="bg-gray-700 rounded-lg p-3 flex justify-between items-center">
@@ -379,7 +431,6 @@
             `).join('');
         }
         
-        // Start uptime counter
         function startUptime() {
             uptimeInterval = setInterval(() => {
                 if (!startTime) return;
@@ -399,14 +450,12 @@
             }, 1000);
         }
         
-        // Fetch initial state
         async function fetchState() {
             try {
                 const response = await fetch('/api/live/state');
                 const data = await response.json();
                 
                 if (data.monitoring) {
-                    // Already monitoring
                     monitoring = true;
                     startBtn.disabled = true;
                     stopBtn.disabled = false;
@@ -419,6 +468,7 @@
         }
         
         // Init
+        loadWatchlists();
         fetchState();
     </script>
     
