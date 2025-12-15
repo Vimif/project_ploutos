@@ -77,29 +77,13 @@
 </head>
 <body class="bg-gray-900 text-gray-100">
     
-    <!-- Header -->
-    <header class="bg-gray-800 shadow-lg">
-        <div class="container mx-auto px-4 py-4 flex justify-between items-center">
-            <div class="flex items-center space-x-3">
-                <button id="toggle-sidebar" class="text-2xl hover:text-blue-400 transition">
-                    <i class="fas fa-bars"></i>
-                </button>
-                <i class="fas fa-brain text-3xl text-blue-500"></i>
-                <h1 class="text-2xl font-bold">Ploutos Dashboard V8</h1>
-            </div>
-            <div class="flex items-center space-x-2">
-                <span class="px-3 py-1 bg-green-600 rounded-full text-sm" id="status">
-                    <i class="fas fa-circle pulse"></i> En ligne
-                </span>
-                <span class="text-sm text-gray-400" id="last-update">-</span>
-            </div>
-        </div>
-    </header>
+    <!-- 🧠 NAVIGATION HEADER -->
+    {% include 'components/nav.html' %}
     
     <div class="flex">
         
         <!-- 📊 WATCHLISTS SIDEBAR -->
-        <aside id="watchlist-sidebar" class="watchlist-sidebar fixed left-0 top-16 h-screen bg-gray-800 border-r border-gray-700 overflow-y-auto z-50">
+        <aside id="watchlist-sidebar" class="watchlist-sidebar fixed left-0 top-16 h-screen bg-gray-800 border-r border-gray-700 overflow-y-auto z-40">
             <div class="p-4">
                 <h3 class="text-lg font-bold mb-4 flex items-center">
                     <i class="fas fa-list text-blue-400 mr-2"></i>
