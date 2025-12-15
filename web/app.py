@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🌐 PLOUTOS WEB DASHBOARD - V8 ORACLE + TRADER PRO + 5 TOOLS + CHART PRO + PRO ANALYSIS + WATCHLISTS + LIVE TRADING + SIGNALS + SCALPER
+🌐 PLOUTOS WEB DASHBOARD - V8 ORACLE + TRADER PRO + 5 TOOLS + CHART PRO + PRO ANALYSIS + WATCHLISTS + LIVE TRADING + SIGNALS + SCALPER + TRADINGVIEW
 """
 
 import sys
@@ -114,6 +114,15 @@ except Exception as e:
     PRO_ANALYSIS_BP_AVAILABLE = False
     logger.error(f"❌ Pro Analysis blueprint non disponible: {e}")
 
+# ⚡📈 SCALPER TRADINGVIEW BLUEPRINT
+try:
+    from web.routes.scalper_tradingview import scalper_tv_bp
+    SCALPER_TV_AVAILABLE = True
+    logger.info("✅ Scalper TradingView blueprint chargé")
+except Exception as e:
+    SCALPER_TV_AVAILABLE = False
+    logger.error(f"❌ Scalper TradingView blueprint non disponible: {e}")
+
 try:
     from trading.alpaca_client import AlpacaClient
     ALPACA_AVAILABLE = True
@@ -136,10 +145,7 @@ except ImportError:
 
 
 def clean_for_json(obj):
-    """
-    Convertit récursivement les objets Python en types JSON-sérialisables
-    Gère : numpy, pandas, dataclasses, enums, etc.
-    """
+    """Convertit récursivement les objets Python en types JSON-sérialisables"""
     if is_dataclass(obj) and not isinstance(obj, type):
         return clean_for_json(asdict(obj))
     if isinstance(obj, Enum):
@@ -185,6 +191,10 @@ if LIVE_WATCHLISTS_AVAILABLE:
 if PRO_ANALYSIS_BP_AVAILABLE:
     app.register_blueprint(pro_analysis_bp)
     logger.info("✅ Pro Analysis blueprint enregistré")
+
+if SCALPER_TV_AVAILABLE:
+    app.register_blueprint(scalper_tv_bp)
+    logger.info("✅ Scalper TradingView blueprint enregistré (/scalper-tv)")
 
 alpaca_client = None
 if ALPACA_AVAILABLE:
@@ -319,7 +329,8 @@ def api_health():
             'technical_analyzer': TECHNICAL_ANALYZER_AVAILABLE,
             'chart_data': TECHNICAL_ANALYZER_AVAILABLE,
             'mtf_analyzer': TRADER_PRO and mtf_analyzer is not None,
-            'pro_analysis': PRO_ANALYSIS_BP_AVAILABLE
+            'pro_analysis': PRO_ANALYSIS_BP_AVAILABLE,
+            'scalper_tradingview': SCALPER_TV_AVAILABLE
         }
     }), 200
 
@@ -375,21 +386,16 @@ def api_chart_data(symbol):
         import ta as ta_lib
         
         def safe_indicator_array(indicator_class, *args, method_name='', default=[]):
-            """
-            Wrapper sécurisé pour indicateurs ta-lib
-            Gère les erreurs à l'INIT et à l'appel de méthode
-            """
+            """Wrapper sécurisé pour indicateurs ta-lib - Gère les erreurs à l'INIT et à l'appel de méthode"""
             try:
-                # Tentative de création de l'indicateur
                 indicator = indicator_class(*args)
-                # Tentative d'appel de la méthode
                 if method_name:
                     result = getattr(indicator, method_name)()
                 else:
                     result = indicator
                 return [float(v) if not pd.isna(v) else None for v in result]
             except (IndexError, ValueError, Exception) as e:
-                logger.warning(f"⚠️  Indicateur ignoré (données insuffisantes): {e}")
+                logger.debug(f"⚠️  Indicateur ignoré (données insuffisantes): {e}")
                 return default
         
         indicators_arrays = {
@@ -651,7 +657,7 @@ if __name__ == '__main__':
     host = os.getenv('DASHBOARD_HOST', '0.0.0.0')
     port = int(os.getenv('DASHBOARD_PORT', 5000))
     print("\n" + "="*70)
-    print("🌐 PLOUTOS - V8 ORACLE + LIVE TRADING + WATCHLISTS + SIGNALS + CHARTS + SCALPER")
+    print("🌐 PLOUTOS - V8 ORACLE + LIVE TRADING + WATCHLISTS + SIGNALS + CHARTS + SCALPER + TRADINGVIEW")
     print("="*70)
     print(f"\n🚀 http://{host}:{port}")
     print(f"🔥 Live Trading: http://{host}:{port}/live")
@@ -659,6 +665,8 @@ if __name__ == '__main__':
     print(f"📊 Advanced Charts: http://{host}:{port}/chart")
     print(f"⚡ Scalper Basic: http://{host}:{port}/scalper")
     print(f"⚡🚀 Scalper Pro Ultra: http://{host}:{port}/scalper-ultra")
+    if SCALPER_TV_AVAILABLE:
+        print(f"⚡📈 Scalper TradingView PRO: http://{host}:{port}/scalper-tv")
     if LIVE_WATCHLISTS_AVAILABLE:
         print(f"📊 9 Watchlists prédéfinies disponibles")
     if TECHNICAL_ANALYZER_AVAILABLE:
