@@ -237,7 +237,6 @@ def get_db_connection():
     
     try:
         import os
-        # Essayer avec les variables d'environnement d'abord
         db_password = os.getenv('POSTGRES_PASSWORD', 'your_password_here')
         
         return psycopg2.connect(
@@ -268,9 +267,7 @@ def tools_page():
 
 @app.route('/api/account')
 def api_account():
-    """
-    💰 Récupère les infos du compte Alpaca
-    """
+    """💰 Récupère les infos du compte Alpaca"""
     if not alpaca_client:
         return jsonify({
             'mock': True,
@@ -285,7 +282,6 @@ def api_account():
     try:
         account = alpaca_client.get_account()
         
-        # ✅ Support dict ou objet
         if isinstance(account, dict):
             portfolio_value = float(account.get('portfolio_value', 0))
             cash = float(account.get('cash', 0))
@@ -313,7 +309,6 @@ def api_account():
         
     except Exception as e:
         logger.error(f"❌ Erreur API account: {e}")
-        # Retourner mock en cas d'erreur
         return jsonify({
             'mock': True,
             'error': str(e),
@@ -326,9 +321,7 @@ def api_account():
 
 @app.route('/api/positions')
 def api_positions():
-    """
-    💼 Récupère les positions Alpaca
-    """
+    """💼 Récupère les positions Alpaca"""
     if not alpaca_client:
         return jsonify({
             'mock': True,
@@ -341,7 +334,6 @@ def api_positions():
         
         result = []
         for pos in positions:
-            # ✅ Support dict ou objet
             if isinstance(pos, dict):
                 result.append({
                     'symbol': pos.get('symbol', ''),
@@ -381,9 +373,7 @@ def api_positions():
 
 @app.route('/api/trades')
 def api_trades():
-    """
-    📊 Récupère les trades depuis PostgreSQL
-    """
+    """📊 Récupère les trades depuis PostgreSQL"""
     days = int(request.args.get('days', 7))
     
     conn = get_db_connection()
@@ -399,7 +389,6 @@ def api_trades():
     try:
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
-        # Trades des N derniers jours
         query = """
             SELECT 
                 id,
@@ -422,7 +411,6 @@ def api_trades():
         cursor.close()
         conn.close()
         
-        # Convertir en dict standard
         result = []
         for trade in trades:
             result.append({
@@ -450,6 +438,158 @@ def api_trades():
             'trades': [],
             'count': 0
         }), 200
+
+
+# ========== V8 ORACLE ENDPOINTS ==========
+
+@app.route('/api/v8/predict/<ticker>')
+def api_v8_predict(ticker):
+    """
+    🤖 Prédiction V8 Oracle pour un ticker
+    """
+    if not v8_oracle:
+        return jsonify({
+            'error': 'V8 Oracle non disponible',
+            'message': 'Les modèles V8 ne sont pas chargés sur ce serveur'
+        }), 503
+    
+    try:
+        ticker = ticker.upper()
+        result = v8_oracle.predict_multi_horizon(ticker)
+        
+        if 'error' in result:
+            return jsonify(result), 404
+        
+        logger.info(f"✅ V8 prediction pour {ticker}: {result.get('ensemble', {}).get('prediction', 'N/A')}")
+        return jsonify(clean_for_json(result))
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur V8 predict {ticker}: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/v8/batch')
+def api_v8_batch():
+    """
+    📊 Analyse batch V8 Oracle pour plusieurs tickers
+    """
+    if not v8_oracle:
+        return jsonify({
+            'error': 'V8 Oracle non disponible'
+        }), 503
+    
+    try:
+        tickers_param = request.args.get('tickers', 'AAPL,NVDA,MSFT')
+        tickers = [t.strip().upper() for t in tickers_param.split(',')]
+        
+        logger.info(f"📊 Batch analysis pour {len(tickers)} tickers: {tickers}")
+        
+        results = {}
+        bullish = 0
+        bearish = 0
+        high_confidence = 0
+        
+        for ticker in tickers:
+            try:
+                prediction = v8_oracle.predict_multi_horizon(ticker)
+                
+                if 'error' not in prediction:
+                    results[ticker] = prediction
+                    
+                    ensemble = prediction.get('ensemble', {})
+                    if ensemble.get('prediction') == 'UP':
+                        bullish += 1
+                    elif ensemble.get('prediction') == 'DOWN':
+                        bearish += 1
+                    
+                    if ensemble.get('confidence', 0) >= 75:
+                        high_confidence += 1
+                else:
+                    results[ticker] = {'error': prediction['error']}
+                    
+            except Exception as e:
+                logger.error(f"❌ Erreur {ticker}: {e}")
+                results[ticker] = {'error': str(e)}
+        
+        summary = {
+            'total': len(tickers),
+            'bullish': bullish,
+            'bearish': bearish,
+            'high_confidence_count': high_confidence
+        }
+        
+        return jsonify({
+            'tickers': clean_for_json(results),
+            'summary': summary,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur batch: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/v8/recommend/<ticker>')
+def api_v8_recommend(ticker):
+    """
+    🎯 Recommandation de trading V8 avec gestion du risque
+    """
+    if not v8_oracle:
+        return jsonify({'error': 'V8 Oracle non disponible'}), 503
+    
+    try:
+        ticker = ticker.upper()
+        risk = request.args.get('risk', 'moderate')
+        
+        # Seuils de confiance selon profil de risque
+        thresholds = {
+            'conservative': 80,
+            'moderate': 65,
+            'aggressive': 50
+        }
+        
+        threshold = thresholds.get(risk, 65)
+        
+        prediction = v8_oracle.predict_multi_horizon(ticker)
+        
+        if 'error' in prediction:
+            return jsonify(prediction), 404
+        
+        ensemble = prediction.get('ensemble', {})
+        pred = ensemble.get('prediction', 'HOLD')
+        conf = ensemble.get('confidence', 0)
+        agreement = ensemble.get('agreement', 'WEAK')
+        
+        # Déterminer l'action
+        if conf >= threshold:
+            if pred == 'UP':
+                action = 'BUY'
+                strength = 'STRONG' if agreement == 'STRONG' else 'MODERATE'
+            elif pred == 'DOWN':
+                action = 'SELL'
+                strength = 'STRONG' if agreement == 'STRONG' else 'MODERATE'
+            else:
+                action = 'HOLD'
+                strength = 'WEAK'
+        else:
+            action = 'HOLD'
+            strength = 'WEAK'
+        
+        return jsonify({
+            'ticker': ticker,
+            'action': action,
+            'strength': strength,
+            'prediction': pred,
+            'confidence': conf,
+            'agreement': agreement,
+            'risk_profile': risk,
+            'threshold_used': threshold,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur recommendation: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
 
 
 # ========== ROUTE CHART PRINCIPALE ==========
@@ -544,29 +684,23 @@ def api_chart_data(ticker):
         return jsonify({'error': str(e)}), 500
 
 
-# ========== PRO TECHNICAL ANALYSIS ROUTE ==========
+# ========== PRO TECHNICAL ANALYSIS ==========
 
 @app.route('/api/pro-analysis/<ticker>')
 def api_pro_analysis(ticker):
-    """
-    Analyse technique professionnelle avec les 5 indicateurs clés
-    """
     if not pro_analyzer:
         return jsonify({'error': 'Pro analyzer non disponible'}), 503
     
     try:
         ticker = ticker.upper()
-        period = request.args.get('period', '1y')  # Plus de données pour SMA 200
+        period = request.args.get('period', '1y')
         
         df = yf.download(ticker, period=period, progress=False)
         
         if df.empty:
             return jsonify({'error': 'Aucune donnée'}), 404
         
-        # Analyse complète
         report = pro_analyzer.analyze(df, ticker=ticker)
-        
-        # Convertir en dict JSON-friendly
         result = clean_for_json(report)
         
         logger.info(f"✅ Pro analysis pour {ticker}: {report.overall_signal} ({report.confidence:.0f}%)")
@@ -578,7 +712,7 @@ def api_pro_analysis(ticker):
         return jsonify({'error': str(e)}), 500
 
 
-# ========== CHART TOOLS ROUTES ==========
+# ========== CHART TOOLS ==========
 
 @app.route('/api/chart/<ticker>/fibonacci')
 def api_fibonacci(ticker):
@@ -635,7 +769,7 @@ def api_support_resistance(ticker):
         return jsonify({'error': str(e)}), 500
 
 
-# ========== TRADER PRO ROUTES ==========
+# ========== TRADER PRO ==========
 
 @app.route('/api/patterns/<ticker>')
 def api_patterns(ticker):
@@ -666,7 +800,7 @@ def api_multi_timeframe(ticker):
         return jsonify({'error': str(e)}), 500
 
 
-# ========== 5 TOOLS ROUTES ==========
+# ========== 5 TOOLS ==========
 
 @app.route('/api/screener', methods=['POST'])
 def api_screener():
@@ -866,20 +1000,23 @@ if __name__ == '__main__':
     host = os.getenv('DASHBOARD_HOST', '0.0.0.0')
     port = int(os.getenv('DASHBOARD_PORT', 5000))
     print("\n" + "="*70)
-    print("🌐 PLOUTOS - V8 + TRADER PRO + 5 TOOLS + CHART PRO + PRO ANALYSIS + WATCHLISTS")
+    print("🌐 PLOUTOS - V8 ORACLE + TRADER PRO + 5 TOOLS + WATCHLISTS")
     print("="*70)
     print(f"\n🚀 http://{host}:{port}")
+    if v8_oracle:
+        print("🤖 V8 ORACLE: /api/v8/predict/<ticker>, /api/v8/batch")
     if TOOLS_AVAILABLE:
         print("🛠️ 5 TOOLS activés")
     if CHART_TOOLS_AVAILABLE:
         print("📈 CHART PRO: Fibonacci / Volume Profile / S/R")
     if PRO_ANALYZER_AVAILABLE:
-        print("🎯 PRO ANALYSIS: 5 indicateurs clés + divergences + plan de trading")
+        print("🎯 PRO ANALYSIS: 5 indicateurs clés + divergences")
     if WATCHLISTS_AVAILABLE:
         print("📊 WATCHLISTS: 20 listes (US + FR + International)")
     print("\n✅ Pages: /, /chart, /tools")
-    print("🩺 Test: /api/health")
+    print("🩺 Health: /api/health")
     print("📊 Watchlists: /api/watchlists")
     print("💰 Trading: /api/account, /api/positions, /api/trades")
+    print("🤖 V8 Oracle: /api/v8/predict/<TICKER>, /api/v8/batch?tickers=...")
     print("\n" + "="*70 + "\n")
     app.run(host=host, port=port, debug=False)
