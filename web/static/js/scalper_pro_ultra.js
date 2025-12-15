@@ -101,7 +101,7 @@ class ScalperProUltra {
 
     timeframeToPeriod(tf) {
         const mapping = {
-            '1m': '1d',
+            '1m': '5d',   // FIX: au lieu de '1d' qui retourne 1 seule barre
             '5m': '5d',
             '15m': '1mo',
             '1h': '3mo',
@@ -209,8 +209,9 @@ class ScalperProUltra {
 
     async loadHeatmap() {
         try {
+            // 🔥 FIX: Utiliser period=5d au lieu de 1d pour avoir assez de données
             const promises = this.watchlist.slice(0, 20).map(ticker => 
-                fetch(`/api/chart/${ticker}?period=1d`)
+                fetch(`/api/chart/${ticker}?period=5d`)
                     .then(r => r.json())
                     .catch(err => ({ success: false, symbol: ticker }))
             );
