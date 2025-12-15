@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>⚡ Scalper Pro TradingView - Ploutos</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    
+    <!-- TradingView Advanced Charts -->
+    <script src="https://s3.tradingview.com/tv.js"></script>
+    
+    <!-- Socket.IO pour WebSocket -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    
+    <style>
+        :root {
+            --bg-primary: #0a0e27;
+            --bg-secondary: #151b3d;
+            --bg-tertiary: #1e2749;
+            --accent-green: #00ff88;
+            --accent-red: #ff3366;
+            --accent-blue: #00d4ff;
+            --accent-gold: #ffd700;
+            --text-primary: #e5e7eb;
+            --text-secondary: #9ca3af;
+            --border-color: #2d3748;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        .mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* ========== TOOLBAR ========== */
+        .toolbar {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding: 8px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 56px;
+        }
+
+        .toolbar-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .logo {
+            font-size: 18px;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent-green), var(--accent-blue));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .ticker-input {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 8px 14px;
+            border-radius: 6px;
+            width: 140px;
+            font-size: 15px;
+            text-transform: uppercase;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+
+        .ticker-input:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+        }
+
+        .timeframe-pills {
+            display: flex;
+            gap: 4px;
+            background: var(--bg-tertiary);
+            padding: 3px;
+            border-radius: 6px;
+        }
+
+        .timeframe-pill {
+            padding: 6px 14px;
+            font-size: 12px;
+            font-weight: 600;
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .timeframe-pill.active {
+            background: var(--accent-blue);
+            color: var(--bg-primary);
+        }
+
+        .toolbar-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .ws-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            font-size: 12px;
+        }
+
+        .ws-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-green);
+            animation: pulse 2s infinite;
+        }
+
+        .ws-dot.disconnected {
+            background: var(--accent-red);
+            animation: none;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .action-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-buy {
+            background: var(--accent-green);
+            color: var(--bg-primary);
+        }
+
+        .btn-buy:hover {
+            background: #00cc6a;
+            transform: translateY(-1px);
+        }
+
+        .btn-sell {
+            background: var(--accent-red);
+            color: white;
+        }
+
+        .btn-sell:hover {
+            background: #cc2952;
+            transform: translateY(-1px);
+        }
+
+        /* ========== MAIN LAYOUT ========== */
+        .main-container {
+            display: grid;
+            grid-template-columns: 1fr 350px;
+            grid-template-rows: 1fr auto;
+            gap: 8px;
+            padding: 8px;
+            height: calc(100vh - 56px);
+        }
+
+        .panel {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .panel-header {
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--bg-tertiary);
+        }
+
+        .panel-title {
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .panel-body {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        /* ========== CHART PANEL ========== */
+        .chart-panel {
+            grid-column: 1;
+            grid-row: 1;
+        }
+
+        #tradingview_chart {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* ========== SIDEBAR ========== */
+        .sidebar {
+            grid-column: 2;
+            grid-row: 1 / 3;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        /* ========== PRICE TICKER ========== */
+        .price-ticker {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+        }
+
+        .ticker-symbol {
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .ticker-price {
+            font-size: 32px;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+            margin-bottom: 4px;
+            color: var(--accent-blue);
+        }
+
+        .ticker-change {
+            font-size: 16px;
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .ticker-change.positive {
+            color: var(--accent-green);
+        }
+
+        .ticker-change.negative {
+            color: var(--accent-red);
+        }
+
+        .ticker-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .stat-item {
+            padding: 8px;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+        }
+
+        .stat-label {
+            font-size: 10px;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+            text-transform: uppercase;
+        }
+
+        .stat-value {
+            font-size: 14px;
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* ========== INDICATORS ========== */
+        .indicators-panel {
+            flex: 1;
+        }
+
+        .indicator-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .indicator-row:last-child {
+            border-bottom: none;
+        }
+
+        .indicator-name {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+
+        .indicator-value {
+            font-size: 14px;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-primary);
+        }
+
+        .indicator-signal {
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .signal-buy {
+            background: rgba(0, 255, 136, 0.2);
+            color: var(--accent-green);
+        }
+
+        .signal-sell {
+            background: rgba(255, 51, 102, 0.2);
+            color: var(--accent-red);
+        }
+
+        .signal-neutral {
+            background: rgba(156, 163, 175, 0.2);
+            color: var(--text-secondary);
+        }
+
+        /* ========== ORDER PANEL ========== */
+        .order-panel {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+        }
+
+        .order-tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 12px;
+        }
+
+        .order-tab {
+            flex: 1;
+            padding: 8px;
+            background: var(--bg-tertiary);
+            border: none;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .order-tab.active {
+            background: var(--accent-blue);
+            color: var(--bg-primary);
+        }
+
+        .order-input-group {
+            margin-bottom: 10px;
+        }
+
+        .order-label {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+            text-transform: uppercase;
+        }
+
+        .order-input {
+            width: 100%;
+            padding: 8px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+        }
+
+        .order-input:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+        }
+
+        .order-submit {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            margin-top: 12px;
+        }
+
+        .order-submit.buy {
+            background: var(--accent-green);
+            color: var(--bg-primary);
+        }
+
+        .order-submit.sell {
+            background: var(--accent-red);
+            color: white;
+        }
+
+        /* ========== STATUS BAR ========== */
+        .status-bar {
+            grid-column: 1;
+            grid-row: 2;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0 16px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 12px;
+        }
+
+        /* ========== SCROLLBAR ========== */
+        .panel-body::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .panel-body::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+
+        .panel-body::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 3px;
+        }
+
+        /* ========== LOADING ========== */
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(10, 14, 39, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid var(--border-color);
+            border-top-color: var(--accent-blue);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <!-- TOOLBAR -->
+    <div class="toolbar">
+        <div class="toolbar-left">
+            <div class="logo">⚡ SCALPER PRO TRADINGVIEW</div>
+            
+            <input type="text" class="ticker-input mono" id="tickerInput" value="AAPL" placeholder="TICKER">
+            
+            <div class="timeframe-pills">
+                <button class="timeframe-pill" data-tf="1">1</button>
+                <button class="timeframe-pill active" data-tf="5">5</button>
+                <button class="timeframe-pill" data-tf="15">15</button>
+                <button class="timeframe-pill" data-tf="60">1H</button>
+                <button class="timeframe-pill" data-tf="240">4H</button>
+                <button class="timeframe-pill" data-tf="D">D</button>
+            </div>
+        </div>
+        
+        <div class="toolbar-right">
+            <div class="ws-status">
+                <div class="ws-dot" id="wsDot"></div>
+                <span class="mono" id="wsStatus">Connected</span>
+            </div>
+            
+            <button class="action-btn btn-buy" id="btnQuickBuy">
+                <i class="bi bi-arrow-up-circle-fill"></i> QUICK BUY
+            </button>
+            
+            <button class="action-btn btn-sell" id="btnQuickSell">
+                <i class="bi bi-arrow-down-circle-fill"></i> QUICK SELL
+            </button>
+        </div>
+    </div>
+
+    <!-- MAIN CONTAINER -->
+    <div class="main-container">
+        <!-- CHART PANEL -->
+        <div class="panel chart-panel">
+            <div id="tradingview_chart"></div>
+        </div>
+
+        <!-- SIDEBAR -->
+        <div class="sidebar">
+            <!-- PRICE TICKER -->
+            <div class="price-ticker">
+                <div class="ticker-symbol mono" id="tickerSymbol">AAPL</div>
+                <div class="ticker-price" id="tickerPrice">$0.00</div>
+                <div class="ticker-change positive" id="tickerChange">+0.00 (+0.00%)</div>
+                
+                <div class="ticker-stats">
+                    <div class="stat-item">
+                        <div class="stat-label">Volume</div>
+                        <div class="stat-value" id="statVolume">0</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">High</div>
+                        <div class="stat-value" id="statHigh">$0.00</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Low</div>
+                        <div class="stat-value" id="statLow">$0.00</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Open</div>
+                        <div class="stat-value" id="statOpen">$0.00</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- INDICATORS -->
+            <div class="panel indicators-panel">
+                <div class="panel-header">
+                    <div class="panel-title">
+                        <i class="bi bi-speedometer2"></i> Indicateurs
+                    </div>
+                </div>
+                <div class="panel-body" id="indicatorsBody">
+                    <div class="indicator-row">
+                        <span class="indicator-name">RSI (14)</span>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span class="indicator-value" id="indRSI">--</span>
+                            <span class="indicator-signal signal-neutral" id="sigRSI">NEUTRE</span>
+                        </div>
+                    </div>
+                    <div class="indicator-row">
+                        <span class="indicator-name">MACD</span>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span class="indicator-value" id="indMACD">--</span>
+                            <span class="indicator-signal signal-neutral" id="sigMACD">NEUTRE</span>
+                        </div>
+                    </div>
+                    <div class="indicator-row">
+                        <span class="indicator-name">Stochastique</span>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span class="indicator-value" id="indSTOCH">--</span>
+                            <span class="indicator-signal signal-neutral" id="sigSTOCH">NEUTRE</span>
+                        </div>
+                    </div>
+                    <div class="indicator-row">
+                        <span class="indicator-name">ADX (Trend)</span>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span class="indicator-value" id="indADX">--</span>
+                            <span class="indicator-signal signal-neutral" id="sigADX">FAIBLE</span>
+                        </div>
+                    </div>
+                    <div class="indicator-row">
+                        <span class="indicator-name">ATR (Volatilité)</span>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span class="indicator-value" id="indATR">--</span>
+                            <span class="indicator-signal signal-neutral">VOL</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ORDER PANEL -->
+            <div class="order-panel">
+                <div class="order-tabs">
+                    <button class="order-tab active" data-type="market">Market</button>
+                    <button class="order-tab" data-type="limit">Limit</button>
+                    <button class="order-tab" data-type="stop">Stop</button>
+                </div>
+                
+                <div class="order-input-group">
+                    <div class="order-label">Quantité</div>
+                    <input type="number" class="order-input" id="orderQty" value="10" min="1">
+                </div>
+                
+                <div class="order-input-group" id="limitPriceGroup" style="display: none;">
+                    <div class="order-label">Prix Limite</div>
+                    <input type="number" class="order-input" id="orderLimitPrice" step="0.01">
+                </div>
+                
+                <button class="order-submit buy" id="btnSubmitBuy">
+                    <i class="bi bi-cart-plus"></i> ACHETER
+                </button>
+                <button class="order-submit sell" id="btnSubmitSell" style="margin-top: 8px;">
+                    <i class="bi bi-cart-dash"></i> VENDRE
+                </button>
+            </div>
+        </div>
+
+        <!-- STATUS BAR -->
+        <div class="status-bar">
+            <div class="mono" style="color: var(--text-secondary);">
+                <span id="serverTime">--:--:--</span> | 
+                Latency: <span id="latency" style="color: var(--accent-green);">0ms</span>
+            </div>
+            <div class="mono" style="color: var(--text-secondary);">
+                Account: <span style="color: var(--accent-gold);">$10,000</span> | 
+                P&L: <span id="pnlToday" class="positive">+$0.00</span>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/scalper_tradingview.js') }}"></script>
+</body>
+</html>
