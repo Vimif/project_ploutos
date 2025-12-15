@@ -87,6 +87,15 @@ except Exception as e:
     LIVE_TRADING_AVAILABLE = False
     logger.error(f"❌ Live Trading non disponible: {e}")
 
+# 🔥 LIVE WATCHLISTS
+try:
+    from web.routes.live_watchlists import live_watchlists_bp
+    LIVE_WATCHLISTS_AVAILABLE = True
+    logger.info("✅ Live Watchlists module chargé")
+except Exception as e:
+    LIVE_WATCHLISTS_AVAILABLE = False
+    logger.error(f"❌ Live Watchlists non disponibles: {e}")
+
 try:
     from trading.alpaca_client import AlpacaClient
     ALPACA_AVAILABLE = True
@@ -168,6 +177,10 @@ if WATCHLISTS_AVAILABLE:
 if LIVE_TRADING_AVAILABLE:
     app.register_blueprint(live_bp)
     logger.info("✅ Live Trading blueprint enregistré")
+
+if LIVE_WATCHLISTS_AVAILABLE:
+    app.register_blueprint(live_watchlists_bp)
+    logger.info("✅ Live Watchlists blueprint enregistré")
 
 alpaca_client = None
 if ALPACA_AVAILABLE:
@@ -281,5 +294,28 @@ def live_page():
     return render_template('live.html')
 
 
-# ... (Le reste du code app.py reste inchangé) ...
-# [TOUS LES AUTRES ENDPOINTS RESTENT IDENTIQUES]
+@app.route('/api/health')
+def api_health():
+    return jsonify({
+        'status': 'healthy',
+        'modules': {
+            'live_trading': LIVE_TRADING_AVAILABLE,
+            'live_watchlists': LIVE_WATCHLISTS_AVAILABLE,
+            'alpaca': alpaca_client is not None
+        }
+    }), 200
+
+
+if __name__ == '__main__':
+    import os
+    host = os.getenv('DASHBOARD_HOST', '0.0.0.0')
+    port = int(os.getenv('DASHBOARD_PORT', 5000))
+    print("\n" + "="*70)
+    print("🌐 PLOUTOS - V8 ORACLE + LIVE TRADING + WATCHLISTS")
+    print("="*70)
+    print(f"\n🚀 http://{host}:{port}")
+    print(f"🔥 Live Trading: http://{host}:{port}/live")
+    if LIVE_WATCHLISTS_AVAILABLE:
+        print(f"📊 9 Watchlists prédéfinies disponibles")
+    print("\n" + "="*70 + "\n")
+    app.run(host=host, port=port, debug=False)
