@@ -1,24 +1,38 @@
 # Training Guide
 
 ## 1. Prerequisites
-Ensure you have the data file `SnP_daily_update.csv` in the project root.
+Ensure you have the data file at `data/sp500.csv`.
+If not, run the downloader:
+```bash
+python scripts/download.py
+```
 
 ## 2. Launching Training
-Use the following command to start training on your custom data:
+To start the training process with default settings:
 
 ```bash
 # Windows (PowerShell)
-$env:PYTHONPATH="."; python scripts/train.py --data SnP_daily_update.csv
+$env:PYTHONPATH="."; python scripts/train.py
+```
+
+### Optional Arguments
+*   `--data`: Path to custom dataset (default: `data/sp500.csv`).
+*   `--timesteps`: Total steps (default: `50,000,000`).
+*   `--device`: `cuda:0` or `cpu`.
+*   `--config`: Configuration file (default: `config/training.yaml`).
+
+**Example:**
+```bash
+$env:PYTHONPATH="."; python scripts/train.py --timesteps 1000000 --device cpu
 ```
 
 ## 3. Monitoring
-Logs are saved to `logs/train_v6_final.log`.
-You can also view TensorBoard logs:
-```bash
-tensorboard --logdir logs/tensorboard
-```
+*   **Console**: Live progress bars and metrics.
+*   **Logs**: Saved in `logs/train.log`.
+*   **TensorBoard**: Visualize learning curves.
+    ```bash
+    tensorboard --logdir logs/tensorboard
+    ```
 
-## 4. Key Parameters
-- `--timesteps`: Total training steps (default: 50M).
-- `--device`: GPU device (default: `cuda:0`).
-- `--output`: Directory for saving models.
+## 4. Models
+Checkpoints are saved automatically in the `models/` directory.

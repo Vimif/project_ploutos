@@ -1,22 +1,27 @@
-# Ploutos Trading Bot V6 - Custom Data Edition
+# Ploutos Trading Bot
 
-## Overview
-This project is an advanced AI trading bot using Reinforcement Learning (PPO).
-This version ("Custom Data Edition") is specifically configured to train on a fixed, high-frequency dataset (`SnP_daily_update.csv`) to learn intraday trading strategies.
+Ploutos is an advanced AI trading system powered by Reinforcement Learning (PPO). It is designed to learn intraday trading strategies using high-frequency historical data.
 
-## Key Features
-- **Algorithm**: PPO (Proximal Policy Optimization) with Stable-Baselines3.
-- **Data**: Trains on `SnP_daily_update.csv` (1h timeframe).
-- **Environment**: Custom Gymnasium environment (`UniversalTradingEnvV6BetterTiming`).
-- **Safety**: Gradient clipping, NaN detection, and action space stability wrappers.
+## 🚀 Features
+*   **Core**: Proximal Policy Optimization (PPO) via `Stable-Baselines3`.
+*   **Environment**: Custom Gymnasium environment `TradingEnvironment` (v6).
+*   **Data**: Optimized for S&P 500 hourly data (`data/sp500.csv`).
+*   **Architecture**: Modular design with `src/ploutos` package.
 
-## Structure
-- `src/ploutos/`: Core package (Environment, Features, Rewards).
-- `scripts/`: Entry points (`train.py`, `download.py`).
-- `config/`: Configuration files (`training.yaml`).
-- `models/`: Saved models and checkpoints.
-- `logs/`: Training logs and TensorBoard data.
+## 📂 Structure
+```text
+project_ploutos/
+├── src/ploutos/        # Core package (Env, Features, Logic)
+├── scripts/            # Entry points
+│   ├── train.py        # Main training script
+│   └── download.py     # Data download utility
+├── config/             # Configuration files
+├── data/               # Datasets (e.g., sp500.csv)
+├── models/             # Checkpoints & Final Models
+└── logs/               # TensorBoard & Text logs
+```
 
-## Quick Links
-- [Installation Guide](INSTALL.md)
-- [Training Guide](TRAINING.md)
+## ⚡ Quick Start
+1.  **Install**: Follow [INSTALL.md](INSTALL.md).
+2.  **Download Data**: `python scripts/download.py` (or place your CSV in `data/sp500.csv`).
+3.  **Train**: See [TRAINING.md](TRAINING.md).
