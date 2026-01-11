@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Ploutos V6 Extended - FINAL WORKING Training Script (STABLE VERSION)
+Ploutos Extended - FINAL WORKING Training Script (STABLE VERSION)
 ====================================================================
 
 Fixes:
@@ -12,9 +12,9 @@ Fixes:
 6. **Numerical stability** (gradient clipping, NaN detection, reward bounds)
 
 Usage:
-    python scripts/train_v6_final.py \
-        --config config/training_v6_extended_optimized.yaml \
-        --output models/v6_final_50m \
+    python scripts/train.py \
+        --config config/training.yaml \
+        --output models/ploutos_production \
         --device cuda:0 \
         --timesteps 50000000
 """
@@ -24,7 +24,14 @@ import sys
 import yaml
 import logging
 import argparse
+import warnings
+
 import pandas as pd
+
+# Suppress SB3 Pre-Check Warning for GPU/MlpPolicy
+# Reason: We have 43k+ features, so GPU IS efficient for this MLP.
+warnings.filterwarnings("ignore", message="You are trying to run PPO on the GPU")
+
 import numpy as np
 from pathlib import Path
 import gymnasium as gym
@@ -40,7 +47,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('logs/train_v6_final.log'),
+        logging.FileHandler('logs/train.log'),
         logging.StreamHandler()
     ]
 )
@@ -49,7 +56,7 @@ logger = logging.getLogger(__name__)
 
 class NaNDetectionCallback(BaseCallback):
     """
-    Détecte les NaN/Inf et alerte
+    Detects NaN/Inf and alerts
     """
     def __init__(self, verbose=0):
         super().__init__(verbose)
@@ -63,16 +70,16 @@ class NaNDetectionCallback(BaseCallback):
         for param in self.model.policy.parameters():
             if torch.isnan(param).any() or torch.isinf(param).any():
                 self.nan_count += 1
-                logger.warning(f"⚠️  NaN/Inf detected in policy parameters (count={self.nan_count})")
+                logger.warning(f"  NaN/Inf detected in policy parameters (count={self.nan_count})")
                 if self.nan_count > 5:
-                    logger.error("❌ Too many NaN/Inf detected. Stopping training.")
+                    logger.error("  Too many NaN/Inf detected. Stopping training.")
                     return False
         return True
 
 
 class StableWrapper(gym.Wrapper):
     """
-    Wrapper pour stabiliser les observations et récompenses
+    Wrapper to stabilize observations and rewards
     """
     def __init__(self, env):
         super().__init__(env)
@@ -261,9 +268,9 @@ def make_env(rank, seed=0, data=None):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Train Ploutos V6 (Stable)')
+    parser = argparse.ArgumentParser(description='Train Ploutos (Stable)')
     parser.add_argument('--config', default='config/training.yaml')
-    parser.add_argument('--output', default='models/v6_final_50m')
+    parser.add_argument('--output', default='models/ploutos_production')
     parser.add_argument('--device', default='cuda:0')
     parser.add_argument('--timesteps', type=int, default=50000000)
     parser.add_argument('--seed', type=int, default=42)
@@ -276,7 +283,7 @@ def main():
     Path('logs/tensorboard').mkdir(parents=True, exist_ok=True)
     
     logger.info("======================================================================")
-    logger.info("  PLOUTOS V6 - TRAINING START (STABLE VERSION)")
+    logger.info("  PLOUTOS - TRAINING START (STABLE VERSION)")
     logger.info("======================================================================")
     
     # Load config
@@ -297,7 +304,7 @@ def main():
         make_env(i, seed=args.seed, data=data_map)
         for i in range(n_envs)
     ])
-    logger.info("✅ Environments created")
+    logger.info("  Environments created")
     
     # Check action space
     if hasattr(env, 'single_action_space'):
@@ -312,10 +319,10 @@ def main():
     use_sde = isinstance(action_space, gym.spaces.Box)
     
     if not use_sde:
-        logger.info("⚠️  Discrete/MultiDiscrete action space detected - disabling SDE")
+        logger.info("  Discrete/MultiDiscrete action space detected - disabling SDE")
         sde_sample_freq = -1
     else:
-        logger.info("✅ Continuous action space detected - SDE enabled")
+        logger.info("  Continuous action space detected - SDE enabled")
         sde_sample_freq = 4
     
     # Create model with stability tweaks
@@ -323,6 +330,20 @@ def main():
     
     # Extract training params
     train_cfg = config.get('training', {})
+
+    # Determine device: Config > Vars > Args (default cuda:0)
+    if 'device' in train_cfg:
+        device = train_cfg['device']
+        logger.info(f"Device selected from config: {device}")
+    else:
+        device = args.device
+        logger.info(f"Device selected from arguments: {device}")
+    
+    # Verify CUDA availability if requested
+    if 'cuda' in device and not torch.cuda.is_available():
+        logger.warning(f"⚠️  Requesting {device} but CUDA is not available! Fallback to CPU.")
+        device = 'cpu'
+
     
     # Parse learning_rate as float
     learning_rate = train_cfg.get('learning_rate', 1e-4)
@@ -331,7 +352,7 @@ def main():
     
     # CRITICAL: Reduce learning rate further for stability
     learning_rate = min(learning_rate, 5e-5)  # Cap at 5e-5
-    logger.info(f"📊 Learning rate: {learning_rate}")
+    logger.info(f"  Learning rate: {learning_rate}")
     
     model = PPO(
         'MlpPolicy',
@@ -348,12 +369,13 @@ def main():
         max_grad_norm=0.5,  # CRITICAL: Gradient clipping
         use_sde=use_sde,
         sde_sample_freq=sde_sample_freq,
-        tensorboard_log='logs/tensorboard',
-        device=args.device,
+        tensorboard_log="logs/tensorboard",
+        device=device,
         seed=args.seed,
         verbose=1,
     )
-    logger.info("✅ Model created")
+    logger.info("  Model created")
+    logger.info(f"  PPO Model Device: {model.device}")
     
     # Train with NaN detection
     logger.info(f"Starting training ({args.timesteps:,} steps)...")
@@ -370,22 +392,22 @@ def main():
                 ),
                 NaNDetectionCallback(verbose=1),
             ],
-            tb_log_name='v6_training',
+            tb_log_name='ploutos_training',
             progress_bar=True,
         )
         
-        logger.info("="*70)
-        logger.info("✅ TRAINING COMPLETED!")
+        logger.info("======================================================================")
+        logger.info("  TRAINING COMPLETED!")
         model.save(str(output_dir / 'final_model'))
-        logger.info(f"✅ Model saved to {output_dir / 'final_model'}")
+        logger.info(f"  Model saved to {output_dir / 'final_model'}")
         
     except KeyboardInterrupt:
-        logger.warning("⚠️  Training interrupted by user")
+        logger.warning("  Training interrupted by user")
         model.save(str(output_dir / 'interrupted_model'))
         logger.info(f"Model saved to {output_dir / 'interrupted_model'}")
         
     except Exception as e:
-        logger.error(f"❌ Error: {e}")
+        logger.error(f"Error: {e}")
         raise
     
     finally:

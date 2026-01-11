@@ -1,16 +1,16 @@
-# core/advanced_features_v2.py
-"""🚀 FEATURES V2 - Optimisées pour détecter BONS POINTS D'ENTRÉE
+# core/feature_pipeline.py
+"""FEATURES - Optimized for Entry Points
 
-Problème identifié: IA achète trop tard (85% buy high)
+Problem: AI buys too late (85% buy high)
 
-Solution: Features qui détectent:
-- Support/Resistance dynamiques
-- Début de mouvement (pas fin)
-- Mean reversion opportunities
-- Volume confirmation
-- Divergences RSI/Prix
+Solution: Features to detect:
+- Dynamic Support/Resistance
+- Momentum Start (not end)
+- Mean Reversion Opportunities
+- Volume Confirmation
+- RSI/Price Divergences
 
-Auteur: Ploutos AI Team
+Author: Ploutos AI Team
 Date: Dec 2025
 """
 
@@ -23,7 +23,7 @@ warnings.filterwarnings('ignore')
 
 class FeaturePipeline:
     """
-    Features avancées pour timing optimal
+    Advanced features for optimal timing
     """
     
     def __init__(self):
@@ -31,7 +31,7 @@ class FeaturePipeline:
     
     def calculate_all_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Calcule TOUTES les features optimisées
+        Calculate ALL optimized features
         """
         df = df.copy()
         
@@ -72,9 +72,9 @@ class FeaturePipeline:
         return df
     
     def _calculate_support_resistance(self, df: pd.DataFrame) -> pd.DataFrame:
-        """✅ Support/Resistance DYNAMIQUES
+        """Dynamic Support/Resistance
         
-        Détecte niveaux clés pour identifier bons points d'entrée
+        Detects key levels to identify good entry points
         """
         # Lookback windows
         windows = [20, 50, 100]
@@ -100,9 +100,9 @@ class FeaturePipeline:
         return df
     
     def _calculate_mean_reversion(self, df: pd.DataFrame) -> pd.DataFrame:
-        """✅ MEAN REVERSION signals
+        """MEAN REVERSION signals
         
-        Détecte quand prix s'éloigne trop de la moyenne = opportunité
+        Detects when price moves too far from mean = opportunity
         """
         windows = [20, 50]
         
@@ -129,9 +129,9 @@ class FeaturePipeline:
         return df
     
     def _calculate_volume_patterns(self, df: pd.DataFrame) -> pd.DataFrame:
-        """✅ VOLUME confirmation
+        """VOLUME confirmation
         
-        Volume confirme la force du mouvement
+        Volume confirms the strength of the movement
         """
         # Volume moyenne
         df['vol_ma_20'] = df['Volume'].rolling(20, min_periods=1).mean()
@@ -161,9 +161,9 @@ class FeaturePipeline:
         return df
     
     def _calculate_price_action(self, df: pd.DataFrame) -> pd.DataFrame:
-        """✅ PRICE ACTION patterns
+        """PRICE ACTION patterns
         
-        Patterns de chandeliers pour détecter reversals
+        Candlestick patterns to detect reversals
         """
         # Body size
         df['body'] = abs(df['Close'] - df['Open'])
@@ -208,9 +208,9 @@ class FeaturePipeline:
         return df
     
     def _calculate_divergences(self, df: pd.DataFrame) -> pd.DataFrame:
-        """✅ DIVERGENCES RSI/Prix
+        """DIVERGENCES RSI/Price
         
-        Divergence = signal fort de reversal
+        Divergence = strong reversal signal
         """
         # RSI
         period = 14
@@ -252,7 +252,7 @@ class FeaturePipeline:
         return df
     
     def _calculate_bollinger_patterns(self, df: pd.DataFrame) -> pd.DataFrame:
-        """✅ BOLLINGER BANDS patterns
+        """BOLLINGER BANDS patterns
         
         Squeeze, breakout, etc.
         """
@@ -283,9 +283,9 @@ class FeaturePipeline:
         return df
     
     def _calculate_entry_score(self, df: pd.DataFrame) -> pd.DataFrame:
-        """✅ ENTRY SCORE composite
+        """ENTRY SCORE composite
         
-        Combine tous les signaux en un score d'entrée
+        Combined all signals into an entry score
         """
         # BUY score
         buy_signals = [
@@ -331,9 +331,9 @@ class FeaturePipeline:
         return df
     
     def _calculate_enhanced_momentum(self, df: pd.DataFrame) -> pd.DataFrame:
-        """✅ Momentum AMÉLIORÉ
+        """Enhanced Momentum
         
-        Détecte DÉBUT de momentum (pas fin)
+        Detects momentum START (not end)
         """
         # Rate of change
         periods = [5, 10, 20]
@@ -352,7 +352,7 @@ class FeaturePipeline:
         return df
     
     def _calculate_trend_strength(self, df: pd.DataFrame) -> pd.DataFrame:
-        """✅ Force du TREND"""
+        """Trend Strength"""
         # ADX (Average Directional Index)
         period = 14
         
@@ -388,7 +388,7 @@ class FeaturePipeline:
         return df
     
     def _calculate_volatility_regime(self, df: pd.DataFrame) -> pd.DataFrame:
-        """✅ Régime de VOLATILITÉ"""
+        """Volatility Regime"""
         # ATR
         period = 14
         high = df['High']
@@ -411,9 +411,9 @@ class FeaturePipeline:
 
 if __name__ == '__main__':
     # Test
-    print("🧪 Test Features V2...")
+    print("Test Features...")
     
-    # Créer données test
+    # Create test data
     dates = pd.date_range('2024-01-01', periods=100, freq='1h')
     df_test = pd.DataFrame({
         'Open': 100 + np.random.randn(100).cumsum(),
@@ -423,11 +423,11 @@ if __name__ == '__main__':
         'Volume': np.random.randint(1000, 10000, 100)
     }, index=dates)
     
-    # Calculer features
+    # Calculate features
     fe = FeaturePipeline()
     df_result = fe.calculate_all_features(df_test)
     
-    print(f"\n✅ Features calculées: {len(df_result.columns)}")
-    print(f"\nColonnes: {list(df_result.columns)}")
+    print(f"\nFeatures calculated: {len(df_result.columns)}")
+    print(f"\nColumns: {list(df_result.columns)}")
     print(f"\nEntry signals:")
     print(df_result[['Close', 'buy_score', 'sell_score', 'entry_signal']].tail(10))

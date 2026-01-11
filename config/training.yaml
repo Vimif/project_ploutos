@@ -1,30 +1,29 @@
-# Ploutos V6 Extended - Optimized Configuration
+# Ploutos Production - Optimized Configuration
 # ============================================
 #
-# Cette configuration intègre les 7 optimizations critiques:
-# 1. ✅ Adaptive Normalizer (Feature normalization par groupe)
-# 2. ✅ PrioritizedReplayBuffer (Rejoue les experiences surprenantes)
-# 3. ✅ Transformer Encoder (Architecture temporelle avancee)
-# 4. ✅ Feature Importance Analysis (Detecte features inutiles)
-# 5. ✅ Walk-Forward Validator (Validation robuste temporelle)
-# 6. ✅ Ensemble Trader (Vote de 3 modeles)
-# 7. ✅ Comprehensive Drift Detector (5 methodes de detection)
+# This configuration integrates critical optimizations:
+# 1. Adaptive Normalizer (Feature normalization by group)
+# 2. PrioritizedReplayBuffer (Replays surprising experiences)
+# 3. Transformer Encoder (Advanced temporal architecture)
+# 4. Feature Importance Analysis (Detects unused features)
+# 5. Walk-Forward Validator (Robust temporal validation)
+# 6. Ensemble Trader (Vote of 3 models)
+# 7. Comprehensive Drift Detector (5 detection methods)
 #
-# Date: 11 Dec 2025
-# Version: V6.1
+# Date: Jan 2026
+# Version: 1.0 Production
 
 training:
-  # Hyperparameters optimises pour convergence
-  timesteps: 50_000_000          # 50M steps (evolution complete)
-  n_envs: 32                     # Reduit a 32 pour VRAM (RTX 3080)
-  n_steps: 2048                  # Stable avec 32 envs
-  batch_size: 2048               # 32 envs x 2048 steps / 32 = valide
-  learning_rate: 1.0e-4          # Decroissance polynomiale
-  learning_rate_decay: 0.95      # Diviser par 0.95 tous les 1M steps
+  # Hyperparameters optimized for convergence
+  timesteps: 50_000_000          # 50M steps (complete evolution)
+  n_envs: 16                     # Increased to 16 (Memory optimized with vectorization)
+  batch_size: 2048               # 32 envs x 2048 steps / 32 = valid
+  learning_rate: 1.0e-4          # Polynomial decay
+  learning_rate_decay: 0.95      # Divide by 0.95 every 1M steps
   n_epochs: 10
   clip_range: 0.2                # Standard PPO
   clip_range_vf: 0.2             # Value function clip
-  entropy_coef: 0.01             # Reduit progressivement
+  entropy_coef: 0.01             # Reduced progressively
   entropy_coef_decay: 0.99       # Decay entropy over time
   vf_coef: 0.5                   # Value function weight
   max_grad_norm: 0.5             # Gradient clipping
@@ -36,12 +35,12 @@ training:
   device: "cuda:0"               # GPU support
   
   # Checkpoint Strategy
-  save_freq: 500_000             # Sauvegarde tous les 500k steps
-  eval_freq: 1_000_000           # Evaluation tous les 1M steps
+  save_freq: 500_000             # Save every 500k steps
+  eval_freq: 1_000_000           # Evaluation every 1M steps
   
   # Early Stopping
-  early_stop_patience: 5         # 5 evals sans amelioration
-  early_stop_threshold: -10      # Si Sharpe < -10, stop
+  early_stop_patience: 5         # 5 evals without improvement
+  early_stop_threshold: -10      # If Sharpe < -10, stop
   
   # Curriculum Learning: 3 stages
   curriculum_stages:
@@ -55,7 +54,7 @@ training:
       name: "Multi-ETF (Diversification)"
       assets: ["SPY", "QQQ", "VOO", "VTI"]
       timesteps: 20_000_000
-      learning_rate: 5.0e-5        # Reduit progressivement
+      learning_rate: 5.0e-5        # Reduced progressively
     
     stage_3:
       name: "Complex Stocks (Final)"
@@ -72,7 +71,7 @@ environment:
     ml_features: 400             # Autoencoder embeddings
     market_regime: 100           # Clustering + volatility + VIX proxy
     portfolio_state: 150         # Position, cash, drawdown
-    graph_embeddings: 131        # GNN embeddings (optionnel)
+    graph_embeddings: 131        # GNN embeddings (optional)
   
   # Market Microstructure (Realistic costs)
   realistic_costs: true
@@ -94,14 +93,14 @@ environment:
   position_penalty: 0.00001      # Cost of holding position
   max_leverage_penalty: 0.001    # Penalty for high leverage
 
-# OPTIMIZATIONS (7 features avancees)
+# OPTIMIZATIONS (7 advanced features)
 optimizations:
   # 1. Adaptive Normalization
   normalization:
     enabled: true
     type: "adaptive_by_group"
     scaler_type: "robust"         # RobustScaler for outliers
-    save_path: "models/normalizer_v6_extended.pkl"
+    save_path: "models/normalizer_production.pkl"
   
   # 2. Prioritized Experience Replay
   prioritized_replay:
@@ -197,9 +196,9 @@ monitoring:
   # Weights & Biases
   wandb:
     enabled: true
-    project: "Ploutos_Trading_V50_ULTIMATE"
+    project: "Ploutos_Trading_Production"
     entity: null                 # Your W&B entity
-    name: "v6_extended_optimized"
+    name: "ploutos_production_v1"
     tags: ["production", "v6-extended", "50m-steps", "7-optimizations"]
     log_frequency: 1000
     log_model: true
@@ -213,7 +212,7 @@ monitoring:
   logging:
     level: "INFO"
     format: "json"               # json for easy parsing
-    file: "logs/ploutos_v6_extended.log"
+    file: "logs/ploutos_production.log"
     max_size: "500MB"
     backup_count: 10
   
