@@ -11,11 +11,11 @@ This version ("Custom Data Edition") is specifically configured to train on a fi
 - **Safety**: Gradient clipping, NaN detection, and action space stability wrappers.
 
 ## Structure
-- `scripts/`: Training and utility scripts (clean & active).
-- `core/`: Core trading logic and environments.
+- `src/ploutos/`: Core package (Environment, Features, Rewards).
+- `scripts/`: Entry points (`train.py`, `download.py`).
+- `config/`: Configuration files (`training.yaml`).
 - `models/`: Saved models and checkpoints.
 - `logs/`: Training logs and TensorBoard data.
-- `archive_2026/`: Archived files from previous versions.
 
 ## Quick Links
 - [Installation Guide](INSTALL.md)

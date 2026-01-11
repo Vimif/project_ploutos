@@ -7,8 +7,8 @@ Ensure you have the data file `SnP_daily_update.csv` in the project root.
 Use the following command to start training on your custom data:
 
 ```bash
-# Windows (PowerShell) - Set PYTHONPATH to avoid import errors
-$env:PYTHONPATH="."; python scripts/train_v6_final.py --data SnP_daily_update.csv --output models/v6_snp --timesteps 50000000
+# Windows (PowerShell)
+$env:PYTHONPATH="."; python scripts/train.py --data SnP_daily_update.csv
 ```
 
 ## 3. Monitoring

@@ -112,7 +112,9 @@ class StableWrapper(gym.Wrapper):
 def load_data_dictionary(data_path):
     """
     Load data from CSV and convert to Dict[str, pd.DataFrame]
-    Expected format: CSV with Ticker column or single-ticker CSV
+    Supports:
+    1. Standard CSV with 'Ticker' column
+    2. yfinance MultiIndex CSV (Wide format)
     """
     if not os.path.exists(data_path):
         logger.warning(f"Data file {data_path} not found. Generating DUMMY data for testing.")
@@ -134,18 +136,79 @@ def load_data_dictionary(data_path):
 
     logger.info(f"Loading data from {data_path}...")
     try:
+        # 1. Try Standard Load
         df = pd.read_csv(data_path)
-        data = {}
         
-        # Check if 'Ticker' column exists
+        # Check for yfinance MultiIndex format (Row 0 has Tickers)
+        # Detection: Column 0 is 'Price' or 'Date' and row 0 contains tickers like 'AAPL'
+        is_multiindex = False
+        if len(df) > 2:
+            row_0_vals = df.iloc[0].astype(str).values
+            # Heuristic: If row 0 has many unique values (tickers) and headers are features like 'Close'
+            if 'Close' in df.columns or 'Price' in df.columns:
+                is_multiindex = True
+        
+        if is_multiindex:
+            logger.info("Detected MultiIndex/Wide format (yfinance style). Reloading with header=[0,1]...")
+            df = pd.read_csv(data_path, header=[0,1], index_col=0, parse_dates=True)
+            
+            data = {}
+            # Check levels structure: (Feature, Ticker) or (Ticker, Feature)
+            level0 = df.columns.get_level_values(0).unique()
+            level1 = df.columns.get_level_values(1).unique()
+            
+            if 'Close' in level0:
+                # Structure: (Feature, Ticker) -> We want Dict[Ticker, DataFrame(Features)]
+                logger.info(f"Processing (Feature, Ticker) structure with {len(level1)} tickers...")
+                # Swap levels to get (Ticker, Feature)
+                df_swapped = df.swaplevel(axis=1)
+                
+                for ticker in level1:
+                    try:
+                        ticker_df = df_swapped[ticker].copy()
+                        # Ensure numeric
+                        ticker_df = ticker_df.apply(pd.to_numeric, errors='coerce')
+                        ticker_df = ticker_df.dropna()
+                        
+                        if len(ticker_df) > 100:
+                            ticker_df = ticker_df.reset_index() # Make Date a column
+                            # Rename 'Price' index name to 'Date' if needed, or just use index name
+                            if 'Date' not in ticker_df.columns:
+                                ticker_df.rename(columns={ticker_df.columns[0]: 'Date'}, inplace=True)
+                                
+                            data[str(ticker)] = ticker_df
+                    except Exception as e:
+                        logger.warning(f"Skipping ticker {ticker}: {e}")
+                        
+            elif 'Close' in level1:
+                # Structure: (Ticker, Feature)
+                logger.info(f"Processing (Ticker, Feature) structure with {len(level0)} tickers...")
+                for ticker in level0:
+                    try:
+                        ticker_df = df[ticker].copy()
+                        ticker_df = ticker_df.apply(pd.to_numeric, errors='coerce')
+                        ticker_df = ticker_df.dropna()
+                        if len(ticker_df) > 100:
+                            ticker_df = ticker_df.reset_index()
+                            if 'Date' not in ticker_df.columns:
+                                ticker_df.rename(columns={ticker_df.columns[0]: 'Date'}, inplace=True)
+                            data[str(ticker)] = ticker_df
+                    except Exception as e:
+                        logger.warning(f"Skipping ticker {ticker}: {e}")
+            
+            logger.info(f"Successfully loaded {len(data)} tickers from Wide format.")
+            return data
+
+        # 2. Standard Ticker Column Load
+        data = {}
         if 'Ticker' in df.columns:
             for ticker, group in df.groupby('Ticker'):
                 data[str(ticker)] = group.copy().reset_index(drop=True)
         else:
-            # Assume single ticker "Unknown" if no Ticker column
+            # Assume single ticker "Unknown"
             data['UNKNOWN'] = df.copy()
             
-        logger.info(f"Loaded data for {len(data)} tickers: {list(data.keys())}")
+        logger.info(f"Loaded data for {len(data)} tickers: {list(data.keys())[:5]}...")
         return data
         
     except Exception as e:
@@ -159,8 +222,11 @@ def make_env(rank, seed=0, data=None):
     """
     def _init():
         try:
+            # Add src to path
+            sys.path.append(os.path.join(os.path.dirname(__file__), '../src'))
+            
             # Try real environment
-            from core.universal_environment_v6_better_timing import UniversalTradingEnvV6BetterTiming
+            from ploutos.env.trading_env import UniversalTradingEnvV6BetterTiming
             
             # Use provided data or fallback to dummy
             env_data = data if data is not None else load_data_dictionary("dummy")
@@ -196,7 +262,7 @@ def make_env(rank, seed=0, data=None):
 
 def main():
     parser = argparse.ArgumentParser(description='Train Ploutos V6 (Stable)')
-    parser.add_argument('--config', default='config/training_v6_extended_optimized.yaml')
+    parser.add_argument('--config', default='config/training.yaml')
     parser.add_argument('--output', default='models/v6_final_50m')
     parser.add_argument('--device', default='cuda:0')
     parser.add_argument('--timesteps', type=int, default=50000000)
