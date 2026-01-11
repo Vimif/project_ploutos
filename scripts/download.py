@@ -32,7 +32,7 @@ TICKERS = [
 DAYS_BACK = 720
 START_DATE = (datetime.now() - timedelta(days=DAYS_BACK)).strftime('%Y-%m-%d')
 END_DATE = datetime.now().strftime('%Y-%m-%d')
-OUTPUT_FILE = "data/historical_daily.csv"
+OUTPUT_FILE = "data/sp500.csv"
 INTERVAL = "1h"
 
 def download_and_process():

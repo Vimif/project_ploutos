@@ -226,12 +226,12 @@ def make_env(rank, seed=0, data=None):
             sys.path.append(os.path.join(os.path.dirname(__file__), '../src'))
             
             # Try real environment
-            from ploutos.env.trading_env import UniversalTradingEnvV6BetterTiming
+            from ploutos.env.environment import TradingEnvironment
             
             # Use provided data or fallback to dummy
             env_data = data if data is not None else load_data_dictionary("dummy")
             
-            env = UniversalTradingEnvV6BetterTiming(
+            env = TradingEnvironment(
                 data=env_data,
                 initial_balance=100000,
                 commission=0.001,
@@ -267,7 +267,7 @@ def main():
     parser.add_argument('--device', default='cuda:0')
     parser.add_argument('--timesteps', type=int, default=50000000)
     parser.add_argument('--seed', type=int, default=42)
-    parser.add_argument('--data', default='data/historical_daily.csv')
+    parser.add_argument('--data', default='data/sp500.csv')
     args = parser.parse_args()
     
     # Setup

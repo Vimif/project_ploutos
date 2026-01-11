@@ -21,9 +21,9 @@ import warnings
 warnings.filterwarnings('ignore')
 
 
-class AdvancedFeaturesV2:
+class FeaturePipeline:
     """
-    Features avancées V2 pour timing optimal
+    Features avancées pour timing optimal
     """
     
     def __init__(self):
@@ -424,7 +424,7 @@ if __name__ == '__main__':
     }, index=dates)
     
     # Calculer features
-    fe = AdvancedFeaturesV2()
+    fe = FeaturePipeline()
     df_result = fe.calculate_all_features(df_test)
     
     print(f"\n✅ Features calculées: {len(df_result.columns)}")
