@@ -1,2 +1,0 @@
-Requirement already satisfied: scipy in /root/ai-factory/venv/lib/python3.12/site-packages (1.16.3)
-Requirement already satisfied: numpy<2.6,>=1.25.2 in /root/ai-factory/venv/lib/python3.12/site-packages (from scipy) (2.2.6)
