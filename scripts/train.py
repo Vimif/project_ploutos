@@ -275,9 +275,9 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
     Path('logs/tensorboard').mkdir(parents=True, exist_ok=True)
     
-    logger.info("="*70)
-    logger.info("🚀 PLOUTOS V6 - TRAINING START (STABLE VERSION)")
-    logger.info("="*70)
+    logger.info("======================================================================")
+    logger.info("  PLOUTOS V6 - TRAINING START (STABLE VERSION)")
+    logger.info("======================================================================")
     
     # Load config
     with open(args.config) as f:

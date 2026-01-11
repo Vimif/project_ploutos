@@ -3,6 +3,7 @@ node_modules/
 jspm_packages/
 venv/
 env/
+!src/ploutos/env/
 .venv/
 .env
 

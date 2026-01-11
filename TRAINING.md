@@ -8,31 +8,37 @@ python scripts/download.py
 ```
 
 ## 2. Launching Training
-To start the training process with default settings:
+To start the training process:
 
-```bash
-# Windows (PowerShell)
-$env:PYTHONPATH="."; python scripts/train.py
+### Windows (PowerShell)
+**Crucial:** Set encoding before running to prevent errors.
+```powershell
+$env:PYTHONIOENCODING="utf-8"
+$env:PYTHONPATH="."
+python scripts/train.py
 ```
 
-### Optional Arguments
-*   `--data`: Path to custom dataset (default: `data/sp500.csv`).
+### Linux / Mac
+```bash
+export PYTHONPATH="."
+python scripts/train.py
+```
+
+## 3. Arguments
+*   `--data`: Path to dataset (default: `data/sp500.csv`).
 *   `--timesteps`: Total steps (default: `50,000,000`).
-*   `--device`: `cuda:0` or `cpu`.
+*   `--device`: `cuda:0` (requires GPU setup, see INSTALL.md) or `cpu`.
 *   `--config`: Configuration file (default: `config/training.yaml`).
 
-**Example:**
+**Example (Training on CPU):**
 ```bash
-$env:PYTHONPATH="."; python scripts/train.py --timesteps 1000000 --device cpu
+python scripts/train.py --timesteps 1000000 --device cpu
 ```
 
-## 3. Monitoring
-*   **Console**: Live progress bars and metrics.
+## 4. Monitoring
+*   **Console**: Live progress bars.
 *   **Logs**: Saved in `logs/train.log`.
 *   **TensorBoard**: Visualize learning curves.
     ```bash
     tensorboard --logdir logs/tensorboard
     ```
-
-## 4. Models
-Checkpoints are saved automatically in the `models/` directory.

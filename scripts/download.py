@@ -36,16 +36,16 @@ OUTPUT_FILE = "data/sp500.csv"
 INTERVAL = "1h"
 
 def download_and_process():
-    print(f"🚀 Démarrage du téléchargement pour {len(TICKERS)} tickers...")
-    print(f"📅 Période: {START_DATE} à {END_DATE} ({DAYS_BACK} jours)")
-    print(f"⏱️  Intervalle: {INTERVAL}")
+    print(f"Demarrage du telechargement pour {len(TICKERS)} tickers...")
+    print(f"Periode: {START_DATE} a {END_DATE} ({DAYS_BACK} jours)")
+    print(f"Intervalle: {INTERVAL}")
 
     os.makedirs("data", exist_ok=True)
 
     all_data = []
 
     for ticker in TICKERS:
-        print(f"  ⬇️  Downloading {ticker}...", end=" ", flush=True)
+        print(f"  [Download] {ticker}...", end=" ", flush=True)
         try:
             # FIX: auto_adjust=True pour éviter le warning
             df = yf.download(
@@ -58,7 +58,7 @@ def download_and_process():
             )
             
             if len(df) == 0:
-                print(f"❌ Empty data!")
+                print(f"[Error] Empty data!")
                 continue
 
             # Aplatir le MultiIndex si nécessaire
