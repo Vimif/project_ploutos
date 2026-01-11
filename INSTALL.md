@@ -1,39 +1,120 @@
 # Installation Guide
 
-## 1. Prerequisites
-*   **Python**: Version 3.10 or 3.11 recommended.
-*   **OS**: Windows, Linux, or macOS.
+## Prerequisites
 
-## 2. Dependencies
-Install the required Python packages:
+### System Requirements
+- **OS**: Windows 10/11, Linux, macOS
+- **Python**: 3.11 or higher
+- **RAM**: 16GB minimum (32GB recommended for full S&P 500)
+- **GPU**: NVIDIA GPU with CUDA support (8GB+ VRAM recommended)
+
+---
+
+## Step 1: Clone Repository
+
+```bash
+git clone https://github.com/your-repo/project_ploutos.git
+cd project_ploutos
+```
+
+---
+
+## Step 2: Create Virtual Environment
+
+```bash
+python -m venv venv
+
+# Windows
+venv\Scripts\activate
+
+# Linux/macOS
+source venv/bin/activate
+```
+
+---
+
+## Step 3: Install Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### ⚡ GPU Support (Highly Recommended)
-By default, `pip install torch` installs the CPU-only version. To enable GPU training (CUDA):
+### Key Dependencies
+| Package | Purpose |
+|---------|---------|
+| `torch>=2.0.0` | Deep learning backbone |
+| `stable-baselines3>=2.0.0` | RL algorithms |
+| `gymnasium>=0.29.0` | Environment interface |
+| `pandas>=2.1.4` | Data processing |
+| `yfinance>=0.2.33` | Stock data download |
+| `scikit-learn>=1.3.0` | Correlation clustering |
 
-1.  **Uninstall current torch**:
-    ```bash
-    pip uninstall torch torchvision torchaudio -y
-    ```
-2.  **Install CUDA version** (Check [pytorch.org](https://pytorch.org/) for your specific version):
-    ```bash
-    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-    ```
+---
 
-## 3. Windows Configuration (Important)
-On Windows, you must set the encoding environment variable to avoid errors with progress bars and emojis:
+## Step 4: GPU Setup (CUDA)
 
-```powershell
-$env:PYTHONIOENCODING="utf-8"
+### Check CUDA Availability
+```python
+import torch
+print(torch.cuda.is_available())  # Should be True
+print(torch.cuda.get_device_name(0))  # Your GPU name
 ```
-*(Add this to your PowerShell profile to make it permanent)*
 
-## 4. Verify Setup
-Run a quick check to ensure the environment and GPU are ready:
+### Install CUDA-enabled PyTorch
+If the above returns False, install PyTorch with CUDA:
+```bash
+pip install torch --index-url https://download.pytorch.org/whl/cu121
+```
+
+---
+
+## Step 5: Download Data
 
 ```bash
-python -c "import gymnasium; import stable_baselines3; import torch; print(f'Ready! Device: {torch.device(\"cuda\" if torch.cuda.is_available() else \"cpu\")}')"
+python scripts/download.py --tickers SP500 --period 5y --output data/sp500.csv
 ```
+
+This downloads 5 years of historical data for all S&P 500 constituents.
+
+---
+
+## Step 6: Verify Installation
+
+```bash
+python -c "from ploutos.env.environment import TradingEnvironment; print('OK')"
+```
+
+If you see `OK`, installation is complete!
+
+---
+
+## Troubleshooting
+
+### `ModuleNotFoundError: No module named 'ploutos'`
+Set PYTHONPATH:
+```bash
+# Windows PowerShell
+$env:PYTHONPATH="src"
+
+# Linux/macOS
+export PYTHONPATH=src
+```
+
+### `UnicodeEncodeError` on Windows
+Set console encoding:
+```bash
+chcp 65001
+```
+Or use `python -X utf8 script.py`
+
+### `CUDA out of memory`
+Reduce `n_envs` in `config/training.yaml`:
+```yaml
+n_envs: 16  # or lower
+```
+
+---
+
+## Next Steps
+
+See [TRAINING.md](TRAINING.md) for training instructions.

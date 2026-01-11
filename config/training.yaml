@@ -16,7 +16,7 @@
 training:
   # Hyperparameters optimized for convergence
   timesteps: 50_000_000          # 50M steps (complete evolution)
-  n_envs: 16                     # Increased to 16 (Memory optimized with vectorization)
+  n_envs: 32                     # Increased for better GPU saturation
   batch_size: 2048               # 32 envs x 2048 steps / 32 = valid
   learning_rate: 1.0e-4          # Polynomial decay
   learning_rate_decay: 0.95      # Divide by 0.95 every 1M steps

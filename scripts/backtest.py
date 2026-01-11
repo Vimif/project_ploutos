@@ -52,10 +52,28 @@ def run_backtest(model_path, data_file, tickers=None, period_start=None, period_
     print("Loading Model...")
     model = PPO.load(model_path)
     
+    # Get model's expected observation shape
+    model_obs_shape = model.observation_space.shape[0]
+    env_obs_shape = env.observation_space.shape[0]
+    print(f"Model expects: {model_obs_shape} dims, Env produces: {env_obs_shape} dims")
+    
+    # Create adapter function if shapes mismatch
+    if model_obs_shape != env_obs_shape:
+        print(f"WARNING: Observation shape mismatch! Creating adapter...")
+        def adapt_obs(obs):
+            if len(obs) > model_obs_shape:
+                return obs[:model_obs_shape]  # Truncate extra features
+            elif len(obs) < model_obs_shape:
+                return np.pad(obs, (0, model_obs_shape - len(obs)))  # Pad with zeros
+            return obs
+    else:
+        adapt_obs = lambda x: x
+    
     # 4. Run Simulation
     print("Running Simulation...")
     # Start from index 0 for backtest
     obs, info = env.reset(options={'current_step': 0})
+    obs = adapt_obs(obs)  # Adapt initial observation
     done = False
     
     history = []
@@ -63,6 +81,7 @@ def run_backtest(model_path, data_file, tickers=None, period_start=None, period_
     while not done:
         action, _ = model.predict(obs, deterministic=True)
         obs, reward, done, truncated, info = env.step(action)
+        obs = adapt_obs(obs)  # Adapt each step's observation
         
         # Capture Step Data
         step_date = env.dates[env.current_step]

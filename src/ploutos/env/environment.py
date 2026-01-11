@@ -68,7 +68,6 @@ class TradingEnvironment(gym.Env):
         self.max_position_pct = max_position_pct
         self.buy_pct = buy_pct
         
-        self.commission = commission
         self.max_trades_per_day = max_trades_per_day
         
         # Risk Management
@@ -99,7 +98,6 @@ class TradingEnvironment(gym.Env):
         # Prepare Features
         self._prepare_features()
         
-        # Define spaces
         # Define spaces
         n_features_per_ticker = len(self.feature_columns)
         # Obs = Features + Portfolio Weights + Cash/Equity/Time + Sector Exposures

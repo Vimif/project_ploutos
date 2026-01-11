@@ -36,7 +36,7 @@ import numpy as np
 from pathlib import Path
 import gymnasium as gym
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import SubprocVecEnv
+from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
 from stable_baselines3.common.callbacks import CheckpointCallback, BaseCallback
 from stable_baselines3.common.utils import set_random_seed
 import torch
@@ -306,6 +306,10 @@ def main():
     ])
     logger.info("  Environments created")
     
+    # OPTIMIZATION: Wrap with VecNormalize for stable training
+    env = VecNormalize(env, norm_obs=True, norm_reward=True, clip_obs=10.0, clip_reward=10.0)
+    logger.info("  VecNormalize wrapper applied (obs + reward normalization)")
+    
     # Check action space
     if hasattr(env, 'single_action_space'):
         action_space = env.single_action_space
@@ -351,13 +355,19 @@ def main():
         learning_rate = float(learning_rate)
     
     # CRITICAL: Reduce learning rate further for stability
-    learning_rate = min(learning_rate, 5e-5)  # Cap at 5e-5
-    logger.info(f"  Learning rate: {learning_rate}")
+    base_lr = min(learning_rate, 5e-5)  # Cap at 5e-5
+    logger.info(f"  Base learning rate: {base_lr}")
+    
+    # OPTIMIZATION: Linear learning rate schedule (decay to 0 at end)
+    def linear_schedule(progress_remaining):
+        return progress_remaining * base_lr
+    
+    logger.info("  Using linear learning rate schedule")
     
     model = PPO(
         'MlpPolicy',
         env,
-        learning_rate=learning_rate,
+        learning_rate=linear_schedule,
         n_steps=train_cfg.get('n_steps', 2048),
         batch_size=train_cfg.get('batch_size', 4096),
         n_epochs=train_cfg.get('n_epochs', 10),
