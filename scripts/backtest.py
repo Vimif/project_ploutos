@@ -21,28 +21,33 @@ def run_backtest(model_path, data_file, tickers=None, period_start=None, period_
     
     # 1. Load Data
     print("Loading data...")
-    df = pd.read_csv(data_file, header=[0, 1], index_col=0, parse_dates=True)
     
-    # Filter Tickers?
-    if tickers:
-        print(f"Filtering for tickers: {tickers}")
-        # Reconstruct MultiIndex for specific tickers
-        # Assuming level 1 is Ticker
-        # This is a bit complex with MultiIndex, simpler to just pass all and let env handle it
-        # but for visualization usually we want specific ones.
-        # For now, let's load ALL, and env will process.
-        pass
+    # Try to detect CSV format
+    # Read first few rows to check format
+    df_check = pd.read_csv(data_file, nrows=5)
+    
+    if 'Ticker' in df_check.columns:
+        # Long format: has Ticker column
+        print("  Detected: Long format (Ticker column)")
+        df = pd.read_csv(data_file, index_col=0, parse_dates=True)
         
-    # Filter Period?
-    if period_start and period_end:
-        print(f"Filtering period: {period_start} to {period_end}")
-        df = df.loc[period_start:period_end]
-    
-    # Convert to Dict for Env
-    data_dict = {}
-    tickers_found = df.columns.get_level_values(1).unique()
-    for ticker in tickers_found:
-        data_dict[ticker] = df.xs(ticker, axis=1, level=1)
+        # Convert to Dict for Env
+        data_dict = {}
+        for ticker in df['Ticker'].unique():
+            ticker_df = df[df['Ticker'] == ticker].copy()
+            ticker_df = ticker_df.drop(columns=['Ticker'])
+            ticker_df = ticker_df.sort_index()
+            data_dict[ticker] = ticker_df
+    else:
+        # Wide format: MultiIndex columns
+        print("  Detected: Wide format (MultiIndex)")
+        df = pd.read_csv(data_file, header=[0, 1], index_col=0, parse_dates=True)
+        
+        # Convert to Dict for Env
+        data_dict = {}
+        tickers_found = df.columns.get_level_values(1).unique()
+        for ticker in tickers_found:
+            data_dict[ticker] = df.xs(ticker, axis=1, level=1)
         
     # 2. Setup Env
     print("Creating Environment...")
@@ -105,13 +110,33 @@ def run_backtest(model_path, data_file, tickers=None, period_start=None, period_
     df_res.set_index('date', inplace=True)
     
     # 6. Visualization
-    plot_results(df_res, env.tickers)
+    plot_results(df_res, env.tickers, data_dict=data_dict, initial_balance=env.initial_balance)
 
-def plot_results(df, tickers):
-    # Plot Equity Curve
+def plot_results(df, tickers, data_dict=None, initial_balance=10000):
+    # Plot Equity Curve with SPY Benchmark
     plt.figure(figsize=(12, 6))
-    plt.plot(df.index, df['equity'], label='Portfolio Equity', color='blue')
-    plt.title('Backtest Equity Curve')
+    plt.plot(df.index, df['equity'], label='Portfolio Equity', color='blue', linewidth=2)
+    
+    # Load SPY benchmark from separate file
+    try:
+        spy_file = os.path.join(os.path.dirname(__file__), '../data/spy_benchmark.csv')
+        spy_raw = pd.read_csv(spy_file, header=[0, 1], index_col=0, parse_dates=True)
+        # Extract Close prices
+        spy_close = spy_raw['Close']['SPY'] if 'Close' in spy_raw.columns.get_level_values(0) else None
+        
+        if spy_close is not None:
+            # Filter to backtest date range
+            spy_data = spy_close.loc[df.index[0]:df.index[-1]]
+            if len(spy_data) > 0:
+                spy_start = spy_data.iloc[0]
+                spy_normalized = (spy_data / spy_start) * initial_balance
+                plt.plot(spy_normalized.index, spy_normalized.values, label='SPY Buy & Hold', 
+                         color='orange', linewidth=2, linestyle='--', alpha=0.8)
+                print(f"SPY benchmark: ${spy_start:.2f} -> ${spy_data.iloc[-1]:.2f} ({((spy_data.iloc[-1]/spy_start)-1)*100:.1f}%)")
+    except Exception as e:
+        print(f"Could not load SPY benchmark: {e}")
+    
+    plt.title('Backtest Equity Curve vs SPY Benchmark')
     plt.xlabel('Date')
     plt.ylabel('Equity ($)')
     plt.legend()

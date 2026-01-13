@@ -94,10 +94,10 @@ class AdvancedRewardCalculator:
             if downside_std < 1e-6: downside_std = 1.0
             sortino_bonus = (step_return / downside_std) * 0.5
 
-        # 4. Trading Activity Bonus (Encourager à prendre des profits)
+        # 4. Trading Activity Bonus (Reduced to prevent overtrading)
         trade_bonus = 0.0
         if is_winning_trade:
-            trade_bonus = 1.0  # Gros bonus ponctuel pour valider un gain
+            trade_bonus = 0.1  # Small bonus for winning trades (was 1.0)
             
         # 5. Overtrading Penalty
         trade_penalty = 0.0

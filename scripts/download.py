@@ -1,35 +1,43 @@
 #!/usr/bin/env python3
 """
-Download Historical Data Script (Fixed)
-=======================================
+Download Historical Data Script (Full S&P 500)
+==============================================
 
-Télécharge les données historiques via yfinance avec une période ajustée
-pour respecter la limite stricte de 730 jours de Yahoo Finance pour les données horaires.
+Downloads all S&P 500 tickers from Wikipedia and fetches historical data.
 
 Usage:
-    python scripts/download_data.py
+    python scripts/download.py
+    python scripts/download.py --daily  # For daily data (more history)
 """
 
 import os
+import argparse
 import yfinance as yf
 import pandas as pd
 from datetime import datetime, timedelta
 
-# Configuration du projet
-TICKERS = [
-    # GROWTH
-    "NVDA", "MSFT", "AAPL", "GOOGL", "AMZN",
-    # DEFENSIVE
-    "SPY", "QQQ", "VOO", "VTI",
-    # ENERGY
-    "XOM", "CVX", "COP", "XLE",
-    # FINANCE
-    "JPM", "BAC", "WFC", "GS"
-]
+def get_sp500_tickers():
+    """Fetch S&P 500 tickers from Wikipedia"""
+    try:
+        url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+        tables = pd.read_html(url)
+        sp500_table = tables[0]
+        tickers = sp500_table['Symbol'].tolist()
+        # Clean tickers (replace . with - for Yahoo Finance)
+        tickers = [t.replace('.', '-') for t in tickers]
+        return tickers
+    except Exception as e:
+        print(f"Could not fetch S&P 500 list: {e}")
+        # Fallback to core tickers
+        return ["NVDA", "MSFT", "AAPL", "GOOGL", "AMZN", "SPY", "QQQ", 
+                "JPM", "BAC", "XOM", "CVX", "JNJ", "PG", "UNH"]
 
-# FIX: Yahoo Finance est très strict sur la limite de 730 jours pour les données 1h.
-# On prend 720 jours pour être sûr (marge de sécurité).
-DAYS_BACK = 720
+# Get all S&P 500 tickers
+TICKERS = get_sp500_tickers()
+print(f"Loaded {len(TICKERS)} S&P 500 tickers")
+
+# Configuration
+DAYS_BACK = 720  # ~2 years for hourly (Yahoo limit)
 START_DATE = (datetime.now() - timedelta(days=DAYS_BACK)).strftime('%Y-%m-%d')
 END_DATE = datetime.now().strftime('%Y-%m-%d')
 OUTPUT_FILE = "data/sp500.csv"
