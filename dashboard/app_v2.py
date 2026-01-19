@@ -390,44 +390,94 @@ def api_db_trades():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+def _calculate_statistics_from_trades(trades):
+    """
+    Calculate basic trade statistics from a list of trades.
+
+    Args:
+        trades: List of trade dictionaries
+
+    Returns:
+        Dictionary with statistics: total_trades, buy_count, sell_count, total_volume, avg_trade_size
+    """
+    if not trades:
+        return {
+            'total_trades': 0,
+            'buy_count': 0,
+            'sell_count': 0,
+            'total_volume': 0,
+            'avg_trade_size': 0
+        }
+
+    buy_count = len([t for t in trades if t['action'] == 'BUY'])
+    sell_count = len([t for t in trades if t['action'] == 'SELL'])
+    total_volume = sum(float(t['amount']) for t in trades)
+
+    return {
+        'total_trades': len(trades),
+        'buy_count': buy_count,
+        'sell_count': sell_count,
+        'total_volume': total_volume,
+        'avg_trade_size': total_volume / len(trades)
+    }
+
+
+def _calculate_top_symbols_from_trades(trades, limit=10):
+    """
+    Calculate top symbols by trade count from a list of trades.
+
+    Args:
+        trades: List of trade dictionaries
+        limit: Maximum number of top symbols to return
+
+    Returns:
+        List of dictionaries with symbol, trade_count, and total_volume
+    """
+    symbol_counts = defaultdict(lambda: {'count': 0, 'volume': 0})
+
+    for trade in trades:
+        symbol_counts[trade['symbol']]['count'] += 1
+        symbol_counts[trade['symbol']]['volume'] += float(trade['amount'])
+
+    top_symbols = [
+        {'symbol': symbol, 'trade_count': data['count'], 'total_volume': data['volume']}
+        for symbol, data in sorted(symbol_counts.items(), key=lambda x: x[1]['count'], reverse=True)[:limit]
+    ]
+
+    return top_symbols
+
+
+def _calculate_win_loss_from_trades(trades):
+    """
+    Calculate win/loss ratio from a list of trades.
+
+    Args:
+        trades: List of trade dictionaries
+
+    Returns:
+        Dictionary with wins, losses, total, and win_rate
+    """
+    # Note: Current implementation returns placeholder data
+    # Future enhancement: Match BUY/SELL pairs to calculate actual win/loss
+    return {'wins': 0, 'losses': 0, 'total': 0, 'win_rate': 0}
+
+
 @app.route('/api/db/statistics')
 def api_db_statistics():
     """Statistiques globales"""
     try:
         days = int(request.args.get('days', 30))
-        
+
         if PG_AVAILABLE:
             stats = get_trade_statistics(days=days)
             top_symbols = get_top_symbols(days=days, limit=10)
             win_loss = get_win_loss_ratio(days=days)
         else:
             trades = load_trades_from_json(days=days)
-            
-            buy_count = len([t for t in trades if t['action'] == 'BUY'])
-            sell_count = len([t for t in trades if t['action'] == 'SELL'])
-            total_volume = sum(float(t['amount']) for t in trades)
-            
-            stats = {
-                'total_trades': len(trades),
-                'buy_count': buy_count,
-                'sell_count': sell_count,
-                'total_volume': total_volume,
-                'avg_trade_size': total_volume / len(trades) if trades else 0
-            }
-            
-            # Top symbols
-            symbol_counts = defaultdict(lambda: {'count': 0, 'volume': 0})
-            for t in trades:
-                symbol_counts[t['symbol']]['count'] += 1
-                symbol_counts[t['symbol']]['volume'] += float(t['amount'])
-            
-            top_symbols = [
-                {'symbol': s, 'trade_count': d['count'], 'total_volume': d['volume']}
-                for s, d in sorted(symbol_counts.items(), key=lambda x: x[1]['count'], reverse=True)[:10]
-            ]
-            
-            win_loss = {'wins': 0, 'losses': 0, 'total': 0, 'win_rate': 0}
-        
+            stats = _calculate_statistics_from_trades(trades)
+            top_symbols = _calculate_top_symbols_from_trades(trades, limit=10)
+            win_loss = _calculate_win_loss_from_trades(trades)
+
         return jsonify({
             'success': True,
             'data': {
