@@ -167,7 +167,9 @@ class AlpacaClient:
                 'current_price': float(pos.current_price),
                 'avg_entry_price': float(pos.avg_entry_price)
             }
-        except:
+        except Exception as e:
+            # Position not found is expected, but log other errors
+            logger.debug(f"Could not get position for {symbol}: {e}")
             return None
     
     def get_current_price(self, symbol):
