@@ -1,271 +1,153 @@
-# 🤖 Ploutos Trading v2.0
+# Ploutos Trading
 
-Système de trading algorithmique autonome avec Reinforcement Learning (PPO).
+Un projet personnel de trading algorithmique utilisant le Reinforcement Learning. L'idée : entraîner un agent à trader de manière autonome sur les marchés financiers.
 
-## ✨ Nouveautés v2.0
-
-- 🏭 **Architecture refactorisée** : Code modulaire et maintenable
-- 📊 **Logger centralisé** : Logs structurés fichier + console
-- ⚙️ **Configuration unifiée** : YAML + dataclasses typées
-- 🧪 **Tests unitaires** : Couverture 60%+
-- 🚀 **Scripts simplifiés** : CLI claire et intuitive
-- **🔍 Model Drift Detection** : Détection automatique dérive (PSI, KS Test, ADDM) 🆕
+> ⚠️ **Avertissement** : Ce projet est expérimental et en paper trading. Le trading algorithmique comporte des risques significatifs. Ne jamais utiliser d'argent réel sans comprendre ces risques.
 
 ---
 
-## 📊 Performances
+## C'est quoi ?
+
+Ploutos est un bot de trading qui apprend par lui-même en utilisant l'algorithme PPO (Proximal Policy Optimization). Au lieu de suivre des règles fixes, il observe le marché et développe sa propre stratégie.
+
+**Ce que ça fait :**
+- Collecte les données de marché (via Alpaca)
+- Analyse les tendances avec des indicateurs techniques
+- Prend des décisions d'achat/vente de manière autonome
+- Détecte quand ses performances se dégradent (drift detection)
+- Se ré-entraîne automatiquement si nécessaire
+
+---
+
+## Performances actuelles
 
 | Métrique | Valeur |
 |----------|--------|
-| **Sharpe Ratio** | 1.5+ |
-| **Max Drawdown** | -12% |
-| **Win Rate** | 55% |
-| **Environnement** | Paper Trading |
+| Sharpe Ratio | ~1.5 |
+| Max Drawdown | -12% |
+| Win Rate | 55% |
+| Mode | Paper Trading |
+
+*Ces résultats sont en paper trading et ne garantissent rien en conditions réelles.*
 
 ---
 
-## 📚 Documentation
-
-- [Architecture Détaillée](docs/ARCHITECTURE.md)
-- **[Guide Monitoring Production](docs/MONITORING.md)** 🆕 **NOUVEAU**
-- [Configuration Bot](docs/BOT_CONFIG.md)
-
----
-
-## 📎 Quick Links
-
-- **Monitoring Dashboard** : `http://localhost:3000` (Grafana)
-- **Prometheus** : `http://localhost:9090`
-- **Weights & Biases** : [Ploutos Project](https://wandb.ai)
-
----
-
-## 📦 Installation
-
-### Cloner
+## Installation
 
 ```bash
+# Cloner le repo
 git clone https://github.com/Vimif/project_ploutos
 cd project_ploutos
-```
 
-### Virtualenv
+# Créer un environnement virtuel
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+venv\Scripts\activate     # Windows
 
-```bash
-python3 -m venv venv
-source venv/bin/activate
-```
-
-### Dépendances
-
-```bash
+# Installer les dépendances
 pip install -e .
 ```
 
 ---
 
-## 🚀 Usage
+## Comment l'utiliser
 
-### Entraînement
+### Entraîner le modèle
 
 ```bash
-# Simple
-python3 scripts/train.py
+# Entraînement standard
+python scripts/train_v4_optimal.py
 
-# Custom config
-python3 scripts/train.py --config config/my_config.yaml
+# Avec une config personnalisée
+python scripts/train_v4_optimal.py --config config/training_config_v6_better_timing.yaml
+```
 
-# Output spécifique
-python3 scripts/train.py --output models/my_model.zip
+### Tester un modèle
 
-# Curriculum Learning (recommandé)
-python3 scripts/train_curriculum.py --stage 1
-python3 scripts/train_curriculum.py --stage 2 --load-model models/stage1_final
+```bash
+python scripts/validate.py models/mon_model.zip
+```
+
+### Lancer le monitoring en production
+
+```bash
+# Surveiller les performances
+python scripts/monitor_production.py --model models/mon_model.zip
+
+# Avec ré-entraînement automatique si dérive détectée
+python scripts/monitor_production.py --model models/mon_model.zip --auto-retrain
 ```
 
 ---
 
-### Validation
-
-```bash
-# Valider un modèle
-python3 scripts/validate.py models/autonomous/trained_model.zip
-```
-
----
-
-### Monitoring Production 🆕 **NOUVEAU**
-
-```bash
-# Monitoring simple
-python3 scripts/monitor_production.py --model models/stage1_final.zip
-
-# Avec auto-retrain si dérive
-python3 scripts/monitor_production.py --model models/stage1_final.zip --auto-retrain
-
-# Haute sensibilité (détection agressive)
-python3 scripts/monitor_production.py --model models/stage1_final.zip --sensitivity high
-```
-
-**Détecte 3 types de dérive** :
-- **Data Drift** : Distribution features change (PSI + KS Test)
-- **Concept Drift** : Relation X→Y change (ADDM)
-- **Model Drift** : Performance se dégrade
-
-📚 **[Documentation complète](docs/MONITORING.md)**
-
----
-
-### Déploiement
-
-```bash
-# Déployer en production
-python3 scripts/deploy.py models/autonomous/trained_model.zip
-```
-
----
-
-## 📁 Structure
+## Structure du projet
 
 ```
 project_ploutos/
-├── config/               # Configuration
-├── core/                 # Modules principaux
-│   ├── agents/          # Trainer, Validator, Deployer
-│   ├── data/            # Data fetching
-│   ├── environments/    # Gym environments
-│   ├── market/          # Regime detection, asset selection
-│   └── drift_detector.py # 🆕 Détection dérive
-├── utils/                # Utilitaires
-├── scripts/              # Points d'entrée
-│   ├── train_curriculum.py
-│   └── monitor_production.py # 🆕 Monitoring
-├── docs/                 # Documentation
-│   └── MONITORING.md     # 🆕 Guide monitoring
-└── tests/                # Tests unitaires
+├── config/           # Fichiers de configuration YAML
+├── core/             # Code principal
+│   ├── data_fetcher.py       # Récupération des données
+│   ├── features.py           # Calcul des indicateurs
+│   ├── risk_manager.py       # Gestion du risque
+│   └── universal_environment_v6_better_timing.py  # Environnement Gym
+├── trading/          # Logique de trading live
+├── training/         # Scripts d'entraînement
+├── scripts/          # Points d'entrée CLI
+└── docs/             # Documentation détaillée
 ```
 
 ---
 
-## 🧪 Tests
+## Configuration
 
-```bash
-# Lancer tous les tests
-pytest
-
-# Avec couverture
-pytest --cov
-
-# Test spécifique
-pytest tests/test_config.py
-
-# Test drift detector
-python3 core/drift_detector.py
-```
-
----
-
-## 📊 Monitoring
-
-### **Logs**
-- Application : `logs/ploutos_YYYYMMDD_HHMMSS.log`
-- Drift Events : `logs/drift_events.jsonl`
-
-### **Dashboards**
-- **TensorBoard** : `tensorboard --logdir logs/tensorboard`
-- **Grafana** : `http://localhost:3000` (VPS uniquement)
-- **Prometheus** : `http://localhost:9090`
-
-### **Tracking**
-- **Weights & Biases** : Configure dans script
-- **Drift Reports** : `reports/drift_monitoring_latest.json`
-
----
-
-## 🔧 Configuration
-
-Éditer `config/autonomous_config.yaml`:
+Édite `config/autonomous_config.yaml` :
 
 ```yaml
 training:
   timesteps: 2000000
   n_envs: 8
-  device: "cuda"
-  learning_rate: 0.0001
+  device: "cuda"  # ou "cpu"
 
 monitoring:
-  sensitivity: "medium"  # low|medium|high
+  sensitivity: "medium"  # low, medium, high
   auto_retrain: false
-  check_frequency: "daily"  # hourly|daily|weekly
 ```
 
 ---
 
-## ✨ Fonctionnalités Principales
+## Monitoring
 
-### **1. Curriculum Learning**
-- Stage 1 : Mono-Asset (SPY)
-- Stage 2 : Multi-Asset ETFs
-- Stage 3 : Actions complexes
+**Logs** : `logs/ploutos_*.log`
 
-### **2. Coûts Réalistes**
-- Commissions + Slippage + Spread
-- Impact de marché
-
-### **3. Walk-Forward Validation**
-- Validation temporelle
-- Évite overfitting
-
-### **4. Model Drift Detection** 🆕
-- PSI (Population Stability Index)
-- KS Test (Kolmogorov-Smirnov)
-- ADDM (Autoregressive Drift Detection)
-- Auto-Retrain optionnel
+**Dashboards disponibles** :
+- TensorBoard : `tensorboard --logdir logs/tensorboard`
+- Grafana : `http://localhost:3000` (si configuré)
 
 ---
 
-## 🛡️ Sécurité
+## La roadmap
 
-- Max position size : 50% capital
-- Stop-loss dynamique
-- Drawdown limit : -20%
-- Monitoring 24/7
-- **Drift detection** : Alertes automatiques
+**Fait :**
+- [x] Curriculum Learning (apprentissage progressif)
+- [x] Coûts de transaction réalistes
+- [x] Détection de drift du modèle
+- [x] Walk-forward validation
 
----
+**En cours :**
+- [ ] Détection des régimes de marché
+- [ ] Ensemble de modèles
+- [ ] Amélioration du système de récompense
 
-## ⚠️ Avertissements
-
-- 🚨 **Paper Trading** : Système actuellement en paper trading
-- ⚠️ **Risques** : Trading algorithmique comporte des risques
-- 🔍 **Monitoring** : Surveillance quotidienne recommandée
-
----
-
-## 📈 Roadmap
-
-### **Phase 1** ✅ (Complétée)
-- [x] Curriculum Learning
-- [x] Coûts réalistes
-- [x] Walk-Forward Validation
-- [x] Model Drift Detection
-
-### **Phase 2** 🔄 (En cours)
-- [ ] Ensemble Models
-- [ ] Market Regime Detection
-- [ ] Advanced Reward Shaping
-
-### **Phase 3** 🔮 (Futur)
-- [ ] Adversarial Training
-- [ ] Meta-Learning (MAML)
-- [ ] Transformer Architecture
+**Futur :**
+- [ ] Architecture Transformer
+- [ ] Meta-learning (MAML)
 
 ---
 
-## 📝 License
+## License
 
 MIT
 
 ---
 
-**Dernière mise à jour** : 5 décembre 2025
+*Dernière mise à jour : Février 2026*
