@@ -1,0 +1,55 @@
+/* Ploutos Advisory - Dark Theme */
+
+:root {
+    --bg-primary: #0f172a;
+    --bg-card: #1e293b;
+    --bg-hover: #334155;
+    --text-primary: #e2e8f0;
+    --text-secondary: #94a3b8;
+    --accent: #60a5fa;
+    --positive: #10b981;
+    --negative: #ef4444;
+    --warning: #f59e0b;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+}
+::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+}
+::-webkit-scrollbar-thumb {
+    background: #475569;
+    border-radius: 3px;
+}
+
+/* Nav link active */
+.nav-link.active {
+    background: var(--bg-hover);
+    color: var(--accent);
+}
+
+/* Plotly dark theme overrides */
+.js-plotly-plot .plotly .modebar {
+    background: transparent !important;
+}
+.js-plotly-plot .plotly .modebar-btn path {
+    fill: #94a3b8 !important;
+}
+
+/* Details/summary style */
+details summary::-webkit-details-marker {
+    display: none;
+}
+details summary::after {
+    content: '\f078';
+    font-family: 'Font Awesome 6 Free';
+    font-weight: 900;
+    font-size: 0.65rem;
+    color: #64748b;
+    transition: transform 0.2s;
+}
+details[open] summary::after {
+    transform: rotate(180deg);
+}

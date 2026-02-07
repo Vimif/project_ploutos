@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+{% block title %}Analyse {{ symbol }} - Ploutos Advisory{% endblock %}
+
+{% block content %}
+<div id="analysis-loading" class="text-center py-20">
+    <i class="fas fa-spinner fa-spin text-4xl text-blue-400 mb-4"></i>
+    <p class="text-slate-400">Analyse de {{ symbol }} en cours...</p>
+</div>
+
+<div id="analysis-content" class="hidden">
+
+    <!-- Header -->
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+        <div>
+            <a href="/" class="text-sm text-slate-500 hover:text-slate-300 mb-1 inline-block">
+                <i class="fas fa-arrow-left mr-1"></i>Retour
+            </a>
+            <h1 class="text-3xl font-bold">
+                <span id="h-symbol">{{ symbol }}</span>
+                <span id="h-price" class="text-slate-400 text-xl ml-2"></span>
+            </h1>
+        </div>
+        <div class="flex items-center gap-4">
+            <span id="h-rec-badge" class="text-lg px-4 py-2 rounded-full font-bold"></span>
+            <div id="h-gauge" style="width: 120px; height: 90px;"></div>
+        </div>
+    </div>
+
+    <!-- Graphique Chandelier -->
+    <section class="bg-card rounded-lg p-4 border border-slate-700 mb-6">
+        <h2 class="text-sm font-medium text-slate-400 mb-2">
+            <i class="fas fa-chart-bar mr-1"></i>Graphique
+        </h2>
+        <div id="chart-candlestick" style="height: 450px;"></div>
+    </section>
+
+    <!-- Indicateurs RSI / MACD -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <section class="bg-card rounded-lg p-4 border border-slate-700">
+            <h2 class="text-sm font-medium text-slate-400 mb-2">RSI (14)</h2>
+            <div id="chart-rsi" style="height: 180px;"></div>
+        </section>
+        <section class="bg-card rounded-lg p-4 border border-slate-700">
+            <h2 class="text-sm font-medium text-slate-400 mb-2">MACD (12/26/9)</h2>
+            <div id="chart-macd" style="height: 180px;"></div>
+        </section>
+    </div>
+
+    <!-- Prevision -->
+    <section class="bg-card rounded-lg p-4 border border-slate-700 mb-6" id="forecast-section">
+        <h2 class="text-sm font-medium text-slate-400 mb-2">
+            <i class="fas fa-crystal-ball mr-1"></i>Prevision Statistique (J+5)
+        </h2>
+        <div id="chart-forecast" style="height: 300px;"></div>
+    </section>
+
+    <!-- Breakdown score -->
+    <section class="bg-card rounded-lg p-4 border border-slate-700 mb-6">
+        <h2 class="text-sm font-medium text-slate-400 mb-3">
+            <i class="fas fa-chart-pie mr-1"></i>Decomposition du Score
+        </h2>
+        <div id="score-breakdown"></div>
+    </section>
+
+    <!-- Explication LLM -->
+    <section class="bg-card rounded-lg p-4 border border-slate-700 mb-6">
+        <h2 class="text-sm font-medium text-slate-400 mb-3">
+            <i class="fas fa-robot mr-1"></i>Analyse Detaillee
+        </h2>
+        <div id="explanation" class="prose prose-invert prose-sm max-w-none text-slate-300 leading-relaxed whitespace-pre-line"></div>
+    </section>
+
+    <!-- Sous-signaux details (accordeons) -->
+    <section class="space-y-2 mb-6" id="sub-signals-details"></section>
+
+    <!-- Niveaux de prix -->
+    <section class="bg-card rounded-lg p-4 border border-slate-700 mb-6">
+        <h2 class="text-sm font-medium text-slate-400 mb-3">
+            <i class="fas fa-crosshairs mr-1"></i>Niveaux de Prix
+        </h2>
+        <div id="price-levels" class="grid grid-cols-3 gap-4 text-center"></div>
+    </section>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+<script>
+const SYMBOL = '{{ symbol }}';
+const REC_STYLES = {
+    'ACHAT_FORT': { bg: 'bg-emerald-900', text: 'text-emerald-300', label: 'ACHAT FORT' },
+    'ACHAT': { bg: 'bg-emerald-800', text: 'text-emerald-200', label: 'ACHAT' },
+    'NEUTRE': { bg: 'bg-slate-700', text: 'text-slate-300', label: 'NEUTRE' },
+    'VENTE': { bg: 'bg-orange-900', text: 'text-orange-300', label: 'VENTE' },
+    'VENTE_FORTE': { bg: 'bg-red-900', text: 'text-red-300', label: 'VENTE FORTE' },
+};
+
+async function loadAnalysis() {
+    try {
+        // Fetch analyse + donnees marche en parallele
+        const [analysisResp, ohlcvResp, indicatorsResp] = await Promise.all([
+            fetch(`/api/advisor/analyze/${SYMBOL}`),
+            fetch(`/api/market/ohlcv/${SYMBOL}?period=3mo&interval=1h&limit=200`),
+            fetch(`/api/market/indicators/${SYMBOL}?period=3mo&interval=1h`),
+        ]);
+
+        const analysis = await analysisResp.json();
+        const ohlcv = await ohlcvResp.json();
+        const indicators = await indicatorsResp.json();
+
+        document.getElementById('analysis-loading').classList.add('hidden');
+        document.getElementById('analysis-content').classList.remove('hidden');
+
+        renderHeader(analysis);
+        buildCandlestickChart('chart-candlestick', ohlcv, indicators, analysis);
+        buildRSIChart('chart-rsi', indicators);
+        buildMACDChart('chart-macd', indicators);
+        renderForecast(analysis);
+        renderScoreBreakdown(analysis);
+        renderExplanation(analysis);
+        renderSubSignals(analysis);
+        renderPriceLevels(analysis);
+
+    } catch (err) {
+        document.getElementById('analysis-loading').innerHTML = `
+            <i class="fas fa-exclamation-triangle text-4xl text-red-400 mb-4"></i>
+            <p class="text-red-300">Erreur: ${err.message}</p>
+            <a href="/" class="mt-4 inline-block px-4 py-2 bg-blue-600 rounded hover:bg-blue-700 text-sm">Retour</a>
+        `;
+    }
+}
+
+function renderHeader(data) {
+    document.getElementById('h-price').textContent = `$${data.current_price.toFixed(2)}`;
+    const rec = REC_STYLES[data.recommendation] || REC_STYLES['NEUTRE'];
+    const badge = document.getElementById('h-rec-badge');
+    badge.className = `text-lg px-4 py-2 rounded-full font-bold ${rec.bg} ${rec.text}`;
+    badge.textContent = rec.label;
+
+    // Jauge
+    buildGaugeChart('h-gauge', data.composite_score, data.recommendation);
+}
+
+function renderForecast(data) {
+    if (!data.forecast || data.forecast.length === 0) {
+        document.getElementById('forecast-section').classList.add('hidden');
+        return;
+    }
+    buildForecastChart('chart-forecast', data.current_price, data.forecast);
+}
+
+function renderScoreBreakdown(data) {
+    const container = document.getElementById('score-breakdown');
+    const labels = {technical:'Technique', ml_model:'IA (PPO)', sentiment:'Sentiment', statistical:'Prevision', risk:'Risque'};
+    const weights = {technical:0.30, ml_model:0.25, sentiment:0.20, statistical:0.15, risk:0.10};
+
+    let html = '';
+    (data.sub_signals || []).forEach(sub => {
+        const label = labels[sub.source] || sub.source;
+        const w = weights[sub.source] || 0;
+        const pct = Math.round((sub.signal + 1) / 2 * 100);
+        const color = sub.signal > 0.1 ? 'bg-emerald-500' : sub.signal < -0.1 ? 'bg-red-500' : 'bg-slate-500';
+        const confPct = Math.round(sub.confidence * 100);
+
+        html += `
+            <div class="mb-3">
+                <div class="flex justify-between text-xs mb-1">
+                    <span>${label} <span class="text-slate-500">(${Math.round(w*100)}%)</span></span>
+                    <span class="font-mono ${sub.signal > 0 ? 'text-emerald-400' : sub.signal < 0 ? 'text-red-400' : 'text-slate-400'}">
+                        ${sub.signal >= 0 ? '+' : ''}${sub.signal.toFixed(2)}
+                        <span class="text-slate-500 ml-1">(${confPct}%)</span>
+                    </span>
+                </div>
+                <div class="w-full bg-slate-700 rounded-full h-2">
+                    <div class="h-2 rounded-full ${color} transition-all" style="width: ${pct}%"></div>
+                </div>
+            </div>
+        `;
+    });
+    container.innerHTML = html;
+}
+
+function renderExplanation(data) {
+    document.getElementById('explanation').textContent = data.explanation_fr || 'Aucune explication disponible.';
+}
+
+function renderSubSignals(data) {
+    const container = document.getElementById('sub-signals-details');
+    const labels = {technical:'Analyse Technique', ml_model:'Intelligence Artificielle', sentiment:'Sentiment du Marche', statistical:'Prevision Statistique', risk:'Evaluation du Risque'};
+    const icons = {technical:'fa-chart-line', ml_model:'fa-brain', sentiment:'fa-newspaper', statistical:'fa-chart-area', risk:'fa-shield-halved'};
+
+    let html = '';
+    (data.sub_signals || []).forEach(sub => {
+        const label = labels[sub.source] || sub.source;
+        const icon = icons[sub.source] || 'fa-circle';
+
+        html += `
+            <details class="bg-card rounded-lg border border-slate-700">
+                <summary class="px-4 py-3 cursor-pointer hover:bg-hover transition-colors flex items-center justify-between">
+                    <span class="text-sm font-medium">
+                        <i class="fas ${icon} mr-2 text-blue-400"></i>${label}
+                    </span>
+                    <span class="text-xs font-mono ${sub.signal > 0.1 ? 'text-emerald-400' : sub.signal < -0.1 ? 'text-red-400' : 'text-slate-400'}">
+                        ${sub.signal >= 0 ? '+' : ''}${sub.signal.toFixed(2)} (${Math.round(sub.confidence * 100)}%)
+                    </span>
+                </summary>
+                <div class="px-4 pb-3 text-sm text-slate-400">
+                    <ul class="list-disc list-inside space-y-1">
+                        ${(sub.reasons || []).map(r => `<li>${r}</li>`).join('')}
+                    </ul>
+                </div>
+            </details>
+        `;
+    });
+    container.innerHTML = html;
+}
+
+function renderPriceLevels(data) {
+    const container = document.getElementById('price-levels');
+    const items = [
+        { label: "Prix d'entree", value: data.entry_price, color: 'text-blue-400' },
+        { label: 'Stop-Loss', value: data.stop_loss, color: 'text-red-400' },
+        { label: 'Take-Profit', value: data.take_profit, color: 'text-emerald-400' },
+    ];
+
+    container.innerHTML = items.map(item => `
+        <div>
+            <div class="text-xs text-slate-500">${item.label}</div>
+            <div class="${item.color} text-lg font-mono">
+                ${item.value ? '$' + item.value.toFixed(2) : '-'}
+            </div>
+        </div>
+    `).join('');
+}
+
+loadAnalysis();
+</script>
+{% endblock %}
