@@ -93,11 +93,17 @@ else:
         'max_grad_norm': 0.5,
     }
 
+# Broker Config
+# Choix du broker: 'etoro' (défaut) ou 'alpaca'
+# Peut être overridé par la variable d'environnement BROKER
+BROKER = os.getenv('BROKER', 'etoro').lower()
+
 # Trading Config
 TRADING_CONFIG = {
     'initial_capital': 100_000,
     'paper_trading': True,
     'check_interval_minutes': 60 if ROLE == "PRODUCTION" else 10,
+    'broker': BROKER,
 }
 
 # WandB Config
@@ -109,3 +115,4 @@ WANDB_CONFIG = {
 print(f"🖥️  Machine: {HOSTNAME}")
 print(f"🎭 Rôle: {ROLE}")
 print(f"📂 DATA_DIR: {DATA_DIR}")
+print(f"🏦 Broker: {BROKER}")

@@ -4,12 +4,13 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from trading.alpaca_client import AlpacaClient
+from trading.broker_factory import create_broker
 from trading.brain_trader import BrainTrader
 from trading.portfolio_manager import PortfolioManager
 from trading.stop_loss_manager import StopLossManager
 from core.utils import setup_logging
 from datetime import datetime, date
+import os
 import time
 
 logger = setup_logging(__name__, 'live_trader.log')
@@ -36,25 +37,28 @@ except ImportError:
 class LiveTrader:
     """Trader live simplifié"""
     
-    def __init__(self, paper_trading=True, capital=None, monitoring_port=9090):
+    def __init__(self, paper_trading=True, capital=None, monitoring_port=9090, broker=None):
         self.paper_trading = paper_trading
-        
+
         # Monitoring
         self.metrics = None
         if MONITORING_AVAILABLE:
             self.metrics = start_monitoring(port=monitoring_port)
             logger.info(f"✅ Monitoring: http://localhost:{monitoring_port}/metrics")
-        
-        # Clients principaux
-        self.alpaca = AlpacaClient(paper_trading=paper_trading)
+
+        # Client broker (eToro par défaut, ou Alpaca)
+        broker_name = broker or os.getenv('BROKER', 'etoro')
+        self.broker = create_broker(broker_name, paper_trading=paper_trading)
+        # Alias pour compatibilité
+        self.alpaca = self.broker
         self.brain = BrainTrader(capital=capital, paper_trading=paper_trading)
         
         # Gestionnaires
-        account = self.alpaca.get_account()
+        account = self.broker.get_account()
         self.initial_capital = account['portfolio_value']
-        
-        self.portfolio_mgr = PortfolioManager(self.alpaca, self.initial_capital)
-        self.stop_loss_mgr = StopLossManager(self.alpaca)
+
+        self.portfolio_mgr = PortfolioManager(self.broker, self.initial_capital)
+        self.stop_loss_mgr = StopLossManager(self.broker)
         
         if RISK_AVAILABLE:
             self.risk_manager = RiskManager()
