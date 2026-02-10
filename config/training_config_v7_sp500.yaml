@@ -1,0 +1,91 @@
+# config/training_config_v7_sp500.yaml
+# Configuration V7 - TOP S&P 500 par secteur GICS
+#
+# Differences vs V6:
+# - Tickers dynamiques (22 actions, 2 par secteur GICS)
+# - Reseau plus large (1536 vs 1024) pour obs space ~1345 dims
+# - buy_pct plus bas (0.15 vs 0.20) pour plus de diversification
+# - 20M timesteps (vs 15M)
+
+training:
+  total_timesteps: 20000000  # 20M
+
+  n_envs: 16
+
+  batch_size: 8192
+  n_steps: 4096
+  n_epochs: 20
+
+  learning_rate: 0.0001
+
+  gamma: 0.99
+  gae_lambda: 0.95
+
+  clip_range: 0.2
+  ent_coef: 0.10
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  target_kl: 0.02
+
+environment:
+  initial_balance: 100000
+
+  commission: 0.0
+  sec_fee: 0.0000221
+  finra_taf: 0.000145
+
+  max_steps: 2500
+
+  buy_pct: 0.15           # Plus bas (22 actions vs 15)
+  max_position_pct: 0.20  # Plus bas (22 actions vs 15)
+  max_trades_per_day: 15  # Plus haut (22 actions vs 15)
+  min_holding_period: 2
+
+  slippage_model: realistic
+  spread_bps: 2.0
+  market_impact_factor: 0.0001
+
+  reward_scaling: 1.5
+  use_sharpe_penalty: true
+  use_drawdown_penalty: true
+  reward_trade_success: 0.5
+  penalty_overtrading: 0.005
+  drawdown_penalty_factor: 3.0
+
+data:
+  # Tickers remplis dynamiquement par le scanner
+  tickers: []
+  period: '5y'
+  interval: '1h'
+
+network:
+  # Reseau elargi pour ~1345 dimensions d'observation
+  net_arch:
+    - 1536
+    - 1536
+    - 768
+    - 384
+
+  activation_fn: tanh
+
+sector_scan:
+  enabled: true
+  stocks_per_sector: 2
+  lookback_days: 252
+  risk_free_rate: 0.04
+  cache_max_age_days: 30
+  scan_results_path: "data/sp500_cache/latest_scan.json"
+
+wandb:
+  enabled: false
+  project: Ploutos_Trading_V7_SP500
+  entity: null
+
+checkpoint:
+  save_freq: 50000
+  save_path: ./models/v7_sp500_checkpoints/
+
+eval:
+  eval_freq: 10000
+  n_eval_episodes: 5
+  best_model_save_path: ./models/v7_sp500_best/

@@ -68,15 +68,28 @@ class MarketScanConfig:
     cache_results: bool = True
 
 @dataclass
+class SectorScanConfig:
+    """Configuration scan S&P 500 par secteur GICS"""
+    enabled: bool = True
+    stocks_per_sector: int = 2
+    lookback_days: int = 252
+    risk_free_rate: float = 0.04
+    cache_max_age_days: int = 30
+    scan_results_path: str = "data/sp500_cache/latest_scan.json"
+    parallel_workers: int = 5
+    min_data_days: int = 100
+
+@dataclass
 class PloutosConfig:
     """Configuration complète du système Ploutos"""
-    
+
     market: MarketConfig = field(default_factory=MarketConfig)
     assets: AssetsConfig = field(default_factory=AssetsConfig)
     optimization: OptimizationConfig = field(default_factory=OptimizationConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
     validation: ValidationConfig = field(default_factory=ValidationConfig)
     market_scan: MarketScanConfig = field(default_factory=MarketScanConfig)
+    sector_scan: SectorScanConfig = field(default_factory=SectorScanConfig)
     
     @classmethod
     def from_yaml(cls, path: str) -> 'PloutosConfig':
@@ -106,22 +119,24 @@ class PloutosConfig:
             optimization=OptimizationConfig(**data.get('optimization', {})),
             training=TrainingConfig(**data.get('training', {})),
             validation=ValidationConfig(**data.get('validation', {})),
-            market_scan=MarketScanConfig(**data.get('market_scan', {}))
+            market_scan=MarketScanConfig(**data.get('market_scan', {})),
+            sector_scan=SectorScanConfig(**data.get('sector_scan', {})),
         )
-    
+
     @classmethod
     def from_json(cls, path: str) -> 'PloutosConfig':
         """Charge depuis JSON"""
         with open(path) as f:
             data = json.load(f)
-        
+
         return cls(
             market=MarketConfig(**data.get('market', {})),
             assets=AssetsConfig(**data.get('assets', {})),
             optimization=OptimizationConfig(**data.get('optimization', {})),
             training=TrainingConfig(**data.get('training', {})),
             validation=ValidationConfig(**data.get('validation', {})),
-            market_scan=MarketScanConfig(**data.get('market_scan', {}))
+            market_scan=MarketScanConfig(**data.get('market_scan', {})),
+            sector_scan=SectorScanConfig(**data.get('sector_scan', {})),
         )
     
     def to_dict(self) -> Dict[str, Any]:
@@ -132,7 +147,8 @@ class PloutosConfig:
             'optimization': asdict(self.optimization),
             'training': asdict(self.training),
             'validation': asdict(self.validation),
-            'market_scan': asdict(self.market_scan)
+            'market_scan': asdict(self.market_scan),
+            'sector_scan': asdict(self.sector_scan),
         }
     
     def save_yaml(self, path: str):

@@ -89,30 +89,55 @@ class TraderV6:
             raise
         
         # Définir tickers
+        import json as _json
+        self.sectors = {}
+        self.scan_date = None
+
         if tickers:
             self.tickers = tickers
         else:
-            # Essayer de charger config json associée au modèle
-            config_path = model_path.replace('.zip', '.json')
-            if os.path.exists(config_path):
-                import json
+            # 1) Chercher metadata V7 (_metadata.json)
+            metadata_path = model_path.replace('.zip', '_metadata.json')
+            # 2) Chercher config V6 (.json ou _config.json)
+            config_path_a = model_path.replace('.zip', '.json')
+            config_path_b = model_path.replace('.zip', '_config.json')
+
+            if os.path.exists(metadata_path):
                 try:
-                    with open(config_path) as f:
-                        config = json.load(f)
-                        # Chercher tickers dans différentes structures possibles
-                        if 'tickers' in config:
-                            self.tickers = config['tickers']
-                        elif 'data' in config and 'tickers' in config['data']:
-                            self.tickers = config['data']['tickers']
-                        else:
-                            self.tickers = ['NVDA', 'MSFT', 'AAPL', 'GOOGL', 'AMZN', 'TSLA', 'AMD', 'INTC']
+                    with open(metadata_path, encoding='utf-8') as f:
+                        meta = _json.load(f)
+                    self.tickers = meta['tickers']
+                    self.sectors = meta.get('sectors', {})
+                    self.scan_date = meta.get('scan_date')
+                    logger.info(f"✅ V7 metadata: {len(self.tickers)} tickers, {len(self.sectors)} secteurs (scan {self.scan_date})")
+                except Exception:
+                    self.tickers = ['NVDA', 'MSFT', 'AAPL', 'GOOGL', 'AMZN', 'TSLA', 'AMD', 'INTC']
+            elif os.path.exists(config_path_b):
+                try:
+                    with open(config_path_b, encoding='utf-8') as f:
+                        config = _json.load(f)
+                    self.tickers = config.get('tickers', config.get('data', {}).get('tickers', []))
+                    if not self.tickers:
+                        self.tickers = ['NVDA', 'MSFT', 'AAPL', 'GOOGL', 'AMZN', 'TSLA', 'AMD', 'INTC']
+                except Exception:
+                    self.tickers = ['NVDA', 'MSFT', 'AAPL', 'GOOGL', 'AMZN', 'TSLA', 'AMD', 'INTC']
+            elif os.path.exists(config_path_a):
+                try:
+                    with open(config_path_a, encoding='utf-8') as f:
+                        config = _json.load(f)
+                    if 'tickers' in config:
+                        self.tickers = config['tickers']
+                    elif 'data' in config and 'tickers' in config['data']:
+                        self.tickers = config['data']['tickers']
+                    else:
+                        self.tickers = ['NVDA', 'MSFT', 'AAPL', 'GOOGL', 'AMZN', 'TSLA', 'AMD', 'INTC']
                 except Exception:
                     self.tickers = ['NVDA', 'MSFT', 'AAPL', 'GOOGL', 'AMZN', 'TSLA', 'AMD', 'INTC']
             else:
                 # Défaut Tech
                 self.tickers = ['NVDA', 'MSFT', 'AAPL', 'GOOGL', 'AMZN', 'TSLA', 'AMD', 'INTC']
-        
-        logger.info(f"🎯 Tickers cibles: {', '.join(self.tickers)}")
+
+        logger.info(f"🎯 Tickers cibles ({len(self.tickers)}): {', '.join(self.tickers)}")
         
         # Initialiser Data Fetcher
         self.data_fetcher = None
@@ -147,6 +172,51 @@ class TraderV6:
         # Sync initiale
         if self.client:
             self.sync_with_broker()
+
+    def check_ticker_updates(self):
+        """Verifie si la liste de tickers doit etre mise a jour (modeles V7).
+
+        Appelee periodiquement (ex: 1x par mois). Re-scanne le S&P 500 si le
+        dernier scan date de plus de 30 jours.
+        """
+        if not self.sectors or not self.scan_date:
+            return  # Pas un modele V7
+
+        from datetime import datetime as _dt
+        try:
+            scan_dt = _dt.strptime(self.scan_date, '%Y-%m-%d')
+            age = (_dt.now() - scan_dt).days
+        except (ValueError, TypeError):
+            age = 999
+
+        if age < 30:
+            logger.info(f"✅ Liste de tickers a jour ({age} jours)")
+            return
+
+        logger.info(f"⏰ Scan date de {age} jours, mise a jour...")
+        try:
+            from core.sp500_scanner import SP500Scanner
+            scanner = SP500Scanner()
+            new_scan = scanner.scan_sectors(stocks_per_sector=2)
+            new_tickers = scanner.get_top_stocks(new_scan)
+
+            removed = set(self.tickers) - set(new_tickers)
+            added = set(new_tickers) - set(self.tickers)
+
+            if removed or added:
+                logger.info(f"🔄 Changements detectes:")
+                if removed:
+                    logger.info(f"  Retires: {', '.join(removed)}")
+                if added:
+                    logger.info(f"  Ajoutes: {', '.join(added)}")
+                self.tickers = new_tickers
+                self.sectors = new_scan['sectors']
+                self.scan_date = new_scan['scan_date']
+                scanner.save_results(new_scan)
+            else:
+                logger.info("✅ Aucun changement de tickers")
+        except Exception as e:
+            logger.error(f"Erreur mise a jour tickers: {e}")
 
     def sync_with_broker(self):
         """Synchroniser positions et cash avec le broker"""
