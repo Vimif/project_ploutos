@@ -18,6 +18,8 @@ scipy>=1.11.0  # Pour drift detection (PSI, KS Test)
 # ========================================
 # TRADING
 # ========================================
+# Broker: eToro (défaut) - utilise requests (déjà inclus)
+# Broker: Alpaca (fallback)
 alpaca-py>=0.25.0
 
 # ========================================

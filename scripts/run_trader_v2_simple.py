@@ -35,15 +35,17 @@ try:
     from core.alpaca_data_fetcher import AlpacaDataFetcher
     ALPACA_DATA_AVAILABLE = True
 except ImportError:
-    print("⚠️  AlpacaDataFetcher non disponible")
+    print("AlpacaDataFetcher non disponible")
     ALPACA_DATA_AVAILABLE = False
 
 try:
-    from trading.alpaca_client import AlpacaClient
-    ALPACA_TRADING_AVAILABLE = True
+    from trading.broker_factory import create_broker
+    BROKER_AVAILABLE = True
 except ImportError:
-    print("⚠️  AlpacaClient non disponible - Mode simulation seulement")
-    ALPACA_TRADING_AVAILABLE = False
+    BROKER_AVAILABLE = False
+
+# Compat: garder le flag pour le reste du code
+ALPACA_TRADING_AVAILABLE = BROKER_AVAILABLE
 
 # Configuration logging
 logging.basicConfig(
@@ -103,22 +105,23 @@ class SimpleTradingBot:
             except Exception as e:
                 logger.warning(f"⚠️  Alpaca Data non disponible: {e}")
         
-        # ✅ FIX: Client Alpaca Trading avec bon paramètre
+        # Client broker (eToro par défaut, ou Alpaca)
         self.client = None
-        if ALPACA_TRADING_AVAILABLE:
+        if BROKER_AVAILABLE:
             try:
-                self.client = AlpacaClient(paper_trading=paper_trading)
-                logger.info(f"✅ Alpaca Trading connecté (Paper: {paper_trading})")
-                
+                broker_name = os.getenv('BROKER', 'etoro')
+                self.client = create_broker(broker_name, paper_trading=paper_trading)
+                logger.info(f"Broker {broker_name} connecte (Paper: {paper_trading})")
+
                 # Afficher infos compte
                 account = self.client.get_account()
                 if account:
-                    logger.info(f"💰 Compte Alpaca:")
+                    logger.info(f"Compte {broker_name}:")
                     logger.info(f"  Cash: ${account['cash']:,.2f}")
                     logger.info(f"  Portfolio: ${account['portfolio_value']:,.2f}")
                     logger.info(f"  Buying Power: ${account['buying_power']:,.2f}")
             except Exception as e:
-                logger.warning(f"⚠️  Alpaca Trading non disponible: {e}")
+                logger.warning(f"Broker non disponible: {e}")
                 import traceback
                 traceback.print_exc()
         
@@ -132,28 +135,29 @@ class SimpleTradingBot:
             if account:
                 self.cash = account['cash']
     
-    def sync_with_alpaca(self):
+    def sync_with_broker(self):
         """
-        ★ SYNCHRONISER POSITIONS ET CASH AVEC ALPACA
-        À appeler AVANT les prédictions
+        Synchroniser positions et cash avec le broker.
+        A appeler AVANT les predictions.
         """
         if not self.client:
             return
-        
+
         try:
-            # Récupérer compte
             account = self.client.get_account()
             if account:
                 self.cash = float(account['cash'])
-            
-            # Récupérer positions
-            alpaca_positions = self.client.get_positions()
-            self.positions = {pos['symbol']: float(pos['qty']) for pos in alpaca_positions}
-            
-            logger.info(f"🔄 Sync Alpaca: ${self.cash:,.2f} cash, {len(self.positions)} positions")
-            
+
+            positions = self.client.get_positions()
+            self.positions = {pos['symbol']: float(pos['qty']) for pos in positions}
+
+            logger.info(f"Sync broker: ${self.cash:,.2f} cash, {len(self.positions)} positions")
+
         except Exception as e:
-            logger.error(f"❌ Erreur sync Alpaca: {e}")
+            logger.error(f"Erreur sync broker: {e}")
+
+    # Alias pour compatibilité
+    sync_with_alpaca = sync_with_broker
     
     def get_market_data(self, days=30):
         """
@@ -286,8 +290,8 @@ class SimpleTradingBot:
         logger.info("🔮 Génération prédictions...")
         
         try:
-            # ★ SYNC AVEC ALPACA AVANT PRÉDICTIONS
-            self.sync_with_alpaca()
+            # Sync avec broker avant predictions
+            self.sync_with_broker()
             
             # ✅ FIX: Calculer max_steps adapté aux données
             min_data_length = min(len(df) for df in data.values())
@@ -388,7 +392,7 @@ class SimpleTradingBot:
                                         self.positions[ticker] = qty
                                         self.cash -= qty * price
                                         trades_executed['buy'] += 1
-                                        logger.info(f"✅ {ticker}: BUY {qty} @ ${price:.2f} [ALPACA]")
+                                        logger.info(f"BUY {ticker}: {qty} @ ${price:.2f} [BROKER]")
                                     else:
                                         logger.error(f"❌ {ticker}: Échec ordre BUY")
                                 except Exception as e:
@@ -420,7 +424,7 @@ class SimpleTradingBot:
                                     self.cash += current_position * price
                                     self.positions[ticker] = 0
                                     trades_executed['sell'] += 1
-                                    logger.info(f"✅ {ticker}: SELL {current_position} @ ${price:.2f} [ALPACA]")
+                                    logger.info(f"SELL {ticker}: {current_position} @ ${price:.2f} [BROKER]")
                                 else:
                                     logger.error(f"❌ {ticker}: Échec SELL")
                             except Exception as e:
@@ -445,10 +449,10 @@ class SimpleTradingBot:
         
         # Portfolio summary
         if self.client:
-            # Utiliser valeurs Alpaca réelles
+            # Utiliser valeurs broker reelles
             account = self.client.get_account()
             if account:
-                logger.info(f"💰 Portfolio Alpaca: ${account['portfolio_value']:,.2f} (Cash: ${account['cash']:,.2f})")
+                logger.info(f"Portfolio: ${account['portfolio_value']:,.2f} (Cash: ${account['cash']:,.2f})")
                 self.cash = account['cash']
         else:
             # Simulation
@@ -498,19 +502,26 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description='Ploutos Trading Bot V2 (Simplifié)')
-    parser.add_argument('--model', default='models/autonomous/production.zip', help='Chemin modèle')
+    parser.add_argument('--model', default='models/autonomous/production.zip', help='Chemin modele')
     parser.add_argument('--paper', action='store_true', help='Mode paper trading')
     parser.add_argument('--interval', type=int, default=60, help='Intervalle cycles (minutes)')
-    parser.add_argument('--cycles', type=int, default=None, help='Nombre de cycles (illimité par défaut)')
+    parser.add_argument('--cycles', type=int, default=None, help='Nombre de cycles (illimite par defaut)')
+    parser.add_argument('--broker', default=None, choices=['etoro', 'alpaca'],
+                        help='Broker a utiliser (defaut: variable BROKER ou etoro)')
     
     args = parser.parse_args()
     
     logger.info("\n" + "="*70)
     logger.info("🚀 PLOUTOS TRADING BOT V2")
     logger.info("="*70)
-    logger.info(f"🧠 Modèle: {args.model}")
-    logger.info(f"📊 Mode: {'Paper Trading' if args.paper else 'LIVE TRADING'}")
-    logger.info(f"⏱️  Intervalle: {args.interval} min")
+    broker_name = args.broker or os.getenv('BROKER', 'etoro')
+    if args.broker:
+        os.environ['BROKER'] = args.broker
+
+    logger.info(f"Modele: {args.model}")
+    logger.info(f"Broker: {broker_name}")
+    logger.info(f"Mode: {'Paper Trading' if args.paper else 'LIVE TRADING'}")
+    logger.info(f"Intervalle: {args.interval} min")
     logger.info("="*70)
     
     if not args.paper:

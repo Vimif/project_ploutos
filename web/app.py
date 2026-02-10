@@ -21,16 +21,20 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import json
 import logging
+import os
 from datetime import datetime, timedelta
 from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS
 
 # Import modules Ploutos
 try:
-    from trading.alpaca_client import AlpacaClient
-    ALPACA_AVAILABLE = True
+    from trading.broker_factory import create_broker, get_available_brokers
+    BROKER_AVAILABLE = True
 except ImportError:
-    ALPACA_AVAILABLE = False
+    BROKER_AVAILABLE = False
+
+# Compatibilité: garder le flag ALPACA_AVAILABLE
+ALPACA_AVAILABLE = BROKER_AVAILABLE
 
 try:
     from core.self_improvement import SelfImprovementEngine
@@ -44,13 +48,22 @@ CORS(app)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialisation clients
-alpaca_client = None
-if ALPACA_AVAILABLE:
+# Initialisation client broker (eToro par défaut)
+alpaca_client = None  # Nom gardé pour compatibilité avec les routes
+broker_name = 'unknown'
+if BROKER_AVAILABLE:
     try:
-        alpaca_client = AlpacaClient(paper_trading=True)
+        alpaca_client = create_broker(paper_trading=True)
+        broker_name = os.environ.get('BROKER', 'etoro')
     except Exception as e:
-        logger.warning(f"⚠️  Alpaca non disponible: {e}")
+        logger.warning(f"Broker non disponible: {e}")
+        # Fallback: essayer l'autre broker
+        try:
+            fallback = 'alpaca' if os.environ.get('BROKER', 'etoro') == 'etoro' else 'etoro'
+            alpaca_client = create_broker(fallback, paper_trading=True)
+            broker_name = fallback
+        except Exception as e2:
+            logger.warning(f"Fallback broker non disponible: {e2}")
 
 # Cache simple
 cache = {
@@ -78,7 +91,9 @@ def api_status():
     return jsonify({
         'status': 'online',
         'timestamp': datetime.now().isoformat(),
-        'alpaca_connected': alpaca_client is not None,
+        'broker': broker_name,
+        'broker_connected': alpaca_client is not None,
+        'alpaca_connected': alpaca_client is not None,  # Compat
         'self_improvement_available': SELF_IMPROVEMENT_AVAILABLE
     })
 
@@ -87,8 +102,8 @@ def api_status():
 def api_account():
     """Informations du compte"""
     if not alpaca_client:
-        return jsonify({'error': 'Alpaca non disponible'}), 503
-    
+        return jsonify({'error': 'Broker non disponible'}), 503
+
     # Cache 30 secondes
     if cache['account'] and cache['last_update']:
         if (datetime.now() - cache['last_update']).seconds < 30:
@@ -107,7 +122,7 @@ def api_account():
 def api_positions():
     """Positions actuelles"""
     if not alpaca_client:
-        return jsonify({'error': 'Alpaca non disponible'}), 503
+        return jsonify({'error': 'Broker non disponible'}), 503
     
     positions = alpaca_client.get_positions()
     cache['positions'] = positions
@@ -266,7 +281,7 @@ if __name__ == '__main__':
     print("="*60)
     print(f"\n🚀 Démarrage sur http://{host}:{port}")
     print(f"🔧 Mode debug: {debug}")
-    print(f"📊 Alpaca: {'Actif' if alpaca_client else 'Inactif'}")
+    print(f"🏦 Broker: {broker_name} ({'Actif' if alpaca_client else 'Inactif'})")
     print(f"🧠 Self-Improvement: {'Actif' if SELF_IMPROVEMENT_AVAILABLE else 'Inactif'}")
     print("\n" + "="*60 + "\n")
     

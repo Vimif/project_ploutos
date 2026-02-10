@@ -21,6 +21,7 @@ import json
 import time
 from dotenv import load_dotenv
 from core.utils import setup_logging
+from trading.broker_interface import BrokerInterface
 
 logger = setup_logging(__name__, 'alpaca.log')
 
@@ -80,8 +81,8 @@ def log_trade_to_json(symbol, action, quantity, price, amount, reason='', portfo
     except Exception as e:
         logger.warning(f"⚠️  Échec log JSON: {e}")
 
-class AlpacaClient:
-    """Client Alpaca pour le trading"""
+class AlpacaClient(BrokerInterface):
+    """Client Alpaca pour le trading (implémente BrokerInterface)"""
     
     def __init__(self, paper_trading=True):
         """
