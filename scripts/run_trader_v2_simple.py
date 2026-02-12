@@ -237,7 +237,7 @@ class SimpleTradingBot:
                         # Sauvegarder en cache
                         try:
                             df.to_csv(f'data_cache/{ticker}.csv')
-                        except:
+                        except OSError:
                             pass
         
         logger.info(f"✅ {len(data)}/{len(self.tickers)} tickers chargés")

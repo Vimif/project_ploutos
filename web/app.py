@@ -83,6 +83,26 @@ def index():
     return render_template('index.html')
 
 
+# ========== HELPERS ==========
+
+TRADES_DIR = Path('logs/trades')
+
+
+def _load_trades(days: int) -> list:
+    """Charger les trades depuis les fichiers JSON de logs."""
+    all_trades = []
+    for i in range(days):
+        date = datetime.now() - timedelta(days=i)
+        filename = TRADES_DIR / f"trades_{date.strftime('%Y-%m-%d')}.json"
+        if filename.exists():
+            try:
+                with open(filename, 'r') as f:
+                    all_trades.extend(json.load(f))
+            except (json.JSONDecodeError, IOError):
+                pass
+    return all_trades
+
+
 # ========== API ENDPOINTS ==========
 
 @app.route('/api/status')
@@ -134,25 +154,8 @@ def api_positions():
 def api_trades():
     """Historique des trades (depuis JSON)"""
     days = request.args.get('days', 7, type=int)
-    
-    trades_dir = Path('logs/trades')
-    all_trades = []
-    
-    for i in range(days):
-        date = datetime.now() - timedelta(days=i)
-        filename = trades_dir / f"trades_{date.strftime('%Y-%m-%d')}.json"
-        
-        if filename.exists():
-            try:
-                with open(filename, 'r') as f:
-                    daily_trades = json.load(f)
-                    all_trades.extend(daily_trades)
-            except:
-                pass
-    
-    # Trier par date décroissante
+    all_trades = _load_trades(days)
     all_trades.sort(key=lambda t: t.get('timestamp', ''), reverse=True)
-    
     return jsonify(all_trades)
 
 
@@ -160,22 +163,8 @@ def api_trades():
 def api_performance():
     """Statistiques de performance"""
     days = request.args.get('days', 7, type=int)
-    
-    trades_dir = Path('logs/trades')
-    trades = []
-    
-    for i in range(days):
-        date = datetime.now() - timedelta(days=i)
-        filename = trades_dir / f"trades_{date.strftime('%Y-%m-%d')}.json"
-        
-        if filename.exists():
-            try:
-                with open(filename, 'r') as f:
-                    daily_trades = json.load(f)
-                    trades.extend(daily_trades)
-            except:
-                pass
-    
+    trades = _load_trades(days)
+
     # Calculer stats basiques
     buys = [t for t in trades if t['action'] == 'BUY']
     sells = [t for t in trades if t['action'] == 'SELL']
@@ -215,7 +204,7 @@ def api_improvement():
                 report = json.load(f)
                 cache['improvement_report'] = report
                 return jsonify(report)
-        except:
+        except (json.JSONDecodeError, IOError):
             pass
     
     # Sinon, générer nouveau rapport
@@ -238,27 +227,17 @@ def api_chart_portfolio():
     """Données pour graphique portfolio depuis les logs de trades"""
     days = request.args.get('days', 30, type=int)
 
-    trades_dir = Path('logs/trades')
+    all_trades = _load_trades(days)
     daily_values = {}
 
     # Extraire la dernière portfolio_value de chaque jour depuis les logs
-    for i in range(days):
-        date = datetime.now() - timedelta(days=i)
-        date_str = date.strftime('%Y-%m-%d')
-        filename = trades_dir / f"trades_{date_str}.json"
-
-        if filename.exists():
-            try:
-                with open(filename, 'r') as f:
-                    day_trades = json.load(f)
-                # Prendre la dernière valeur portfolio enregistrée ce jour
-                for trade in reversed(day_trades):
-                    pv = trade.get('portfolio_value')
-                    if pv is not None:
-                        daily_values[date_str] = pv
-                        break
-            except (json.JSONDecodeError, IOError):
-                pass
+    # Regrouper par date et prendre la dernière valeur connue
+    for trade in all_trades:
+        pv = trade.get('portfolio_value')
+        if pv is not None:
+            date_str = trade.get('timestamp', '')[:10]
+            if date_str:
+                daily_values[date_str] = pv
 
     # Valeur actuelle depuis le broker (pour aujourd'hui)
     today_str = datetime.now().strftime('%Y-%m-%d')

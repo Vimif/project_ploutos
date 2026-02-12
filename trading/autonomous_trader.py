@@ -103,7 +103,7 @@ class AutonomousTrader:
                 position = self.api.get_position(ticker)
                 print(f"  ⏭️ {ticker} déjà en position, skip BUY")
                 return
-            except:
+            except Exception:
                 pass  # Pas de position
             
             # Calculer quantité
@@ -135,7 +135,7 @@ class AutonomousTrader:
             # Vérifier position
             try:
                 position = self.api.get_position(ticker)
-            except:
+            except Exception:
                 print(f"  ⏭️ {ticker} pas de position, skip SELL")
                 return
             

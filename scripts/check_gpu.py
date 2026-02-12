@@ -126,9 +126,9 @@ try:
             else:
                 print("  ❌ Driver trop ancien, mise à jour recommandée")
                 
-        except:
+        except Exception:
             pass
-except:
+except Exception:
     print("  ⚠️  Impossible de vérifier version driver")
 
 print("\n" + "="*70)
@@ -151,7 +151,7 @@ try:
         print("   3. Redémarrer terminal/session")
         print("\n   En attendant, utiliser config CPU:")
         print("   bash scripts/train_v4_optimal.sh --config config/training_config_v4_optimal_cpu.yaml")
-except:
+except ImportError:
     print("❌ PyTorch non installé")
 
 print("\n")

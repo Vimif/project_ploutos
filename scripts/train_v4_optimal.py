@@ -205,9 +205,9 @@ class EarlyStoppingCallback(BaseCallback):
                                     print(f"\n🛑 EARLY STOPPING ! Pas d'amélioration depuis {self.patience} evals")
                                     print(f"   Meilleur reward: {self.best_reward:.2f}")
                                 return False  # Stop training
-                except:
+                except Exception:
                     pass
-        
+
         return True
 
 class LearningRateSchedulerCallback(BaseCallback):
