@@ -1,250 +1,77 @@
-# CLAUDE.md — AI Assistant Guide for Ploutos Trading Bot
+# 🧠 Plan Directeur : L'IA de Trading Ultime (Ploutos V8/V9)
 
-## Project Overview
+Ce document décrit la "Golden Path" pour construire l'IA de trading la plus performante et robuste possible. Inspiré des méthodes Quant et HFT modernes.
 
-Ploutos is a reinforcement learning-based algorithmic trading bot for US equities (NYSE/NASDAQ). It uses PPO (Proximal Policy Optimization) via stable-baselines3 to learn autonomous BUY/HOLD/SELL strategies from market data and technical indicators.
+## 🎯 Objectifs
+- **Performance** : Sharpe Ratio > 2.0 (Risque/Rendement excellent)
+- **Fiabilité** : Drawdown Max < 15% (Survie aux crises)
+- **Robustesse** : Profit constant sur 5+ années de test OOS (Out-of-Sample)
 
-**Status**: Paper trading only. Not production-ready for real money.
+---
 
-**Language**: Python 3.10+
-**License**: MIT
+## 🏗️ Phase 1 : Données & Univers (Le Socle)
 
-## Repository Structure
+Une IA ne vaut que ce qu'elle mange.
 
-```
-project_ploutos/
-├── config/                 # YAML configs + Python dataclasses
-│   ├── config.py           # PloutosConfig dataclass (central config)
-│   ├── training_config_v6_better_timing.yaml  # V6 training (15M steps)
-│   ├── training_config_v6_extended_50m.yaml   # V6 extended (50M steps)
-│   ├── training_config_v7_sp500.yaml          # V7 S&P 500 sectors
-│   ├── autonomous_config.yaml
-│   └── test_config.yaml
-├── core/                   # Core ML and trading logic
-│   ├── universal_environment_v6_better_timing.py  # Active Gym env (V6)
-│   ├── advanced_features_v2.py    # 60+ feature engineering
-│   ├── data_fetcher.py            # Multi-source data: Alpaca → yfinance → Polygon
-│   ├── alpaca_data_fetcher.py     # Alpaca-specific historical data fetcher
-│   ├── risk_manager.py            # Kelly criterion, position sizing, drawdown
-│   ├── market_analyzer.py         # RSI, MACD, Bollinger, trend analysis
-│   ├── market_status.py           # NYSE/NASDAQ open/close status
-│   ├── sp500_scanner.py           # S&P 500 sector scanner
-│   ├── trading_callback.py        # W&B monitoring callback for training
-│   ├── transaction_costs.py       # Slippage and market impact modeling
-│   └── utils.py                   # Logging setup, GPU info, cleanup
-├── trading/                # Broker integrations and live trading
-│   ├── broker_interface.py        # ABC base class for all brokers
-│   ├── broker_factory.py          # Factory: create_broker('etoro'|'alpaca')
-│   ├── etoro_client.py            # eToro API integration
-│   ├── alpaca_client.py           # Alpaca API integration
-│   ├── portfolio.py               # Portfolio tracking
-│   └── stop_loss_manager.py       # SL/TP management
-├── training/               # Model training scripts
-│   ├── train_v6_better_timing.py  # V6 training (15M steps, primary)
-│   ├── train_v6_extended_50m.py   # V6 extended training (50M steps)
-│   └── train_v7_sp500_sectors.py  # Sector-based training
-├── scripts/                # CLI entry points and utilities
-│   ├── run_trader_v6.py           # Main trading script (paper/live)
-│   ├── backtest_v6.py             # Backtesting V6 models
-│   ├── backtest_ultimate.py       # Comprehensive multi-metric backtest
-│   ├── analyze_why_fails_v6.py    # Timing diagnostic tool
-│   ├── paper_trade_v7.py          # V7 paper trading (uses V6 env)
-│   └── train_v6_quick.py          # Quick V6 training variant
-├── tests/                  # Unit tests
-│   ├── test_portfolio.py          # Portfolio trading tests
-│   └── verify_days_held.py        # Risk manager verification
-├── data/models/            # Trained model files (.zip)
-├── dashboard/              # Flask analytics dashboard
-├── database/               # PostgreSQL schema and utilities
-├── notifications/          # Discord notification integration
-├── docs/                   # V6 documentation
-└── runs/                   # Training run artifacts
-```
+- [ ] **1. Univers Dynamique (Sélectif)**
+    - Au lieu de trader 500 actions (bruit), sélectionner chaque trimestre les **50 actions les plus fortes** (Top Momentum + Volatilité suffisante).
+    - *Pourquoi ?* L'IA détecte mieux les signaux sur des actifs qui bougent vraiment.
+- [ ] **2. Données Macroéonomiques (Contexte)**
+    - Intégrer en entrée du réseau :
+        - **VIX (Volatilité)** : Pour savoir quand être défensif.
+        - **TNX (Taux 10 ans)** : Impacte fortement la Tech.
+        - **DXY (Dollar Index)** : Impacte les matières premières.
+- [ ] **3. Profondeur Historique**
+    - Récupérer des **données horaires (1h) depuis 2010** (minimum 2 cycles économiques : Bull run, Crash Covid, Hausse des taux).
 
-## Build & Development Commands
+## 🧠 Phase 2 : Architecture & Modèle (Le Cerveau)
 
-```bash
-# Install (editable mode)
-pip install -e .
+- [ ] **4. Mémoire (LSTM / RecurrentPPO)**
+    - Utiliser `RecurrentPPO` (de stable-baselines3-contrib) au lieu de PPO standard.
+    - *Avantage* : L'IA se "souvient" des bougies précédentes et du contexte (ex: "ça baisse depuis 3 jours") au lieu de juste voir l'instant T.
+- [ ] **5. Ensemble Learning (Le Conseil des Sages)**
+    - Entraîner **3 à 5 modèles** identiques avec des "seeds" différentes.
+    - Pour prendre une décision : Vote à la majorité.
+    - *Avantage* : Lisse les erreurs individuelles et augmente considérablement la fiabilité.
 
-# Install with dev dependencies
-pip install -e ".[dev]"
+## 🎓 Phase 3 : Protocole d'Entraînement (L'École)
 
-# Install from requirements.txt
-pip install -r requirements.txt
+C'est ici que se joue 80% de la performance future.
 
-# Training-specific dependencies
-pip install -r requirements_training.txt
-```
+- [ ] **6. Walk-Forward Analysis (Le Gold Standard)**
+    - Ne jamais entraîner sur 2010-2020 et tester sur 2021.
+    - Faire :
+        - Train 2010-2015 -> Test 2016
+        - Train 2010-2016 -> Test 2017
+        - ...
+        - Train 2010-2023 -> Test 2024
+    - *Résultat* : Une courbe de performance réaliste qui simule le trading réel année après année.
+- [ ] **7. Hyperparameter Tuning (Optuna)**
+    - Utiliser un script d'optimisation (Optuna) pour trouver le meilleur `learning_rate`, `batch_size`, `gamma` automatiquement. C'est souvent +20% de performance gratuite.
 
-## Testing
+## 🛡️ Phase 4 : Robustesse & Validation (Le Crash Test)
 
-```bash
-# Run all tests with coverage
-pytest tests/ -v --cov=core --cov=utils --cov-report=html
+- [ ] **8. Monte Carlo Simulations**
+    - Lancer 1000 backtests en ajoutant du bruit aléatoire aux prix (+/- 0.1%).
+    - Si l'IA perd de l'argent dans >5% des cas, elle est **sur-optimisée** (overfitting) -> Poubelle.
+- [ ] **9. Stress Test "Krach"**
+    - Simuler manuellement une chute de -20% en une journée. Vérifier que l'IA coupe ses positions (Stop Loss) ou se met short immédiatement.
 
-# Run a specific test file
-pytest tests/test_portfolio.py -v
+## 🚀 Phase 5 : Production (Le Réel)
 
-# Run a specific test
-pytest tests/test_portfolio.py::test_buy_success -v
-```
+- [ ] **10. Paper Trading "Smart Check"**
+    - Script qui tourne 24/7 sur un VPS (serveur).
+    - Vérifie les positions toutes les **5-15 minutes** (Stop Loss d'urgence).
+    - Prend des décisions de trend toutes les **1h** (Bougies closes).
+- [ ] **11. Monitoring Temps Réel**
+    - Alertes Discord/Telegram à chaque trade.
+    - Dashboard Grafana pour suivre le P&L et l'exposition.
 
-Test configuration is in `pyproject.toml` under `[tool.pytest.ini_options]`:
-- Test discovery: `tests/` directory, files matching `test_*.py`
-- Coverage: `core` and `utils` modules
-- Tests mock heavy dependencies (e.g., `torch`) to run without GPU
+---
 
-## Linting & Formatting
+## ✅ Todo List Immédiate (V7 -> V8)
 
-```bash
-# Format code with Black
-black . --line-length 100 --target-version py310
-
-# Lint with Ruff
-ruff check .
-
-# Type check with MyPy
-mypy .
-```
-
-Configuration (all in `pyproject.toml`):
-- **Black**: line-length=100, target Python 3.10
-- **Ruff**: rules E, F, W, I; ignores E501 (line length handled by Black)
-- **Line length**: 100 characters everywhere
-
-## Key Architectural Patterns
-
-### Environment Versioning
-- Evolution: V2 → V3 → V4 → V6 (no V5)
-- **Active environment**: `UniversalTradingEnvV6BetterTiming` in `core/universal_environment_v6_better_timing.py`
-- All new scripts must use V6. Do not create scripts using older environment versions.
-
-### Broker Abstraction
-- `BrokerInterface` (ABC) in `trading/broker_interface.py` defines the contract
-- `broker_factory.create_broker()` returns the configured broker
-- Supported: eToro (primary, default), Alpaca (fallback)
-- Default broker set via `BROKER` env var
-
-### Data Layer with Fallback
-Priority order for market data:
-1. Alpaca API
-2. Yahoo Finance (yfinance)
-3. Polygon.io
-
-The `UniversalDataFetcher` in `core/data_fetcher.py` handles automatic failover.
-
-### Configuration System
-- YAML configs in `config/` for training scenarios
-- Dataclass-based Python config in `config/config.py` (`PloutosConfig`)
-- Load with `PloutosConfig.from_yaml(path)` or `PloutosConfig.from_json(path)`
-- PPO hyperparameters extracted via `config.get_ppo_kwargs()`
-
-### Standard Tickers (legacy)
-```python
-TICKERS = ['NVDA', 'MSFT', 'AAPL', 'GOOGL', 'AMZN', 'META', 'TSLA',
-           'SPY', 'QQQ', 'VOO', 'VTI', 'XLE', 'XLF', 'XLK', 'XLV']
-```
-Modern approach: dynamic loading from S&P 500 sectors via `core/sp500_scanner.py`.
-
-## Environment Variables
-
-Copy `.env.example` to `.env` and configure:
-
-| Variable | Purpose |
-|----------|---------|
-| `BROKER` | `etoro` (default) or `alpaca` |
-| `ETORO_SUBSCRIPTION_KEY` | eToro API subscription key |
-| `ETORO_USERNAME` | eToro account username |
-| `ETORO_PASSWORD` | eToro account password |
-| `ETORO_API_KEY` | eToro API key |
-| `ALPACA_PAPER_API_KEY` | Alpaca paper trading API key |
-| `ALPACA_PAPER_SECRET_KEY` | Alpaca paper trading secret |
-| `ALPACA_LIVE_API_KEY` | Alpaca live trading API key |
-| `ALPACA_LIVE_SECRET_KEY` | Alpaca live trading secret |
-| `DB_HOST` | PostgreSQL host (default: localhost) |
-| `DB_NAME` | Database name (default: ploutos) |
-| `DB_USER` | Database user |
-| `DB_PASSWORD` | Database password |
-
-Database is optional — the system falls back to JSON logging in `logs/trades/`.
-
-## Common Workflows
-
-### Training a model
-```bash
-# Primary V6 training (15M steps, 16 parallel envs)
-python training/train_v6_better_timing.py
-
-# Extended training (50M steps)
-python training/train_v6_extended_50m.py
-
-# S&P 500 sector-based training
-python training/train_v7_sp500_sectors.py
-```
-
-### Backtesting
-```bash
-python scripts/backtest_v6.py --model data/models/brain_tech.zip --days 90
-python scripts/backtest_ultimate.py --model data/models/brain_tech.zip
-```
-
-### Paper trading
-```bash
-python scripts/run_trader_v6.py --paper --broker etoro --model data/models/brain_tech.zip
-```
-
-### Diagnostics
-```bash
-python scripts/analyze_why_fails_v6.py --model data/models/brain_tech.zip
-```
-
-### Dashboard
-```bash
-python dashboard/app.py
-```
-
-### Monitoring
-```bash
-tensorboard --logdir runs/v6_better_timing/ --port 6006
-```
-
-## Coding Conventions
-
-- **Line length**: 100 characters
-- **Formatter**: Black
-- **Linter**: Ruff (pyflakes, pycodestyle, isort)
-- **Python version**: 3.10+ (use modern type hints, dataclasses)
-- **Encoding**: Always use UTF-8 for logs/stdout (`sys.stdout.reconfigure(encoding='utf-8')`) for Windows compatibility
-- **Config pattern**: Use YAML for training configs, dataclasses for Python config objects
-- **Broker pattern**: Extend `BrokerInterface` ABC for new brokers, register in `broker_factory.py`
-- **Environment pattern**: Gym environments subclass `gymnasium.Env`, register observation/action spaces
-- **Logging**: Use `core/utils.setup_logging()` for consistent log formatting
-- **Models**: Saved as `.zip` files (stable-baselines3 format) in `data/models/`
-- **Tests**: Use pytest with fixtures; mock heavy deps like `torch` when not needed
-
-## Risk Management Parameters
-
-| Parameter | Value |
-|-----------|-------|
-| Max portfolio risk | 2% |
-| Daily loss limit | 3% (circuit breaker) |
-| Max single position | 5% of portfolio |
-| Max correlation | 0.7 between positions |
-| Position sizing | Kelly criterion |
-| Target Sharpe ratio | > 1.5 (validation threshold) |
-
-## Known Issues
-
-1. **BUY timing problem**: V4 bought too late (85% buy-high). V6 targets >50% buy-low via Features V2 (support/resistance, mean reversion, RSI divergences).
-2. **No walk-forward validation**: Backtests only cover recent fixed periods.
-3. **SL/TP not integrated in live execution**: Risk manager computes them but they're not enforced.
-
-## Important Notes for AI Assistants
-
-- **Paper trading only**: All configs default to `paper_trading: True`. Never enable real-money trading.
-- **No CI/CD**: There are no GitHub Actions or CI pipelines. Run tests locally before committing.
-- **No Docker**: The project runs directly on the host. Infrastructure setup is via shell scripts in `scripts/`.
-- **Credentials**: Never commit `.env` or hardcode API keys. The project already had a security fix for a hardcoded `SECRET_KEY`.
-- **Model files**: `.zip` files in `data/models/` are large (up to 68MB). They are gitignored under `models/` but `data/models/` is tracked.
-- **French codebase**: Comments, documentation, variable names, and commit messages are often in French. Maintain this convention when modifying existing French-documented code, but English is acceptable for new standalone files.
+1.  [ ] Coder `core/macro_data.py` pour récupérer VIX/TNX.
+2.  [ ] Créer l'environnement `UniversalTradingEnvV8_LSTM` (compatible mémoire).
+3.  [ ] Mettre en place le script `train_walk_forward.py`.
+4.  [ ] Tester l'approche "Ensemble" sur le S&P 500 actuel.

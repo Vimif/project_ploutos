@@ -33,6 +33,7 @@ from stable_baselines3.common.monitor import Monitor
 
 from core.universal_environment_v6_better_timing import UniversalTradingEnvV6BetterTiming
 from core.data_fetcher import download_data
+from core.data_pipeline import DataSplitter
 from core.sp500_scanner import SP500Scanner
 from core.utils import setup_logging
 
@@ -52,12 +53,14 @@ def load_config(config_path: str) -> dict:
         return yaml.safe_load(f)
 
 
-def make_env(data, config, rank):
+def make_env(data, config, rank, mode="train"):
     """Creer un environnement (pour SubprocVecEnv)."""
     def _init():
+        env_kwargs = dict(config['environment'])
+        env_kwargs['mode'] = mode
         env = UniversalTradingEnvV6BetterTiming(
             data=data,
-            **config['environment'],
+            **env_kwargs,
         )
         env = Monitor(env)
         return env
@@ -168,11 +171,29 @@ def train_v7_model(config_path: str, force_rescan: bool = False):
         traceback.print_exc()
         return
 
+    # 3b. Split temporel train/val/test
+    split_cfg = config.get('data_split', {})
+    train_ratio = split_cfg.get('train_ratio', 0.6)
+    val_ratio = split_cfg.get('val_ratio', 0.2)
+    test_ratio = split_cfg.get('test_ratio', 0.2)
+
+    logger.info(f"\nSplit temporel: train={train_ratio} / val={val_ratio} / test={test_ratio}")
+    splits = DataSplitter.split(data, train_ratio, val_ratio, test_ratio)
+    DataSplitter.validate_no_overlap(splits)
+
+    train_data = splits.train
+    val_data = splits.val
+    # test_data = splits.test  # reservé pour backtest OOS
+
+    logger.info(f"  Train: {splits.info['train']['n_bars']} bars ({splits.info['train']['start']} -> {splits.info['train']['end']})")
+    logger.info(f"  Val:   {splits.info['val']['n_bars']} bars ({splits.info['val']['start']} -> {splits.info['val']['end']})")
+    logger.info(f"  Test:  {splits.info['test']['n_bars']} bars ({splits.info['test']['start']} -> {splits.info['test']['end']})")
+
     # 4. Environnements paralleles
     logger.info(f"\nCreation de {config['training']['n_envs']} environnements paralleles...")
     try:
         envs = SubprocVecEnv([
-            make_env(data, config, i)
+            make_env(train_data, config, i, mode="train")
             for i in range(config['training']['n_envs'])
         ])
         envs = VecNormalize(
@@ -257,8 +278,20 @@ def train_v7_model(config_path: str, force_rescan: bool = False):
         verbose=1,
     )
 
+    # Eval env (val data, mode eval)
+    eval_envs = SubprocVecEnv([
+        make_env(val_data, config, 0, mode="eval")
+    ])
+    eval_envs = VecNormalize(
+        eval_envs,
+        norm_obs=True,
+        norm_reward=False,  # pas de normalisation reward en eval
+        clip_obs=10.0,
+        gamma=config['training']['gamma'],
+    )
+
     eval_callback = EvalCallback(
-        envs,
+        eval_envs,
         callback_after_eval=stop_callback,
         eval_freq=config['eval']['eval_freq'],
         n_eval_episodes=config['eval']['n_eval_episodes'],
@@ -329,10 +362,11 @@ def train_v7_model(config_path: str, force_rescan: bool = False):
         'observation_space_dim': envs.observation_space.shape[0],
         'total_timesteps': config['training']['total_timesteps'],
         'network_arch': config['network']['net_arch'],
+        'data_split': splits.info,
     }
     metadata_path = final_model_path.replace('.zip', '_metadata.json')
     with open(metadata_path, 'w', encoding='utf-8') as f:
-        json.dump(metadata, f, indent=2, ensure_ascii=False)
+        json.dump(metadata, f, indent=2, ensure_ascii=False, default=str)
     logger.info(f"Metadata V7 sauvegardee: {metadata_path}")
 
     # Resume

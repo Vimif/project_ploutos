@@ -52,6 +52,21 @@ environment:
   penalty_overtrading: 0.005
   drawdown_penalty_factor: 3.0
 
+  # Rewards configurables (ex-magic numbers)
+  reward_buy_executed: 0.1
+  reward_overtrading: -0.02
+  reward_invalid_trade: -0.01
+  reward_bad_price: -0.05
+  reward_good_return_bonus: 0.3
+  reward_high_winrate_bonus: 0.2
+  good_return_threshold: 0.01
+  high_winrate_threshold: 0.6
+
+data_split:
+  train_ratio: 0.6
+  val_ratio: 0.2
+  test_ratio: 0.2  # Réservé pour backtest OOS
+
 data:
   # Tickers remplis dynamiquement par le scanner
   tickers: []

@@ -34,7 +34,8 @@ class AdvancedTransactionModel:
                  min_slippage=0.0005,      # 0.05% slippage minimum
                  max_slippage=0.005,       # 0.5% slippage maximum
                  market_impact_coef=0.0001,
-                 latency_std=0.0002):      # 0.02% latence aléatoire
+                 latency_std=0.0002,       # 0.02% latence aléatoire
+                 rng=None):                # RandomState pour reproductibilité
         """
         Args:
             base_commission: Commission fixe du courtier
@@ -42,12 +43,14 @@ class AdvancedTransactionModel:
             max_slippage: Slippage maximum (marchés illiquides)
             market_impact_coef: Coefficient d'impact de marché
             latency_std: Écart-type latence (mouvement prix pendant exécution)
+            rng: np.random.RandomState optionnel (pour reproductibilité)
         """
         self.base_commission = base_commission
         self.min_slippage = min_slippage
         self.max_slippage = max_slippage
         self.market_impact_coef = market_impact_coef
         self.latency_std = latency_std
+        self._rng = rng if rng is not None else np.random
         
         # Cache pour volatilités (optimisation)
         self.volatility_cache = {}
@@ -170,7 +173,7 @@ class AdvancedTransactionModel:
         """
         
         # Bruit aléatoire (peut être positif ou négatif)
-        latency = np.random.normal(0, self.latency_std)
+        latency = self._rng.normal(0, self.latency_std)
         
         # Retourner valeur absolue (coût toujours positif)
         return abs(latency)
@@ -261,7 +264,8 @@ if __name__ == '__main__':
     print(f"  Différence         : ${estimate1['price_difference']:.4f} ({estimate1['price_difference_pct']:.3f}%)")
     print(f"  Valeur notionnelle : ${estimate1['notional_value']:,.2f}")
     print(f"  Coût total        : ${estimate1['total_cost_dollars']:.2f} ({estimate1['total_cost_pct']:.3f}%)")
-    print(f"  Acceptable         : {'\u2705 OUI' if estimate1['is_acceptable'] else '\u274c NON'}")
+    acceptable1 = '\u2705 OUI' if estimate1['is_acceptable'] else '\u274c NON'
+    print(f"  Acceptable         : {acceptable1}")
     
     # Test 2 : Gros ordre (impact marché)
     print("\n🔴 Test 2 : Gros ordre avec impact marché (NVDA)")
@@ -281,7 +285,8 @@ if __name__ == '__main__':
     print(f"  Différence         : ${estimate2['price_difference']:.4f} ({estimate2['price_difference_pct']:.3f}%)")
     print(f"  Valeur notionnelle : ${estimate2['notional_value']:,.2f}")
     print(f"  Coût total        : ${estimate2['total_cost_dollars']:,.2f} ({estimate2['total_cost_pct']:.3f}%)")
-    print(f"  Acceptable         : {'\u2705 OUI' if estimate2['is_acceptable'] else '\u274c NON'}")
+    acceptable2 = '\u2705 OUI' if estimate2['is_acceptable'] else '\u274c NON'
+    print(f"  Acceptable         : {acceptable2}")
     
     # Breakdown détaillé
     print("\n📊 Breakdown Test 2 :")

@@ -105,6 +105,7 @@ ENV_PARAMS_V6 = dict(
     reward_trade_success=0.5,
     penalty_overtrading=0.005,
     drawdown_penalty_factor=3.0,
+    mode='backtest',
 )
 
 # V7 environment defaults (same env class, adjusted params for ~22 tickers)
@@ -126,6 +127,7 @@ ENV_PARAMS_V7 = dict(
     reward_trade_success=0.5,
     penalty_overtrading=0.005,
     drawdown_penalty_factor=3.0,
+    mode='backtest',
 )
 
 
@@ -178,10 +180,19 @@ def detect_environment(model, metadata=None, config=None):
     """Auto-detecte l'environnement compatible avec le modele.
 
     Si metadata V7 est fournie, utilise ses tickers et params.
+    Cross-valide le nombre de tickers avec l'obs_size du modele.
     Sinon, auto-detection par taille d'observation.
     """
     obs_size = model.observation_space.shape[0]
     logger.info(f"  Observation space du modele: {obs_size} dims")
+
+    # Derive actual n_tickers from obs_size: obs = n * 85 + n + 3 = n * 86 + 3
+    FEATURES_PER_TICKER = 85  # AdvancedFeaturesV2 produces 85 features
+    actual_n_from_obs = (obs_size - 3) / 86
+    actual_n_int = round(actual_n_from_obs)
+    obs_matches = abs(actual_n_int * 86 + 3 - obs_size) < 5
+    if obs_matches:
+        logger.info(f"  Obs-size -> {actual_n_int} tickers (formula: {actual_n_int}*86+3={actual_n_int*86+3})")
 
     from core.universal_environment_v6_better_timing import UniversalTradingEnvV6BetterTiming
 
@@ -189,6 +200,17 @@ def detect_environment(model, metadata=None, config=None):
     if metadata and metadata.get('version', '').startswith('v7'):
         tickers = metadata.get('tickers', [])
         n_tickers = len(tickers)
+
+        # Cross-validate ticker count with model obs_size
+        if obs_matches and actual_n_int != n_tickers:
+            logger.warning(
+                f"  ⚠️  Metadata liste {n_tickers} tickers mais le modele a ete entraine avec "
+                f"{actual_n_int} tickers (obs_size={obs_size}). "
+                f"Probable: {n_tickers - actual_n_int} tickers absents pendant l'entrainement."
+            )
+            logger.info(f"  Ajustement automatique: utilisation de {actual_n_int} tickers")
+            tickers = tickers[:actual_n_int]
+            n_tickers = actual_n_int
 
         # Use config env params if available, else V7 defaults
         if config and 'environment' in config:
@@ -211,6 +233,7 @@ def detect_environment(model, metadata=None, config=None):
                 reward_trade_success=env_cfg.get('reward_trade_success', 0.5),
                 penalty_overtrading=env_cfg.get('penalty_overtrading', 0.005),
                 drawdown_penalty_factor=env_cfg.get('drawdown_penalty_factor', 3.0),
+                mode='backtest',
             )
         else:
             params = dict(ENV_PARAMS_V7)
@@ -220,6 +243,16 @@ def detect_environment(model, metadata=None, config=None):
 
     # --- V6/V7 sans metadata: detection par obs_size ---
     # Formula: obs = n_tickers * 85 + n_tickers + 3 = n_tickers * 86 + 3
+    if obs_matches:
+        n_tickers = actual_n_int
+        is_v7 = n_tickers > 15
+        version = 'V7' if is_v7 else 'V6'
+        params = dict(ENV_PARAMS_V7) if is_v7 else dict(ENV_PARAMS_V6)
+        expected_obs = n_tickers * 86 + 3
+        logger.info(f"  -> Match exact: {version} BetterTiming avec {n_tickers} tickers ({expected_obs} dims)")
+        return version, n_tickers, None, UniversalTradingEnvV6BetterTiming, params
+
+    # Legacy fallback with tolerance
     for n_tickers in [22, 20, 15, 10, 5, 1]:
         expected_obs = n_tickers * 85 + n_tickers + 3
         if abs(expected_obs - obs_size) < 20:

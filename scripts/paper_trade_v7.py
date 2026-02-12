@@ -43,6 +43,9 @@ import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
 from stable_baselines3 import PPO
+from dotenv import load_dotenv
+
+load_dotenv()
 
 logger = logging.getLogger('PaperTrader')
 logging.basicConfig(
@@ -329,7 +332,7 @@ class AlpacaBroker:
 
 def fetch_live_data(tickers, period='5d', interval='1h'):
     """Telecharge les donnees recentes pour tous les tickers."""
-    from data.universal_data_fetcher import UniversalDataFetcher
+    from core.data_fetcher import UniversalDataFetcher
     fetcher = UniversalDataFetcher()
 
     data = {}
@@ -367,7 +370,7 @@ def get_model_actions(model, data, tickers, env_class, env_params, model_obs_siz
     from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
     try:
-        env = env_class(data_dict=data, tickers=tickers, **env_params)
+        env = env_class(data=data, **env_params)
 
         if env.observation_space.shape[0] != model_obs_size:
             logger.warning(f"  Obs mismatch: env={env.observation_space.shape[0]} vs model={model_obs_size}")
@@ -495,10 +498,10 @@ def run_paper_trading(model_path, mode='simulate', api_key=None, api_secret=None
 
         # 4. Execute trades based on model actions
         # Actions: 0 = hold, 1 = buy, 2 = sell (for each ticker)
-        n_actions = len(actions) if hasattr(actions, '__len__') else 1
-        if not hasattr(actions, '__len__'):
-            actions = [actions]
-
+        import numpy as np
+        actions = np.array(actions).flatten()
+        n_actions = len(actions)
+        
         actual_tickers = list(data.keys())
         for i, ticker in enumerate(actual_tickers):
             if i >= n_actions:
@@ -607,8 +610,14 @@ def main():
                         help=f'Kill switch perte journaliere max (defaut: {KILL_SWITCH_MAX_DAILY_LOSS:.0%})')
     args = parser.parse_args()
 
-    if args.mode == 'alpaca' and (not args.api_key or not args.api_secret):
-        parser.error("Mode alpaca requiert --api-key et --api-secret")
+    if args.mode == 'alpaca':
+        if not args.api_key:
+            args.api_key = os.getenv('ALPACA_PAPER_API_KEY') or os.getenv('ALPACA_API_KEY')
+        if not args.api_secret:
+            args.api_secret = os.getenv('ALPACA_PAPER_SECRET_KEY') or os.getenv('ALPACA_SECRET_KEY')
+
+        if not args.api_key or not args.api_secret:
+            parser.error("Mode alpaca requiert --api-key et --api-secret (ou variables ALPACA_PAPER_API_KEY/_SECRET dans .env)")
 
     run_paper_trading(
         model_path=args.model,
