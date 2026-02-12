@@ -1,11 +1,6 @@
 # core/risk_manager.py
 """Gestionnaire de risque avancé pour le trading"""
 
-import sys
-from pathlib import Path
-if str(Path(__file__).parent.parent) not in sys.path:
-    sys.path.insert(0, str(Path(__file__).parent.parent))
-
 import numpy as np
 from datetime import datetime, timedelta
 from typing import List, Dict, Tuple, Optional

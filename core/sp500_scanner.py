@@ -4,11 +4,6 @@ Selectionne les meilleures actions de chaque secteur GICS du S&P 500
 en se basant sur le Sharpe ratio annualise.
 """
 
-import sys
-from pathlib import Path
-if str(Path(__file__).parent.parent) not in sys.path:
-    sys.path.insert(0, str(Path(__file__).parent.parent))
-
 import os
 import json
 import numpy as np

@@ -41,7 +41,7 @@ class MarketAnalyzer:
             rsi = 100 - (100 / (1 + rs))
             
             return float(rsi.iloc[-1])
-        except:
+        except Exception:
             return 50.0
     
     @staticmethod
@@ -67,7 +67,7 @@ class MarketAnalyzer:
                 'signal': float(signal.iloc[-1]),
                 'histogram': float(histogram.iloc[-1])
             }
-        except:
+        except Exception:
             return {'macd': 0, 'signal': 0, 'histogram': 0}
     
     @staticmethod
@@ -99,7 +99,7 @@ class MarketAnalyzer:
                 'lower': float(lower.iloc[-1]),
                 'position': float(position)  # 0 = sur lower, 1 = sur upper
             }
-        except:
+        except Exception:
             return {'upper': 0, 'middle': 0, 'lower': 0, 'position': 0.5}
     
     @staticmethod
@@ -131,7 +131,7 @@ class MarketAnalyzer:
                 return 'baisse'
             else:
                 return 'neutre'
-        except:
+        except Exception:
             return 'neutre'
     
     @classmethod

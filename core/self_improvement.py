@@ -15,10 +15,7 @@ Auteur: Ploutos AI Team
 Date: Dec 2025
 """
 
-import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 import json
 import logging
 import numpy as np

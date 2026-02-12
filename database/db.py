@@ -1,11 +1,6 @@
 # database/db.py
 """Gestionnaire de base de données PostgreSQL pour Ploutos"""
 
-import sys
-from pathlib import Path
-if str(Path(__file__).parent.parent) not in sys.path:
-    sys.path.insert(0, str(Path(__file__).parent.parent))
-
 import psycopg2
 import psycopg2.extras
 import os
@@ -23,7 +18,7 @@ DB_CONFIG = {
     'host': os.getenv('DB_HOST', 'localhost'),
     'database': os.getenv('DB_NAME', 'ploutos'),
     'user': os.getenv('DB_USER', 'ploutos'),
-    'password': os.getenv('DB_PASSWORD', 'MotDePasseSecurise123!')
+    'password': os.getenv('DB_PASSWORD', '')
 }
 
 @contextmanager
