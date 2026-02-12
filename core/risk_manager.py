@@ -329,12 +329,33 @@ class RiskManager:
         # Positions à risque
         risky_positions = []
         for pos in positions:
+            # Calculer les jours de détention (days_held)
+            days_held = 0
+            purchase_date = pos.get('purchase_date') or pos.get('created_at')
+
+            if purchase_date:
+                try:
+                    if isinstance(purchase_date, str):
+                        # Gérer le format ISO avec ou sans 'Z'
+                        dt_str = purchase_date.replace('Z', '+00:00')
+                        purchase_dt = datetime.fromisoformat(dt_str)
+                    else:
+                        purchase_dt = purchase_date
+
+                    if purchase_dt:
+                        # Calculer la différence de jours
+                        now = datetime.now(purchase_dt.tzinfo) if purchase_dt.tzinfo else datetime.now()
+                        delta = now - purchase_dt
+                        days_held = max(0, delta.days)
+                except Exception as e:
+                    logger.warning(f"⚠️ Erreur calcul days_held pour {pos.get('symbol')}: {e}")
+
             risk = self.assess_position_risk(
                 symbol=pos['symbol'],
                 position_value=pos['market_value'],
                 portfolio_value=portfolio_value,
                 unrealized_plpc=pos['unrealized_plpc'],
-                days_held=0  # TODO: Calculer depuis date d'achat
+                days_held=days_held
             )
             if risk['risk_score'] >= 2:
                 risky_positions.append(risk)

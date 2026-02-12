@@ -149,7 +149,8 @@ class AlpacaClient(BrokerInterface):
                 'unrealized_pl': float(pos.unrealized_pl),
                 'unrealized_plpc': float(pos.unrealized_plpc),
                 'current_price': float(pos.current_price),
-                'avg_entry_price': float(pos.avg_entry_price)
+                'avg_entry_price': float(pos.avg_entry_price),
+                'purchase_date': getattr(pos, 'created_at', None)  # Alpaca Position lacks purchase_date
             } for pos in positions]
         except Exception as e:
             logger.error(f"❌ Erreur récupération positions: {e}")

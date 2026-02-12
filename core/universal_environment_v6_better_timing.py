@@ -132,6 +132,17 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
         print(f"  ✅ {len(self.feature_columns)} features calculées par ticker")
         print(f"      Include: entry_score, support/resistance, divergences, etc.")
         
+        # ⚡ OPTIMISATION: Convertir en numpy arrays pour accès rapide
+        self.feature_arrays = {}
+        self.close_prices = {}
+
+        for ticker in self.tickers:
+            df = self.processed_data[ticker]
+            # Convertir features en float32
+            self.feature_arrays[ticker] = df[self.feature_columns].values.astype(np.float32)
+            # Convertir prix close en float32
+            self.close_prices[ticker] = df['Close'].values.astype(np.float32)
+
         self.max_steps = min(
             self.max_steps,
             min(len(df) for df in self.processed_data.values()) - 100
@@ -328,13 +339,15 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
         return price * (1 - slippage_pct)
     
     def _get_current_price(self, ticker: str) -> float:
-        df = self.processed_data[ticker]
-        if self.current_step >= len(df):
-            return df.iloc[-1]['Close']
-        price = df.iloc[self.current_step]['Close']
+        prices = self.close_prices[ticker]
+        if self.current_step >= len(prices):
+            return float(prices[-1])
+
+        price = float(prices[self.current_step])
         
         if np.isnan(price) or np.isinf(price) or price <= 0:
-            return df['Close'].median()
+            # Fallback (rare)
+            return float(np.nanmedian(prices))
         
         return price
     
@@ -355,13 +368,12 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
         obs_parts = []
         
         for ticker in self.tickers:
-            df = self.processed_data[ticker]
+            features_array = self.feature_arrays[ticker]
             
-            if self.current_step >= len(df):
-                features = np.zeros(len(self.feature_columns))
+            if self.current_step >= len(features_array):
+                features = np.zeros(len(self.feature_columns), dtype=np.float32)
             else:
-                row = df.iloc[self.current_step]
-                features = row[self.feature_columns].values
+                features = features_array[self.current_step]
             
             features = np.nan_to_num(features, nan=0.0, posinf=10.0, neginf=-10.0)
             features = np.clip(features, -10, 10)

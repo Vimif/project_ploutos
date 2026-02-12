@@ -2,7 +2,63 @@
 
 {% block title %}Accueil - Ploutos Dashboard{% endblock %}
 
+{% block extra_css %}
+    .dashboard-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+
+    .dashboard-title {
+        color: #e2e8f0;
+        font-size: 1.5em;
+        margin: 0;
+    }
+
+    .dashboard-controls {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+    }
+
+    #last-updated {
+        color: #94a3b8;
+        font-size: 0.9em;
+    }
+
+    #refresh-btn {
+        background: #334155;
+        border: none;
+        color: #e2e8f0;
+        padding: 8px 12px;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: background 0.3s;
+        font-size: 1.2em;
+    }
+
+    #refresh-btn:hover {
+        background: #475569;
+    }
+
+    #refresh-btn:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+    }
+{% endblock %}
+
 {% block content %}
+<div class="dashboard-header">
+    <h2 class="dashboard-title">Résumé</h2>
+    <div class="dashboard-controls">
+        <span id="last-updated" aria-live="polite"></span>
+        <button id="refresh-btn" onclick="loadDashboard()" aria-label="Rafraîchir les données">
+            ↻
+        </button>
+    </div>
+</div>
+
 <div class="grid">
     <div class="card">
         <div class="stat">
@@ -14,7 +70,7 @@
     <div class="card">
         <div class="stat">
             <div id="return-pct" class="stat-value neutral">-</div>
-            <div class="stat-label">Return %</div>
+            <div class="stat-label">Rentabilité %</div>
         </div>
     </div>
     
@@ -51,6 +107,13 @@
 {% block extra_js %}
 <script>
     async function loadDashboard() {
+        const btn = document.getElementById('refresh-btn');
+        if(btn) {
+             btn.style.opacity = '0.7';
+             btn.innerHTML = '...';
+             btn.disabled = true;
+        }
+
         try {
             // Charger compte
             const accountResp = await fetch('/api/account');
@@ -154,6 +217,13 @@
                 
                 document.getElementById('performance-container').innerHTML = perfHtml;
             }
+
+            // Update timestamp
+            const now = new Date();
+            const timestampEl = document.getElementById('last-updated');
+            if (timestampEl) {
+                timestampEl.textContent = 'Mis à jour : ' + now.toLocaleTimeString('fr-FR');
+            }
             
         } catch (error) {
             console.error('❌ Erreur chargement dashboard:', error);
@@ -163,6 +233,12 @@
                 '<p style="color:#ef4444;text-align:center;padding:20px;">❌ Erreur de connexion. Vérifiez que le bot est actif.</p>';
             document.getElementById('performance-container').innerHTML = 
                 '<p style="color:#ef4444;text-align:center;padding:20px;">❌ Erreur de connexion.</p>';
+        } finally {
+            if(btn) {
+                 btn.style.opacity = '1';
+                 btn.innerHTML = '↻';
+                 btn.disabled = false;
+            }
         }
     }
     

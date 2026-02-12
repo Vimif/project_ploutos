@@ -396,6 +396,14 @@ class EToroClient(BrokerInterface):
                 avg_entry = total_invested / total_qty if total_qty > 0 else 0
                 current_price = total_current_value / total_qty if total_qty > 0 else 0
 
+                # Trouver la date d'achat la plus ancienne pour cet instrument
+                open_dates = []
+                for t in trades:
+                    od = t.get('OpenDateTime') or t.get('openDateTime')
+                    if od:
+                        open_dates.append(od)
+                purchase_date = min(open_dates) if open_dates else None
+
                 positions.append({
                     'symbol': symbol,
                     'qty': round(total_qty, 6),
@@ -405,6 +413,7 @@ class EToroClient(BrokerInterface):
                     'unrealized_plpc': round(unrealized_plpc, 6),
                     'current_price': round(current_price, 2),
                     'avg_entry_price': round(avg_entry, 2),
+                    'purchase_date': purchase_date,
                     # Métadonnées eToro-spécifiques
                     '_etoro_instrument_id': inst_id,
                     '_etoro_position_ids': [

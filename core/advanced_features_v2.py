@@ -67,7 +67,7 @@ class AdvancedFeaturesV2:
         
         # Cleanup
         df = df.replace([np.inf, -np.inf], np.nan)
-        df = df.fillna(method='ffill').fillna(0)
+        df = df.ffill().fillna(0)
         
         return df
     

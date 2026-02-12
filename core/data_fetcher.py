@@ -14,6 +14,9 @@ warnings.filterwarnings('ignore')
 from dotenv import load_dotenv
 load_dotenv()
 
+from core.utils import setup_logging
+logger = setup_logging(__name__)
+
 class UniversalDataFetcher:
     """
     Récupère les données de marché depuis plusieurs sources
@@ -33,7 +36,7 @@ class UniversalDataFetcher:
         if self.polygon_api:
             self.sources.append('polygon')
         
-        print(f"📡 Data Fetcher initialisé : {', '.join(self.sources)}")
+        logger.info(f"📡 Data Fetcher initialisé : {', '.join(self.sources)}")
         
     def _init_alpaca(self):
         """Initialise Alpaca avec la nouvelle API alpaca-py"""
@@ -52,7 +55,7 @@ class UniversalDataFetcher:
                 api_secret = os.getenv('ALPACA_API_SECRET')  # ✅ Alternative
             
             if not api_key or not api_secret:
-                print("⚠️ Variables ALPACA_API_KEY/SECRET non définies")
+                logger.warning("⚠️ Variables ALPACA_API_KEY/SECRET non définies")
                 return None
             
             # Créer client
@@ -66,17 +69,17 @@ class UniversalDataFetcher:
                     start=datetime.now() - timedelta(days=2)
                 )
                 client.get_stock_bars(test_request)
-                print("✅ Alpaca connecté (alpaca-py)")
+                logger.info("✅ Alpaca connecté (alpaca-py)")
                 return client
-            except Exception as test_err:
-                print(f"⚠️ Alpaca test échec : {str(test_err)[:80]}")
+            except Exception:
+                logger.exception("⚠️ Alpaca test échec")
                 return None
             
         except ImportError:
-            print("⚠️ alpaca-py non installé (pip install alpaca-py)")
+            logger.warning("⚠️ alpaca-py non installé (pip install alpaca-py)")
             return None
-        except Exception as e:
-            print(f"⚠️ Alpaca échec : {str(e)[:80]}")
+        except Exception:
+            logger.exception("⚠️ Alpaca échec")
             return None
 
     
@@ -91,13 +94,13 @@ class UniversalDataFetcher:
                 return None
             
             client = RESTClient(api_key=api_key)
-            print("✅ Polygon connecté")
+            logger.info("✅ Polygon connecté")
             return client
             
         except ImportError:
             return None
-        except Exception as e:
-            print(f"⚠️ Polygon échec : {str(e)[:50]}")
+        except Exception:
+            logger.exception("⚠️ Polygon échec")
             return None
     
     def fetch(self, ticker, start_date=None, end_date=None, interval='1h', max_retries=2):
@@ -132,7 +135,7 @@ class UniversalDataFetcher:
         else:
             end_str = end_date
         
-        print(f"📥 Fetch {ticker} ({start_str} → {end_str}, {interval})")
+        logger.info(f"📥 Fetch {ticker} ({start_str} → {end_str}, {interval})")
         
         # Essayer chaque source dans l'ordre
         for source in self.sources:
@@ -153,12 +156,12 @@ class UniversalDataFetcher:
                     # Validation
                     if df is not None and len(df) > 100:
                         df_normalized = self._normalize_dataframe(df)
-                        print(f"✅ {source} : {len(df_normalized)} bougies")
+                        logger.info(f"✅ {source} : {len(df_normalized)} bougies")
                         return df_normalized
                     
-                except Exception as e:
+                except Exception:
                     if attempt == max_retries - 1:
-                        print(f"⚠️ {source} échec (tentative {attempt+1}/{max_retries}) : {str(e)[:80]}")
+                        logger.warning(f"⚠️ {source} échec (tentative {attempt+1}/{max_retries})", exc_info=True)
                     continue
         
         # Si toutes les sources ont échoué
@@ -229,7 +232,7 @@ class UniversalDataFetcher:
             if delta_days > 729:
                 # Ajuster automatiquement
                 start_date = (end_dt - timedelta(days=729)).strftime('%Y-%m-%d')
-                print(f"⚠️ Yahoo limite 730j pour {interval} : ajusté à {start_date}")
+                logger.warning(f"⚠️ Yahoo limite 730j pour {interval} : ajusté à {start_date}")
         
         # Mapping interval
         interval_map = {
@@ -365,7 +368,7 @@ class UniversalDataFetcher:
         """
         from concurrent.futures import ThreadPoolExecutor, as_completed
         
-        print(f"\n📦 Bulk fetch : {len(tickers)} tickers")
+        logger.info(f"📦 Bulk fetch : {len(tickers)} tickers")
         
         results = {}
         failed = []
@@ -378,8 +381,8 @@ class UniversalDataFetcher:
                     self.save_to_cache(ticker, df)
                 
                 return (ticker, df)
-            except Exception as e:
-                print(f"❌ {ticker} : {str(e)[:80]}")
+            except Exception:
+                logger.error(f"❌ {ticker} : Échec du fetch", exc_info=True)
                 return (ticker, None)
         
         with ThreadPoolExecutor(max_workers=3) as executor:
@@ -392,9 +395,9 @@ class UniversalDataFetcher:
                 else:
                     failed.append(ticker)
         
-        print(f"\n✅ Succès: {len(results)}/{len(tickers)}")
+        logger.info(f"✅ Succès: {len(results)}/{len(tickers)}")
         if failed:
-            print(f"❌ Échecs: {', '.join(failed)}")
+            logger.error(f"❌ Échecs: {', '.join(failed)}")
         
         return results
     
@@ -423,15 +426,16 @@ class UniversalDataFetcher:
         file_age = datetime.now() - datetime.fromtimestamp(os.path.getmtime(path))
         
         if file_age.days > max_age_days:
-            print(f"⏰ Cache {ticker} trop vieux ({file_age.days} jours)")
+            logger.warning(f"⏰ Cache {ticker} trop vieux ({file_age.days} jours)")
             return None
         
         try:
             from core.data_loader import load_market_data
             df = load_market_data(path)
-            print(f"💾 {ticker} chargé depuis cache")
+            logger.info(f"💾 {ticker} chargé depuis cache")
             return df
-        except:
+        except Exception:
+            logger.exception(f"❌ Erreur lors du chargement du cache pour {ticker}")
             return None
 
 
@@ -462,7 +466,7 @@ def download_data(tickers, period='2y', interval='1h'):
     if interval in ['1h', '30m', '15m', '5m'] and days > 730:
         days = 729
         start_date = end_date - timedelta(days=days)
-        print(f"⚠️ Limite Yahoo 730j pour {interval}, ajusté à 2 ans")
+        logger.warning(f"⚠️ Limite Yahoo 730j pour {interval}, ajusté à 2 ans")
     
     # Créer fetcher
     fetcher = UniversalDataFetcher()
