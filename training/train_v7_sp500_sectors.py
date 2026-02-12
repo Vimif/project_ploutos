@@ -151,6 +151,17 @@ def train_v7_model(config_path: str, force_rescan: bool = False):
         if len(data) > 5:
             logger.info(f"  ... et {len(data) - 5} autres")
 
+        # Extract training data date range for OOS enforcement
+        all_starts = []
+        all_ends = []
+        for ticker, df in data.items():
+            if len(df) > 0:
+                all_starts.append(str(df.index[0]))
+                all_ends.append(str(df.index[-1]))
+        training_data_start = min(all_starts) if all_starts else None
+        training_data_end = max(all_ends) if all_ends else None
+        logger.info(f"  Training data range: {training_data_start} -> {training_data_end}")
+
     except Exception as e:
         logger.error(f"Erreur telechargement: {e}")
         import traceback
@@ -313,6 +324,8 @@ def train_v7_model(config_path: str, force_rescan: bool = False):
         'sectors': scan_results['sectors'] if scan_results else None,
         'sharpe_ratios': scan_results['sharpe_ratios'] if scan_results else None,
         'training_date': timestamp,
+        'training_data_start': training_data_start,
+        'training_data_end': training_data_end,
         'observation_space_dim': envs.observation_space.shape[0],
         'total_timesteps': config['training']['total_timesteps'],
         'network_arch': config['network']['net_arch'],

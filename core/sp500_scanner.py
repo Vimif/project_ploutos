@@ -49,8 +49,17 @@ class SP500Scanner:
     # ------------------------------------------------------------------
     def fetch_sp500_list(self) -> pd.DataFrame:
         """Recupere la liste des constituants S&P 500 depuis Wikipedia."""
+        import requests
+        from io import StringIO
+
         url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
-        tables = pd.read_html(url)
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+                          '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+        resp = requests.get(url, headers=headers, timeout=30)
+        resp.raise_for_status()
+        tables = pd.read_html(StringIO(resp.text))
         df = tables[0][['Symbol', 'Security', 'GICS Sector', 'GICS Sub-Industry']]
         # Nettoyer les symboles (BRK.B -> BRK-B pour yfinance)
         df['Symbol'] = df['Symbol'].str.replace('.', '-', regex=False)
