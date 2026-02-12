@@ -11,6 +11,8 @@ Nouveautés:
 """
 
 import sys
+import os
+import secrets
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -36,7 +38,8 @@ logger = setup_logging(__name__, 'dashboard_v2.log')
 
 # Configuration Flask
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'ploutos-trading-bot-v2-secret-2025'
+# SECURE: Use environment variable or generate random key
+app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(24))
 CORS(app)
 
 # SocketIO
