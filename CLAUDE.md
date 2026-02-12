@@ -24,46 +24,40 @@ project_ploutos/
 │   ├── universal_environment_v6_better_timing.py  # Active Gym env (V6)
 │   ├── advanced_features_v2.py    # 60+ feature engineering
 │   ├── data_fetcher.py            # Multi-source data: Alpaca → yfinance → Polygon
+│   ├── alpaca_data_fetcher.py     # Alpaca-specific historical data fetcher
 │   ├── risk_manager.py            # Kelly criterion, position sizing, drawdown
 │   ├── market_analyzer.py         # RSI, MACD, Bollinger, trend analysis
 │   ├── market_status.py           # NYSE/NASDAQ open/close status
 │   ├── sp500_scanner.py           # S&P 500 sector scanner
 │   ├── trading_callback.py        # W&B monitoring callback for training
 │   ├── transaction_costs.py       # Slippage and market impact modeling
-│   ├── self_improvement.py        # Trade analysis (exists but unused)
 │   └── utils.py                   # Logging setup, GPU info, cleanup
 ├── trading/                # Broker integrations and live trading
 │   ├── broker_interface.py        # ABC base class for all brokers
 │   ├── broker_factory.py          # Factory: create_broker('etoro'|'alpaca')
 │   ├── etoro_client.py            # eToro API integration
 │   ├── alpaca_client.py           # Alpaca API integration
-│   ├── live_trader.py             # Main trading loop
-│   ├── brain_trader.py            # Model-based decision engine
-│   ├── autonomous_trader.py       # Autonomous trading engine
 │   ├── portfolio.py               # Portfolio tracking
 │   └── stop_loss_manager.py       # SL/TP management
 ├── training/               # Model training scripts
 │   ├── train_v6_better_timing.py  # V6 training (15M steps, primary)
 │   ├── train_v6_extended_50m.py   # V6 extended training (50M steps)
-│   ├── train_v7_sp500_sectors.py  # Sector-based training
-│   ├── trainer.py                 # Generic trainer class
-│   └── curriculum_trainer.py      # Progressive difficulty learning
+│   └── train_v7_sp500_sectors.py  # Sector-based training
 ├── scripts/                # CLI entry points and utilities
 │   ├── run_trader_v6.py           # Main trading script (paper/live)
 │   ├── backtest_v6.py             # Backtesting V6 models
-│   ├── backtest_reliability.py    # Multi-episode reliability tests
+│   ├── backtest_ultimate.py       # Comprehensive multi-metric backtest
 │   ├── analyze_why_fails_v6.py    # Timing diagnostic tool
-│   ├── validate.py                # Model validation
-│   └── monitor_production.py      # Production monitoring
+│   ├── paper_trade_v7.py          # V7 paper trading (uses V6 env)
+│   └── train_v6_quick.py          # Quick V6 training variant
 ├── tests/                  # Unit tests
 │   ├── test_portfolio.py          # Portfolio trading tests
 │   └── verify_days_held.py        # Risk manager verification
 ├── data/models/            # Trained model files (.zip)
 ├── dashboard/              # Flask analytics dashboard
-├── web/                    # Alternative web interface
 ├── database/               # PostgreSQL schema and utilities
 ├── notifications/          # Discord notification integration
-├── docs/                   # Extended documentation (15 files)
+├── docs/                   # V6 documentation
 └── runs/                   # Training run artifacts
 ```
 
@@ -192,7 +186,7 @@ python training/train_v7_sp500_sectors.py
 ### Backtesting
 ```bash
 python scripts/backtest_v6.py --model data/models/brain_tech.zip --days 90
-python scripts/backtest_reliability.py --model data/models/brain_tech.zip --episodes 5
+python scripts/backtest_ultimate.py --model data/models/brain_tech.zip
 ```
 
 ### Paper trading
@@ -207,14 +201,12 @@ python scripts/analyze_why_fails_v6.py --model data/models/brain_tech.zip
 
 ### Dashboard
 ```bash
-python dashboard/app.py        # Flask V1
-python dashboard/app_v2.py     # Flask V2
+python dashboard/app.py
 ```
 
 ### Monitoring
 ```bash
 tensorboard --logdir runs/v6_better_timing/ --port 6006
-python scripts/monitor_production.py --model data/models/brain_tech.zip --auto-retrain
 ```
 
 ## Coding Conventions
@@ -247,8 +239,6 @@ python scripts/monitor_production.py --model data/models/brain_tech.zip --auto-r
 1. **BUY timing problem**: V4 bought too late (85% buy-high). V6 targets >50% buy-low via Features V2 (support/resistance, mean reversion, RSI divergences).
 2. **No walk-forward validation**: Backtests only cover recent fixed periods.
 3. **SL/TP not integrated in live execution**: Risk manager computes them but they're not enforced.
-4. **Self-improvement disconnected**: `core/self_improvement.py` exists but is not wired into the trading loop.
-5. **Dashboard V2 not connected**: `dashboard/app_v2.py` exists but is not linked to live trading data.
 
 ## Important Notes for AI Assistants
 
