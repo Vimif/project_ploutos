@@ -1,13 +1,6 @@
 # trading/alpaca_client.py
 """Client pour l'API Alpaca avec logging JSON"""
 
-# === FIX PATH ===
-import sys
-from pathlib import Path
-if str(Path(__file__).parent.parent) not in sys.path:
-    sys.path.insert(0, str(Path(__file__).parent.parent))
-# ================
-
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import MarketOrderRequest, LimitOrderRequest
 from alpaca.trading.enums import OrderSide, TimeInForce, OrderType

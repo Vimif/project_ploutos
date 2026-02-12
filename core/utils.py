@@ -1,15 +1,7 @@
 # core/utils.py
 """Fonctions utilitaires"""
 
-# === FIX PATH ===
-import sys
-from pathlib import Path
-if str(Path(__file__).parent.parent) not in sys.path:
-    sys.path.insert(0, str(Path(__file__).parent.parent))
-# ================
-
 import logging
-import torch
 import gc
 from datetime import datetime
 
@@ -52,23 +44,28 @@ def cleanup_resources(*objects):
             if hasattr(obj, 'close'):
                 try:
                     obj.close()
-                except:
+                except Exception:
                     pass
-            try:
-                del obj
-            except:
-                pass
-    
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-    
+
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except ImportError:
+        pass
+
     gc.collect()
 
 def get_gpu_info():
     """Obtenir infos GPU"""
+    try:
+        import torch
+    except ImportError:
+        return {'available': False}
+
     if not torch.cuda.is_available():
         return {'available': False}
-    
+
     return {
         'available': True,
         'name': torch.cuda.get_device_name(0),

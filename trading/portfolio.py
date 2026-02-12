@@ -1,13 +1,6 @@
 # trading/portfolio.py
 """Gestion du portefeuille de trading"""
 
-# === FIX PATH ===
-import sys
-from pathlib import Path
-if str(Path(__file__).parent.parent) not in sys.path:
-    sys.path.insert(0, str(Path(__file__).parent.parent))
-# ================
-
 from datetime import datetime
 from typing import Dict, List
 import json

@@ -26,8 +26,8 @@ def get_historical_data(symbol, days=30):
             # On garde seulement le niveau 'Price' ou le ticker, on veut juste 'Close' propre
             try:
                 df = df.xs(symbol, axis=1, level=1)
-            except:
-                pass # Parfois la structure est différente, on gère plus bas
+            except (KeyError, TypeError):
+                pass  # Parfois la structure est différente, on gère plus bas
                 
         return df
     except Exception as e:

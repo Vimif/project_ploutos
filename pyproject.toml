@@ -21,21 +21,33 @@ dependencies = [
     "psycopg2-binary>=2.9.0",
     "prometheus-client>=0.17.0",
     "pyyaml>=6.0",
+    "python-dotenv>=1.0.0",
+    "requests>=2.31.0",
+    "ta>=0.11.0",
+    "scipy>=1.10.0",
 ]
 
 [project.optional-dependencies]
+web = [
+    "flask>=3.0.0",
+    "flask-cors>=4.0.0",
+]
+training = [
+    "sb3-contrib>=2.0.0",
+    "tensorboard>=2.13.0",
+    "tqdm>=4.65.0",
+]
 dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",
     "black>=23.7.0",
-    "ruff>=0.0.285",
+    "ruff>=0.3.0",
     "mypy>=1.5.0",
 ]
 
 [project.scripts]
-ploutos-train = "scripts.train:main"
-ploutos-validate = "scripts.validate:main"
-ploutos-deploy = "scripts.deploy:main"
+ploutos-train = "training.train_v6_better_timing:main"
+ploutos-backtest = "scripts.backtest_v6:main"
 
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
@@ -46,7 +58,7 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v --cov=core --cov=utils --cov-report=html"
+addopts = "-v"
 
 [tool.black]
 line-length = 100
@@ -54,5 +66,7 @@ target-version = ['py310']
 
 [tool.ruff]
 line-length = 100
-select = ["E", "F", "W", "I"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
 ignore = ["E501"]

@@ -1,13 +1,6 @@
 # trading/etoro_client.py
 """Client pour l'API eToro avec logging JSON"""
 
-# === FIX PATH ===
-import sys
-from pathlib import Path
-if str(Path(__file__).parent.parent) not in sys.path:
-    sys.path.insert(0, str(Path(__file__).parent.parent))
-# ================
-
 import os
 import json
 import time

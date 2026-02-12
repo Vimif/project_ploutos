@@ -1,10 +1,7 @@
 """Configuration des secteurs et tickers - S&P 500 GICS dynamique"""
 
-import sys
 import json
 from pathlib import Path
-if str(Path(__file__).parent.parent) not in sys.path:
-    sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # ======================================================================
 # 11 secteurs GICS (S&P 500 standard)

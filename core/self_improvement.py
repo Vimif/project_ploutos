@@ -15,10 +15,7 @@ Auteur: Ploutos AI Team
 Date: Dec 2025
 """
 
-import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 import json
 import logging
 import numpy as np
@@ -162,7 +159,7 @@ class SelfImprovementEngine:
             t1 = datetime.fromisoformat(start)
             t2 = datetime.fromisoformat(end)
             return (t2 - t1).total_seconds() / 3600
-        except:
+        except (ValueError, TypeError):
             return 0
     
     def _calculate_metrics(self, trades: List[Dict]) -> Dict:

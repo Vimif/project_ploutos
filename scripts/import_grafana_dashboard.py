@@ -19,9 +19,9 @@ def wait_for_grafana(max_attempts=30):
             if response.status_code == 200:
                 print("✅ Grafana est prêt!")
                 return True
-        except:
+        except Exception:
             pass
-        
+
         time.sleep(2)
         print(f"   Tentative {i+1}/{max_attempts}...")
     
