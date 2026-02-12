@@ -235,18 +235,58 @@ def api_improvement():
 
 @app.route('/api/chart/portfolio')
 def api_chart_portfolio():
-    """Données pour graphique portfolio"""
+    """Données pour graphique portfolio depuis les logs de trades"""
     days = request.args.get('days', 30, type=int)
-    
-    # TODO: Implémenter historique portfolio depuis logs
-    # Pour l'instant, retourner données factices
-    
-    dates = [(datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d') 
-             for i in range(days-1, -1, -1)]
-    
+
+    trades_dir = Path('logs/trades')
+    daily_values = {}
+
+    # Extraire la dernière portfolio_value de chaque jour depuis les logs
+    for i in range(days):
+        date = datetime.now() - timedelta(days=i)
+        date_str = date.strftime('%Y-%m-%d')
+        filename = trades_dir / f"trades_{date_str}.json"
+
+        if filename.exists():
+            try:
+                with open(filename, 'r') as f:
+                    day_trades = json.load(f)
+                # Prendre la dernière valeur portfolio enregistrée ce jour
+                for trade in reversed(day_trades):
+                    pv = trade.get('portfolio_value')
+                    if pv is not None:
+                        daily_values[date_str] = pv
+                        break
+            except (json.JSONDecodeError, IOError):
+                pass
+
+    # Valeur actuelle depuis le broker (pour aujourd'hui)
+    today_str = datetime.now().strftime('%Y-%m-%d')
+    if alpaca_client and today_str not in daily_values:
+        try:
+            account = alpaca_client.get_account()
+            if account and 'portfolio_value' in account:
+                daily_values[today_str] = account['portfolio_value']
+        except Exception:
+            pass
+
+    # Construire la liste chronologique des dates
+    dates = [
+        (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d')
+        for i in range(days - 1, -1, -1)
+    ]
+
+    # Remplir les valeurs en propageant la dernière valeur connue
+    values = []
+    last_known = None
+    for d in dates:
+        if d in daily_values:
+            last_known = daily_values[d]
+        values.append(last_known)
+
     return jsonify({
         'dates': dates,
-        'values': [100000] * days  # Placeholder
+        'values': values
     })
 
 
