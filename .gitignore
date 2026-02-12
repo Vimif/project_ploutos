@@ -54,6 +54,10 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+# AI Assistant
+.claude/
+.jules/
+
 # Ploutos specific
 reports/
 wandb/
