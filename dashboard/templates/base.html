@@ -40,10 +40,30 @@
             margin-bottom: 10px;
         }
         
-        nav {
+        /* Skip Link */
+        .skip-link {
+            position: absolute;
+            top: -40px;
+            left: 0;
+            background: #60a5fa;
+            color: #0f172a;
+            padding: 8px;
+            z-index: 100;
+            transition: top 0.3s;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        .skip-link:focus {
+            top: 0;
+        }
+
+        /* Navigation */
+        nav ul {
             display: flex;
             gap: 20px;
             margin-top: 15px;
+            list-style: none;
         }
         
         nav a {
@@ -52,13 +72,19 @@
             padding: 8px 16px;
             border-radius: 6px;
             transition: all 0.3s;
+            display: inline-block;
         }
         
-        nav a:hover, nav a.active {
+        nav a:hover, nav a.active, nav a[aria-current="page"] {
             background: #334155;
             color: #60a5fa;
         }
         
+        nav a:focus-visible {
+            outline: 2px solid #60a5fa;
+            outline-offset: 2px;
+        }
+
         /* Cards */
         .card {
             background: #1e293b;
@@ -166,18 +192,21 @@
     </style>
 </head>
 <body>
+    <a href="#main-content" class="skip-link">Aller au contenu principal</a>
     <header>
         <div class="container">
             <h1>📊 Ploutos Dashboard</h1>
-            <nav>
-                <a href="/" class="{% if request.path == '/' %}active{% endif %}">Accueil</a>
-                <a href="/trades" class="{% if request.path == '/trades' %}active{% endif %}">Trades</a>
-                <a href="/metrics" class="{% if request.path == '/metrics' %}active{% endif %}">Métriques</a>
+            <nav aria-label="Menu principal">
+                <ul>
+                    <li><a href="/" {% if request.path == '/' %}class="active" aria-current="page"{% endif %}>Accueil</a></li>
+                    <li><a href="/trades" {% if request.path == '/trades' %}class="active" aria-current="page"{% endif %}>Trades</a></li>
+                    <li><a href="/metrics" {% if request.path == '/metrics' %}class="active" aria-current="page"{% endif %}>Métriques</a></li>
+                </ul>
             </nav>
         </div>
     </header>
     
-    <main class="container">
+    <main id="main-content" class="container">
         {% block content %}{% endblock %}
     </main>
     
