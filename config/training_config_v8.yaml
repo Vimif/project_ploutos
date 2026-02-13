@@ -1,0 +1,90 @@
+# config/training_config_v8.yaml
+# Configuration V8 - Macro Data + LSTM + Walk-Forward
+
+training:
+  total_timesteps: 10000000  # 10M (par fold walk-forward)
+  n_envs: 8
+  batch_size: 4096
+  n_steps: 2048
+  n_epochs: 15
+  learning_rate: 0.0001
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.05
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  target_kl: 0.02
+
+environment:
+  initial_balance: 100000
+  commission: 0.0
+  sec_fee: 0.0000221
+  finra_taf: 0.000145
+  max_steps: 2500
+  buy_pct: 0.20
+  max_position_pct: 0.25
+  max_trades_per_day: 10
+  min_holding_period: 2
+  slippage_model: realistic
+  spread_bps: 2.0
+  market_impact_factor: 0.0001
+  reward_scaling: 1.5
+  use_sharpe_penalty: true
+  use_drawdown_penalty: true
+  reward_trade_success: 0.5
+  penalty_overtrading: 0.005
+  drawdown_penalty_factor: 3.0
+
+data:
+  tickers:
+    - NVDA
+    - MSFT
+    - AAPL
+    - GOOGL
+    - AMZN
+    - META
+    - TSLA
+    - SPY
+    - QQQ
+    - VOO
+    - VTI
+    - XLE
+    - XLF
+    - XLK
+    - XLV
+  period: '2y'
+  interval: '1h'
+
+network:
+  net_arch:
+    - 1024
+    - 1024
+    - 512
+    - 256
+  activation_fn: tanh
+  # LSTM (pour RecurrentPPO)
+  lstm_hidden_size: 256
+  n_lstm_layers: 1
+
+walk_forward:
+  train_years: 1       # Minimum 1 an de training
+  test_months: 6       # Test sur 6 mois
+  step_months: 6       # Avancer de 6 mois entre chaque fold
+
+optuna:
+  timesteps_per_trial: 1000000  # 1M par trial (rapide)
+
+wandb:
+  enabled: false
+  project: Ploutos_Trading_V8
+  entity: null
+
+checkpoint:
+  save_freq: 50000
+  save_path: ./models/v8_checkpoints/
+
+eval:
+  eval_freq: 10000
+  n_eval_episodes: 5
+  best_model_save_path: ./models/v8_best/
