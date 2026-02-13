@@ -91,6 +91,11 @@
         background: #60a5fa;
         color: white;
     }
+
+    .btn:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+    }
 </style>
 {% endblock %}
 
@@ -99,9 +104,9 @@
     <h2>💰 Historique des Trades</h2>
     
     <!-- Filtres -->
-    <div class="filters">
+    <form class="filters" onsubmit="event.preventDefault(); applyFilters()">
         <div class="filter-group">
-            <label>Période</label>
+            <label for="filter-days">Période</label>
             <select id="filter-days">
                 <option value="7">7 derniers jours</option>
                 <option value="14">14 derniers jours</option>
@@ -112,7 +117,7 @@
         </div>
         
         <div class="filter-group">
-            <label>Action</label>
+            <label for="filter-action">Action</label>
             <select id="filter-action">
                 <option value="">Toutes</option>
                 <option value="BUY">Achats</option>
@@ -121,14 +126,14 @@
         </div>
         
         <div class="filter-group">
-            <label>Symbole</label>
+            <label for="filter-symbol">Symbole</label>
             <input type="text" id="filter-symbol" placeholder="Ex: NVDA">
         </div>
         
         <div class="filter-group" style="justify-content: flex-end;">
-            <button class="btn" onclick="applyFilters()">Filtrer</button>
+            <button type="submit" class="btn" id="filter-btn">Filtrer</button>
         </div>
-    </div>
+    </form>
     
     <!-- Stats rapides -->
     <div class="grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 20px;">
@@ -254,8 +259,19 @@
         document.getElementById('trades-container').innerHTML = html;
     }
     
-    function applyFilters() {
-        loadTrades();
+    async function applyFilters() {
+        const btn = document.getElementById('filter-btn');
+        const originalText = btn.textContent;
+
+        btn.disabled = true;
+        btn.textContent = 'Chargement...';
+
+        try {
+            await loadTrades();
+        } finally {
+            btn.disabled = false;
+            btn.textContent = originalText;
+        }
     }
     
     // Chargement initial
