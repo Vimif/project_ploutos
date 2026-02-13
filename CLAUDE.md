@@ -1,80 +1,102 @@
-# 🧠 Plan Directeur : L'IA de Trading Ultime (Ploutos V8/V9)
+# Ploutos - RL Trading System
 
-Ce document décrit la "Golden Path" pour construire l'IA de trading la plus performante et robuste possible. Inspiré des méthodes Quant et HFT modernes.
+Reinforcement Learning trading bot (PPO/RecurrentPPO) with walk-forward training, ensemble learning, and macro data integration. Currently on V8.
 
-## 🎯 Objectifs
-- **Performance** : Sharpe Ratio > 2.0 (Risque/Rendement excellent)
-- **Fiabilité** : Drawdown Max < 15% (Survie aux crises)
-- **Robustesse** : Profit constant sur 5+ années de test OOS (Out-of-Sample)
+Full roadmap: `docs/ROADMAP.md`
 
----
+## Commands
 
-## 🏗️ Phase 1 : Données & Univers (Le Socle)
+```bash
+# Install
+pip install -e ".[dev,training,web]"
 
-Une IA ne vaut que ce qu'elle mange.
+# Tests
+pytest                           # all tests
+pytest tests/test_trading_env.py # single file
 
-- [ ] **1. Univers Dynamique (Sélectif)**
-    - Au lieu de trader 500 actions (bruit), sélectionner chaque trimestre les **50 actions les plus fortes** (Top Momentum + Volatilité suffisante).
-    - *Pourquoi ?* L'IA détecte mieux les signaux sur des actifs qui bougent vraiment.
-- [ ] **2. Données Macroéonomiques (Contexte)**
-    - Intégrer en entrée du réseau :
-        - **VIX (Volatilité)** : Pour savoir quand être défensif.
-        - **TNX (Taux 10 ans)** : Impacte fortement la Tech.
-        - **DXY (Dollar Index)** : Impacte les matières premières.
-- [ ] **3. Profondeur Historique**
-    - Récupérer des **données horaires (1h) depuis 2010** (minimum 2 cycles économiques : Bull run, Crash Covid, Hausse des taux).
+# Lint & Format
+black --check .                  # check formatting (line-length=100)
+ruff check .                     # lint
 
-## 🧠 Phase 2 : Architecture & Modèle (Le Cerveau)
+# Training (V8 walk-forward)
+python training/train_walk_forward.py --config config/training_config_v8.yaml
+python training/train_walk_forward.py --config config/training_config_v8.yaml --recurrent    # LSTM
+python training/train_walk_forward.py --config config/training_config_v8.yaml --ensemble 3   # Ensemble
 
-- [ ] **4. Mémoire (LSTM / RecurrentPPO)**
-    - Utiliser `RecurrentPPO` (de stable-baselines3-contrib) au lieu de PPO standard.
-    - *Avantage* : L'IA se "souvient" des bougies précédentes et du contexte (ex: "ça baisse depuis 3 jours") au lieu de juste voir l'instant T.
-- [ ] **5. Ensemble Learning (Le Conseil des Sages)**
-    - Entraîner **3 à 5 modèles** identiques avec des "seeds" différentes.
-    - Pour prendre une décision : Vote à la majorité.
-    - *Avantage* : Lisse les erreurs individuelles et augmente considérablement la fiabilité.
+# Hyperparameter optimization
+python scripts/optimize_hyperparams.py --config config/training_config_v8.yaml --n-trials 50
 
-## 🎓 Phase 3 : Protocole d'Entraînement (L'École)
+# Robustness tests (requires trained model)
+python scripts/robustness_tests.py --model models/v8/model.zip --all
+python scripts/robustness_tests.py --model models/v8/model.zip --monte-carlo 1000
+python scripts/robustness_tests.py --model models/v8/model.zip --stress-test --crash-pct -0.30
 
-C'est ici que se joue 80% de la performance future.
+# Paper trading
+python scripts/paper_trade_v7.py
+```
 
-- [ ] **6. Walk-Forward Analysis (Le Gold Standard)**
-    - Ne jamais entraîner sur 2010-2020 et tester sur 2021.
-    - Faire :
-        - Train 2010-2015 -> Test 2016
-        - Train 2010-2016 -> Test 2017
-        - ...
-        - Train 2010-2023 -> Test 2024
-    - *Résultat* : Une courbe de performance réaliste qui simule le trading réel année après année.
-- [ ] **7. Hyperparameter Tuning (Optuna)**
-    - Utiliser un script d'optimisation (Optuna) pour trouver le meilleur `learning_rate`, `batch_size`, `gamma` automatiquement. C'est souvent +20% de performance gratuite.
+## Architecture
 
-## 🛡️ Phase 4 : Robustesse & Validation (Le Crash Test)
+```
+config/          Config system (dataclasses + YAML)
+  config.py        PloutosConfig dataclass - used by older scripts
+  settings.py      Auto-detects machine role (WSL/Proxmox/Dev), sets globals
+  tickers.py       Ticker lists
+  *.yaml           Training configs (V6, V7, V8)
+core/            Core ML & environment logic
+  universal_environment_v8_lstm.py  Current V8 gym environment
+  universal_environment_v6_better_timing.py  Legacy V6 env
+  data_fetcher.py  Yahoo Finance data fetching
+  macro_data.py    VIX/TNX/DXY macro indicators
+  ensemble.py      Multi-model ensemble voting
+  data_pipeline.py Feature engineering pipeline
+  sp500_scanner.py S&P 500 sector scanning
+  risk_manager.py  Risk management logic
+  transaction_costs.py  Realistic cost modeling
+trading/         Broker integrations
+  broker_interface.py  Abstract broker interface
+  broker_factory.py    Factory: eToro (default) or Alpaca
+  alpaca_client.py     Alpaca API client
+  etoro_client.py      eToro API client
+  portfolio.py         Portfolio tracking
+  stop_loss_manager.py Stop loss logic
+training/        Training scripts
+  train_walk_forward.py  V8 walk-forward training (main)
+  train_v7_sp500_sectors.py  V7 sector-based training
+scripts/         Standalone scripts (backtest, optimize, paper trade)
+tests/           pytest test suite
+dashboard/       Flask web dashboard
+notifications/   Discord alerts
+database/        PostgreSQL integration
+```
 
-- [ ] **8. Monte Carlo Simulations**
-    - Lancer 1000 backtests en ajoutant du bruit aléatoire aux prix (+/- 0.1%).
-    - Si l'IA perd de l'argent dans >5% des cas, elle est **sur-optimisée** (overfitting) -> Poubelle.
-- [ ] **9. Stress Test "Krach"**
-    - Simuler manuellement une chute de -20% en une journée. Vérifier que l'IA coupe ses positions (Stop Loss) ou se met short immédiatement.
+## Environment Setup
 
-## 🚀 Phase 5 : Production (Le Réel)
+Requires Python >= 3.10.
 
-- [ ] **10. Paper Trading "Smart Check"**
-    - Script qui tourne 24/7 sur un VPS (serveur).
-    - Vérifie les positions toutes les **5-15 minutes** (Stop Loss d'urgence).
-    - Prend des décisions de trend toutes les **1h** (Bougies closes).
-- [ ] **11. Monitoring Temps Réel**
-    - Alertes Discord/Telegram à chaque trade.
-    - Dashboard Grafana pour suivre le P&L et l'exposition.
+```bash
+cp .env.example .env  # then fill in API keys
+```
 
----
+Key `.env` variables:
+- `BROKER` - `etoro` (default) or `alpaca`
+- `ALPACA_PAPER_API_KEY` / `ALPACA_PAPER_SECRET_KEY` - for paper trading
+- `ETORO_*` - eToro API credentials
+- `DB_*` - PostgreSQL (optional)
 
-## ✅ Todo List Immédiate (V7 -> V8)
+## Code Style
 
-1.  [ ] Coder `core/macro_data.py` pour récupérer VIX/TNX.
-2.  [ ] Créer l'environnement `UniversalTradingEnvV8_LSTM` (compatible mémoire).
-3.  [ ] Mettre en place le script `train_walk_forward.py`.
-4.  [ ] Tester l'approche "Ensemble" sur le S&P 500 actuel.
+- **black** with `line-length = 100`, `target-version = py310`
+- **ruff** with `line-length = 100`, rules: `E, F, W, I, B, UP` (E501 ignored)
+- Match existing style in each file
+
+## Gotchas
+
+- **Two config systems**: `config/config.py` (PloutosConfig dataclass, used by older V6/V7 scripts) vs `config/*.yaml` (used by V8 walk-forward). They have different field names and structures. V8 scripts load YAML directly.
+- **Auto-detection in settings.py**: `config/settings.py` detects the machine at import time (WSL -> TRAINING role with GPU + 64 envs, Proxmox -> PRODUCTION, else -> DEV with 4 envs). This runs on import, printing role info to stdout.
+- **Data caching**: `data_cache/` is gitignored. Yahoo Finance data gets cached locally to avoid re-downloading.
+- **Models gitignored**: `models/` dir is in `.gitignore`. Trained models must be managed separately.
+- **Wandb disabled by default**: Set `wandb.enabled: true` in YAML config or configure `WANDB_CONFIG` in settings.py.
 
 # Karpathy-inspired coding guidelines
 
@@ -125,15 +147,15 @@ The test: Every changed line should trace directly to the user's request.
 **Define success criteria. Loop until verified.**
 
 Transform tasks into verifiable goals:
-- "Add validation" → "Write tests for invalid inputs, then make them pass"
-- "Fix the bug" → "Write a test that reproduces it, then make it pass"
-- "Refactor X" → "Ensure tests pass before and after"
+- "Add validation" -> "Write tests for invalid inputs, then make them pass"
+- "Fix the bug" -> "Write a test that reproduces it, then make it pass"
+- "Refactor X" -> "Ensure tests pass before and after"
 
 For multi-step tasks, state a brief plan:
 ```
-1. [Step] → verify: [check]
-2. [Step] → verify: [check]
-3. [Step] → verify: [check]
+1. [Step] -> verify: [check]
+2. [Step] -> verify: [check]
+3. [Step] -> verify: [check]
 ```
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
