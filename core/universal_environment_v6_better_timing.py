@@ -200,7 +200,12 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
 
         for ticker in self.tickers:
             df = self.processed_data[ticker]
-            self.feature_arrays[ticker] = df[self.feature_columns].values.astype(np.float32)
+            # ⚡ OPTIMISATION: Pré-calculer nan_to_num et clip ici (une seule fois)
+            features = df[self.feature_columns].values.astype(np.float32)
+            features = np.nan_to_num(features, nan=0.0, posinf=10.0, neginf=-10.0)
+            features = np.clip(features, -10.0, 10.0)
+            self.feature_arrays[ticker] = features
+
             self.close_prices[ticker] = df['Close'].values.astype(np.float32)
             # Volume pour AdvancedTransactionModel
             if 'Volume' in df.columns:
@@ -506,8 +511,9 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
             else:
                 features = features_array[self.current_step]
 
-            features = np.nan_to_num(features, nan=0.0, posinf=10.0, neginf=-10.0)
-            features = np.clip(features, -10, 10)
+            # ⚡ OPTIMISATION: Déjà fait dans _prepare_features_v2
+            # features = np.nan_to_num(features, nan=0.0, posinf=10.0, neginf=-10.0)
+            # features = np.clip(features, -10, 10)
 
             obs_parts.append(features)
 
