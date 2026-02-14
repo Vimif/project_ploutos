@@ -31,7 +31,7 @@ except ImportError:
     sys.exit(1)
 
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
 from stable_baselines3.common.monitor import Monitor
 
 from core.universal_environment_v8_lstm import UniversalTradingEnvV8LSTM
@@ -78,14 +78,19 @@ def create_objective(train_data, val_data, macro_data, base_config):
         env_kwargs['reward_scaling'] = reward_scaling
         env_kwargs['drawdown_penalty_factor'] = drawdown_penalty_factor
 
-        n_envs = min(base_config.get('training', {}).get('n_envs', 4), 4)
+        n_envs = base_config.get('training', {}).get('n_envs', 8)
 
-        envs = DummyVecEnv([
-            lambda: Monitor(UniversalTradingEnvV8LSTM(
-                data=train_data, macro_data=macro_data, **env_kwargs
-            ))
-            for _ in range(n_envs)
-        ])
+        def make_env():
+            def _init():
+                return Monitor(UniversalTradingEnvV8LSTM(
+                    data=train_data, macro_data=macro_data, **env_kwargs
+                ))
+            return _init
+
+        if n_envs > 1:
+            envs = SubprocVecEnv([make_env() for _ in range(n_envs)])
+        else:
+            envs = DummyVecEnv([make_env()])
 
         envs = VecNormalize(
             envs, norm_obs=True, norm_reward=True,
