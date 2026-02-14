@@ -11,7 +11,7 @@ training:
   gamma: 0.99
   gae_lambda: 0.95
   clip_range: 0.2
-  ent_coef: 0.05
+  ent_coef: 0.01
   vf_coef: 0.5
   max_grad_norm: 0.5
   target_kl: 0.02
@@ -53,22 +53,21 @@ data:
     - XLF
     - XLK
     - XLV
-  period: '2y'
+  period: '10y'
   interval: '1h'
 
 network:
   net_arch:
-    - 1024
-    - 1024
     - 512
-    - 256
+    - 512
+    - 512
   activation_fn: tanh
   # LSTM (pour RecurrentPPO)
   lstm_hidden_size: 256
   n_lstm_layers: 1
 
 walk_forward:
-  train_years: 1       # Minimum 1 an de training
+  train_years: 5       # Minimum 5 ans de training (Utilisation max des données)
   test_months: 6       # Test sur 6 mois
   step_months: 6       # Avancer de 6 mois entre chaque fold
 
