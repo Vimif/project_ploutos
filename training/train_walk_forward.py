@@ -357,6 +357,7 @@ def run_walk_forward(
         period=config['data'].get('period', '5y'),
         interval=config['data'].get('interval', '1h'),
         max_workers=max_workers,
+        dataset_path=config['data'].get('dataset_path'),
     )
 
     if not data:

@@ -447,7 +447,7 @@ class UniversalDataFetcher:
 
 
 # ✅ AJOUT : Fonction wrapper pour compatibilité
-def download_data(tickers, period='2y', interval='1h', max_workers=3):
+def download_data(tickers, period='2y', interval='1h', max_workers=3, dataset_path=None):
     """
     Fonction wrapper simple pour télécharger des données
     
@@ -455,25 +455,64 @@ def download_data(tickers, period='2y', interval='1h', max_workers=3):
         tickers: Liste de tickers ou ticker unique (str)
         period: Période ('1y', '2y', '5y', etc.)
         interval: Intervalle ('1h', '1d', etc.)
+        dataset_path: Chemin vers dossier CSV locaux (optionnel)
     
     Returns:
         dict: {ticker: DataFrame} ou DataFrame si ticker unique
     """
+    import os
+    import glob
+    import pandas as pd
+    from datetime import datetime, timedelta
+    from core.data_fetcher import UniversalDataFetcher, logger # Réutiliser logger existant
+
+    # 1. Chargement LOCAL (Priorité absolue si dataset_path fourni)
+    if dataset_path and os.path.exists(dataset_path):
+        import glob
+        logger.info(f"📂 Loading data from local dataset: {dataset_path}")
+        results = {}
+        
+        # Si ticker unique
+        ticker_list = [tickers] if isinstance(tickers, str) else tickers
+        
+        for ticker in ticker_list:
+            # Chercher fichier ticker_1h.csv ou ticker.csv
+            pattern = os.path.join(dataset_path, f"{ticker}*.csv")
+            files = glob.glob(pattern)
+            
+            if not files:
+                logger.warning(f"⚠️ {ticker} not found in {dataset_path}")
+                continue
+                
+            # Prendre le premier fichier correspondant
+            filepath = files[0]
+            try:
+                df = pd.read_csv(filepath, index_col=0, parse_dates=True)
+                # Standardisation colonnes
+                df.columns = df.columns.str.title() # Open, High...
+                results[ticker] = df
+                logger.info(f"  - {ticker}: {len(df)} rows")
+            except Exception as e:
+                logger.error(f"❌ Error loading {filepath}: {e}")
+                
+        if isinstance(tickers, str):
+            return results.get(tickers)
+        return results
+
+    # 2. Téléchargement DISTANT (Fallback)
+    
     # Convertir period en dates
     end_date = datetime.now()
     
     period_map = {
-        '1y': 365, '2y': 730, '3y': 1095, '5y': 1825, '10y': 3650
+        '1y': 365, '2y': 730, '3y': 1095, '5y': 1825, '6y': 2190, '10y': 3650
     }
     
     days = period_map.get(period, 730)  # Défaut 2 ans
     start_date = end_date - timedelta(days=days)
     
-    # Si interval horaire, limiter à 730 jours max
-    if interval in ['1h', '30m', '15m', '5m'] and days > 730:
-        days = 729
-        start_date = end_date - timedelta(days=days)
-        logger.warning(f"⚠️ Limite Yahoo 730j pour {interval}, ajusté à 2 ans")
+    # Si interval horaire, limiter à 730 jours max (si via Yahoo)
+    # MAIS on garde la période demandée pour Alpaca
     
     # Créer fetcher
     fetcher = UniversalDataFetcher()

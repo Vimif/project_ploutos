@@ -6,15 +6,12 @@ training:
   n_envs: 8
   batch_size: 4096
   n_steps: 2048
-  n_epochs: 15
+  n_epochs: 30
   learning_rate: 0.0001
   gamma: 0.99
   gae_lambda: 0.95
   clip_range: 0.2
   ent_coef: 0.01
-  vf_coef: 0.5
-  max_grad_norm: 0.5
-  target_kl: 0.02
 
 environment:
   initial_balance: 100000
@@ -53,8 +50,9 @@ data:
     - XLF
     - XLK
     - XLV
-  period: '10y'
+  period: '6y'
   interval: '1h'
+  dataset_path: ./data/dataset_v8/
 
 network:
   net_arch:
@@ -67,7 +65,7 @@ network:
   n_lstm_layers: 1
 
 walk_forward:
-  train_years: 5       # Minimum 5 ans de training (Utilisation max des données)
+  train_years: 5       # On a 6 ans de data -> 5 ans train + 1 an test
   test_months: 6       # Test sur 6 mois
   step_months: 6       # Avancer de 6 mois entre chaque fold
 

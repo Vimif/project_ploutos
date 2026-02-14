@@ -116,6 +116,7 @@ def main():
             tickers=config['data']['tickers'],
             period=config['data'].get('period', '5y'),
             interval=config['data'].get('interval', '1h'),
+            dataset_path=config['data'].get('dataset_path'),
         )
         splits = DataSplitter.split(data)
         test_data = splits.test
