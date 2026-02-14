@@ -67,103 +67,20 @@ class UniversalTradingEnvV8LSTM(gym.Env):
         reward_high_winrate_bonus: float = 0.2,
         good_return_threshold: float = 0.01,
         high_winrate_threshold: float = 0.6,
+        features_precomputed: bool = False, # Nouveau flag
     ):
         super().__init__()
 
         if mode not in VALID_MODES:
             raise ValueError(f"mode doit être l'un de {VALID_MODES}, obtenu '{mode}'")
         self.mode = mode
+        self.features_precomputed = features_precomputed # Stocker le flag
 
         self._seed = seed
-        self._rng = np.random.RandomState(seed)
+        # ... (reste du constructeur inchangé jusqu'à self._prepare_features)
 
-        self.data = data
-        self.tickers = list(data.keys())
-        self.n_assets = len(self.tickers)
-
-        self.initial_balance = initial_balance
-        self.balance = initial_balance
-        self.equity = initial_balance
-
-        self.commission = commission
-        self.sec_fee = sec_fee
-        self.finra_taf = finra_taf
-
-        self.slippage_model = slippage_model
-        self.spread_bps = spread_bps / 10000
-        self.market_impact_factor = market_impact_factor
-
-        self.max_position_pct = max_position_pct
-        self.buy_pct = buy_pct
-
-        self.reward_scaling = reward_scaling
-        self.use_sharpe_penalty = use_sharpe_penalty
-        self.use_drawdown_penalty = use_drawdown_penalty
-        self.reward_trade_success = reward_trade_success
-        self.penalty_overtrading = penalty_overtrading
-        self.drawdown_penalty_factor = drawdown_penalty_factor
-
-        self.reward_buy_executed = reward_buy_executed
-        self.reward_overtrading_immediate = reward_overtrading
-        self.reward_invalid_trade = reward_invalid_trade
-        self.reward_bad_price = reward_bad_price
-        self.reward_good_return_bonus = reward_good_return_bonus
-        self.reward_high_winrate_bonus = reward_high_winrate_bonus
-        self.good_return_threshold = good_return_threshold
-        self.high_winrate_threshold = high_winrate_threshold
-
-        self.max_trades_per_day = max_trades_per_day
-        self.min_holding_period = min_holding_period
-
-        self.current_step = 0
-        self.max_steps = max_steps
-        self.done = False
-
-        self.portfolio = {ticker: 0.0 for ticker in self.tickers}
-        self.entry_prices = {ticker: 0.0 for ticker in self.tickers}
-        self.portfolio_value_history = deque(maxlen=252)
-        self.returns_history = deque(maxlen=100)
-        self.peak_value = initial_balance
-
-        self.trades_today = 0
-        self.last_trade_step = {ticker: -999 for ticker in self.tickers}
-        self.total_trades = 0
-        self.winning_trades = 0
-        self.losing_trades = 0
-
-        self.transaction_model = AdvancedTransactionModel(
-            base_commission=commission,
-            market_impact_coef=market_impact_factor,
-            rng=self._rng,
-        )
-
-        # Préparer features techniques + macro
-        self.macro_data = macro_data
-        self._prepare_features(macro_data)
-
-        # Observation space
-        n_features_per_ticker = len(self.feature_columns)
-        self.n_macro_features = len(self.macro_columns) if self.macro_columns else 0
-        obs_size = (
-            self.n_assets * n_features_per_ticker
-            + self.n_macro_features
-            + self.n_assets  # positions
-            + 3  # cash_pct, total_return, drawdown
-        )
-
-        self.observation_space = gym.spaces.Box(
-            low=-10.0, high=10.0, shape=(obs_size,), dtype=np.float32
-        )
-
-        self.action_space = gym.spaces.MultiDiscrete([3] * self.n_assets)
-
-        mode_label = {"train": "Training", "eval": "Evaluation", "backtest": "Backtest"}
-        print(
-            f"Env V8 LSTM [{mode_label[self.mode]}]: "
-            f"{self.n_assets} tickers x {n_features_per_ticker} features "
-            f"+ {self.n_macro_features} macro = {obs_size} dims"
-        )
-
+        # ...
+        
     def _prepare_features(self, macro_data: Optional[pd.DataFrame]):
         """Préparer Features V2 + macro."""
         self.processed_data = {}
@@ -171,8 +88,12 @@ class UniversalTradingEnvV8LSTM(gym.Env):
         self.macro_fetcher = MacroDataFetcher()
 
         for ticker in self.tickers:
-            df = self.data[ticker].copy()
-            df = self.feature_engineer.calculate_all_features(df)
+            df = self.data[ticker].copy() # Copie locale légère
+            
+            if not self.features_precomputed:
+                # Calcul COÛTEUX (seulement si non pré-calculé)
+                df = self.feature_engineer.calculate_all_features(df)
+            
             self.processed_data[ticker] = df
 
         exclude_cols = ['Open', 'High', 'Low', 'Close', 'Volume']

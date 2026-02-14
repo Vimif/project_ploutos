@@ -42,6 +42,7 @@ from core.macro_data import MacroDataFetcher
 from core.data_fetcher import download_data
 from core.utils import setup_logging
 from config.hardware import auto_scale_config, detect_hardware, compute_optimal_params
+from core.advanced_features_v2 import AdvancedFeaturesV2 # Turbo Init
 
 logger = setup_logging(__name__, 'train_walk_forward.log')
 
@@ -131,10 +132,11 @@ def generate_walk_forward_splits(
     return splits
 
 
-def make_env(data, macro_data, config, mode="train"):
+def make_env(data, macro_data, config, mode="train", features_precomputed=False):
     def _init():
         env_kwargs = {k: v for k, v in config.get('environment', {}).items()}
         env_kwargs['mode'] = mode
+        env_kwargs['features_precomputed'] = features_precomputed # Turbo Init
         env = UniversalTradingEnvV8LSTM(
             data=data, macro_data=macro_data, **env_kwargs
         )
@@ -167,12 +169,12 @@ def train_single_fold(
     if use_recurrent:
         # RecurrentPPO nécessite DummyVecEnv (pas SubprocVecEnv)
         envs = DummyVecEnv([
-            make_env(train_data, macro_data, config, mode="train")
+            make_env(train_data, macro_data, config, mode="train", features_precomputed=True)
             for _ in range(n_envs)
         ])
     else:
         envs = SubprocVecEnv([
-            make_env(train_data, macro_data, config, mode="train")
+            make_env(train_data, macro_data, config, mode="train", features_precomputed=True)
             for _ in range(n_envs)
         ])
 
@@ -259,7 +261,7 @@ def train_single_fold(
 
     # Évaluer sur le test set
     logger.info(f"  Fold {fold_idx}: Evaluating on test period...")
-    metrics = evaluate_on_test(model, envs, test_data, macro_data, config)
+    metrics = evaluate_on_test(model, envs, test_data, macro_data, config, features_precomputed=True)
 
     # Sauvegarder métriques
     metrics_path = os.path.join(fold_dir, 'metrics.json')
@@ -280,7 +282,7 @@ def train_single_fold(
 
 
 def evaluate_on_test(
-    model, train_envs, test_data, macro_data, config
+    model, train_envs, test_data, macro_data, config, features_precomputed=False
 ) -> dict:
     """Évalue le modèle sur la période de test.
 
@@ -290,6 +292,7 @@ def evaluate_on_test(
     env_kwargs = {k: v for k, v in config.get('environment', {}).items()}
     env_kwargs['mode'] = 'backtest'
     env_kwargs['seed'] = 42
+    env_kwargs['features_precomputed'] = features_precomputed
 
     test_env = UniversalTradingEnvV8LSTM(
         data=test_data, macro_data=macro_data, **env_kwargs
@@ -365,6 +368,20 @@ def run_walk_forward(
         return
 
     logger.info(f"{len(data)} tickers loaded")
+
+    # 1.5 TURBO INIT: Pré-calculer les features maintenant (1 seule fois)
+    logger.info("🚀 Turbo Init: Pre-computing technical features for all tickers...")
+    feature_engineer = AdvancedFeaturesV2()
+    
+    # Paralléliser si possible, mais sinon simple boucle
+    # (TA-Lib release le GIL, donc Threading pourrait marcher, mais on reste simple)
+    processed_count = 0
+    for ticker, df in data.items():
+        # Calculer et remplacer in-place
+        data[ticker] = feature_engineer.calculate_all_features(df)
+        processed_count += 1
+    
+    logger.info(f"✅ Features computed for {processed_count} tickers. RAM usage will increase.")
 
     # 2. Télécharger données macro
     logger.info("Downloading macro data (VIX, TNX, DXY)...")

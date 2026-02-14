@@ -60,6 +60,10 @@ Pour saturer la machine et accélérer l'entraînement :
 
 ---
 
+- **Script** : Utiliser `./start_training.sh` qui configure tout cela automatiquement.
+
+---
+
 ## 4. Stratégie Walk-Forward & Overfitting
 
 ### Constat (Février 2026)
@@ -71,3 +75,19 @@ Pour saturer la machine et accélérer l'entraînement :
 - **Simplicité** : Réseau de neurones plus large mais moins profond (`[512, 512, 512]` au lieu de 4 couches).
 - **Moins d'aléatoire** : `ent_coef` réduit à `0.01` (vs 0.05).
 - **Ensemble Learning** : Toujours utiliser plusieurs modèles (`--ensemble 5+`) pour lisser la variance.
+
+---
+
+## 5. Optimisation : "Turbo Init" (Pre-computed Features)
+
+### Problème : Démarrage Lent des Environnements
+- Avec `n_envs=256`, chaque processus calcule indépendamment les indicateurs techniques (RSI, MACD, etc.) pour 15 tickers sur 50 000 bougies.
+- **Coût** : 256 processus x 15 tickers x 50k bougies = **192 Millions de calculs** au démarrage.
+- **Résultat** : CPU à 100% pendant des minutes, risque de timeout ou crash.
+
+### Solution : Calcul Unique & Partage
+- **Modification** : `training/train_walk_forward.py` calcule les features **une seule fois** au début (dans le processus principal).
+- **Injection** : Les DataFrames enrichis sont passés aux environnements avec le flag `features_precomputed=True`.
+- **Environnement** : `UniversalTradingEnvV8LSTM` détecte le flag et **saute** le calcul interne.
+- **Gain** : Démarrage quasi-instantané des 256 environnements (juste copie mémoire).
+
