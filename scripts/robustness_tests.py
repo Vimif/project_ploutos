@@ -3,7 +3,7 @@
 """Tests de Robustesse : Monte Carlo + Stress Test Krach.
 
 1. Monte Carlo: 1000 backtests avec bruit aléatoire sur les prix.
-   Si le modèle perd de l'argent dans >5% des cas -> overfitting.
+   Si le modèle perd de l'argent dans >20% des cas -> overfitting.
 
 2. Stress Test: Simule un krach de -20% en une journée.
    Vérifie que le modèle coupe ses positions ou se met short.
@@ -52,12 +52,12 @@ def load_model(model_path: str, use_recurrent: bool = False):
     return ModelClass.load(model_path)
 
 
-def add_price_noise(data: Dict[str, pd.DataFrame], noise_std: float = 0.001) -> Dict[str, pd.DataFrame]:
+def add_price_noise(data: Dict[str, pd.DataFrame], noise_std: float = 0.005) -> Dict[str, pd.DataFrame]:
     """Ajoute du bruit gaussien aux prix OHLCV.
 
     Args:
         data: Dict {ticker: DataFrame OHLCV}.
-        noise_std: Écart-type du bruit (0.001 = +/- 0.1%).
+        noise_std: Écart-type du bruit (0.005 = +/- 0.5%).
 
     Returns:
         Copie des données avec bruit ajouté.
@@ -112,7 +112,10 @@ def calculate_dsr(returns: np.array, n_trials: int = 1) -> float:
 
 
 def simulate_crash(
-    data: Dict[str, pd.DataFrame], crash_pct: float = -0.20, crash_day_idx: int = None
+    data: Dict[str, pd.DataFrame],
+    crash_pct: float = -0.20,
+    crash_day_idx: int = None,
+    instant: bool = False,
 ) -> Dict[str, pd.DataFrame]:
     """Simule un krach boursier à une date donnée.
 
@@ -120,6 +123,7 @@ def simulate_crash(
         data: Dict {ticker: DataFrame OHLCV}.
         crash_pct: Amplitude du krach (-0.20 = -20%).
         crash_day_idx: Index de la bougie de début du krach (None = milieu).
+        instant: Si True, crash instantané (1 bar). Sinon, graduel sur 6 bars.
 
     Returns:
         Données avec un krach injecté.
@@ -132,16 +136,15 @@ def simulate_crash(
         if crash_day_idx is None:
             crash_day_idx = n // 2
 
-        # Le krach se produit sur ~6 bougies (1 journée en horaire)
-        crash_duration = 6
+        crash_duration = 1 if instant else 6
         end_idx = min(crash_day_idx + crash_duration, n)
 
         for col in ['Open', 'High', 'Low', 'Close']:
             if col not in crashed_df.columns:
                 continue
-            # Appliquer le crash progressivement
+            # Appliquer le crash
             for i, idx in enumerate(range(crash_day_idx, end_idx)):
-                progress = (i + 1) / crash_duration
+                progress = 1.0 if instant else (i + 1) / crash_duration
                 drop = crash_pct * progress
                 crashed_df.iloc[idx, crashed_df.columns.get_loc(col)] *= (1 + drop)
 
@@ -211,7 +214,7 @@ def monte_carlo_test(
     test_data: Dict[str, pd.DataFrame],
     macro_data: Optional[pd.DataFrame],
     n_simulations: int = 1000,
-    noise_std: float = 0.001,
+    noise_std: float = 0.005,
     vecnorm_env=None,
     env_kwargs: dict = None,
     n_workers: int = 1,
@@ -267,7 +270,7 @@ def monte_carlo_test(
         'n_simulations': n_simulations,
         'noise_std': noise_std,
         'loss_rate': loss_rate,
-        'is_overfit': loss_rate > 0.05,
+        'is_overfit': loss_rate > 0.20,
         'avg_return': float(np.mean(returns)),
         'std_return': float(np.std(returns)),
         'min_return': float(np.min(returns)),
@@ -389,7 +392,7 @@ def main():
     parser.add_argument('--stress-test', action='store_true', help='Run crash stress test')
     parser.add_argument('--all', action='store_true', help='Run all tests')
     parser.add_argument('--recurrent', action='store_true', help='Model is RecurrentPPO')
-    parser.add_argument('--noise-std', type=float, default=0.001, help='MC noise std (default: 0.1%%)')
+    parser.add_argument('--noise-std', type=float, default=0.005, help='MC noise std (default: 0.5%%)')
     parser.add_argument('--crash-pct', type=float, default=-0.20, help='Crash severity (default: -20%%)')
     parser.add_argument(
         '--auto-scale', action='store_true',

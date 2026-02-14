@@ -3,84 +3,17 @@
 import sys
 from unittest.mock import MagicMock
 
-# Mock torch pour éviter l'import GPU
 sys.modules.setdefault("torch", MagicMock())
 
 import pytest
 import numpy as np
-import pandas as pd
-from core.environment import (
-    TradingEnv,
-    VALID_MODES,
-)
+from core.environment import TradingEnv, VALID_MODES
+from conftest import make_market_data, make_macro_data
+
 
 # ============================================================================
-# Fixtures
+# Fixtures (env-specific, using shared data generators from conftest)
 # ============================================================================
-
-
-def _make_market_data(n_tickers: int = 2, n_bars: int = 500) -> dict:
-    """Crée des données de marché factices mais réalistes."""
-    np.random.seed(42)
-    dates = pd.date_range("2023-01-01", periods=n_bars, freq="h")
-    data = {}
-    ticker_names = ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN"][:n_tickers]
-
-    for ticker in ticker_names:
-        base_price = np.random.uniform(100, 500)
-        returns = np.random.randn(n_bars) * 0.01
-        prices = base_price * np.exp(np.cumsum(returns))
-
-        data[ticker] = pd.DataFrame(
-            {
-                "Open": prices * (1 + np.random.rand(n_bars) * 0.005),
-                "High": prices * (1 + abs(np.random.randn(n_bars)) * 0.01),
-                "Low": prices * (1 - abs(np.random.randn(n_bars)) * 0.01),
-                "Close": prices,
-                "Volume": np.random.randint(500_000, 20_000_000, n_bars),
-            },
-            index=dates,
-        )
-    return data
-
-
-def _make_macro_data(n_bars: int = 500) -> pd.DataFrame:
-    """Crée des données macro factices (VIX, TNX, DXY)."""
-    np.random.seed(42)
-    dates = pd.date_range("2023-01-01", periods=n_bars, freq="h")
-    return pd.DataFrame(
-        {
-            "vix_close": 15 + np.random.randn(n_bars) * 3,
-            "tnx_close": 4.0 + np.random.randn(n_bars) * 0.3,
-            "dxy_close": 104 + np.random.randn(n_bars) * 1.5,
-            "vix_return": np.random.randn(n_bars) * 0.02,
-            "tnx_return": np.random.randn(n_bars) * 0.01,
-            "dxy_return": np.random.randn(n_bars) * 0.005,
-            "vix_ma_20": 15 + np.random.randn(n_bars) * 1,
-            "tnx_ma_20": 4.0 + np.random.randn(n_bars) * 0.1,
-            "dxy_ma_20": 104 + np.random.randn(n_bars) * 0.5,
-            "vix_std_20": np.abs(np.random.randn(n_bars) * 0.5) + 0.1,
-            "tnx_std_20": np.abs(np.random.randn(n_bars) * 0.1) + 0.01,
-            "dxy_std_20": np.abs(np.random.randn(n_bars) * 0.3) + 0.1,
-            "vix_zscore": np.random.randn(n_bars),
-            "tnx_zscore": np.random.randn(n_bars),
-            "dxy_zscore": np.random.randn(n_bars),
-            "vix_fear": (np.random.randn(n_bars) > 1).astype(float),
-            "tnx_rising": (np.random.randn(n_bars) > 0).astype(float),
-            "dxy_strong": (np.random.randn(n_bars) > 0.5).astype(float),
-        },
-        index=dates,
-    )
-
-
-@pytest.fixture
-def market_data():
-    return _make_market_data(n_tickers=2, n_bars=500)
-
-
-@pytest.fixture
-def macro_data():
-    return _make_macro_data(n_bars=500)
 
 
 @pytest.fixture
@@ -306,11 +239,15 @@ class TestTradeExecution:
 
     def test_step_buy(self, train_env):
         train_env.reset()
+        balance_before = train_env.balance
         action = np.array([1] + [0] * (train_env.n_assets - 1))
         obs, reward, done, trunc, info = train_env.step(action)
-        assert train_env.total_trades == 1
         first_ticker = train_env.tickers[0]
+        assert train_env.total_trades == 1
         assert train_env.portfolio[first_ticker] > 0
+        assert train_env.balance < balance_before, "Balance should decrease after buy"
+        assert train_env.entry_prices[first_ticker] > 0, "Entry price should be set"
+        assert info["total_trades"] == 1
 
     def test_step_buy_then_sell(self, train_env):
         train_env.reset()
@@ -320,6 +257,7 @@ class TestTradeExecution:
         action_buy = np.array([1] + [0] * (train_env.n_assets - 1))
         train_env.step(action_buy)
         assert train_env.portfolio[first_ticker] > 0
+        balance_after_buy = train_env.balance
 
         # Wait min_holding_period
         for _ in range(train_env.min_holding_period):
@@ -329,7 +267,10 @@ class TestTradeExecution:
         action_sell = np.array([2] + [0] * (train_env.n_assets - 1))
         train_env.step(action_sell)
         assert train_env.portfolio[first_ticker] == 0.0
+        assert train_env.entry_prices[first_ticker] == 0.0
         assert train_env.total_trades == 2
+        assert train_env.balance > balance_after_buy, "Balance should increase after sell"
+        assert (train_env.winning_trades + train_env.losing_trades) == 1
 
     def test_min_holding_period_enforced(self, train_env):
         train_env.reset()
@@ -344,6 +285,23 @@ class TestTradeExecution:
         # Should not execute sell, position still held
         assert train_env.portfolio[first_ticker] > 0
         assert train_env.total_trades == trades_after_buy
+
+    def test_sell_nonexistent_position(self, train_env):
+        """Selling when no position should not change balance."""
+        train_env.reset()
+        balance_before = train_env.balance
+        action = np.array([2] + [0] * (train_env.n_assets - 1))
+        train_env.step(action)
+        assert train_env.balance == balance_before
+        assert train_env.total_trades == 0
+
+    def test_buy_insufficient_balance(self, train_env):
+        """Buy with near-zero balance should be rejected."""
+        train_env.reset()
+        train_env.balance = 1.0  # Almost no cash
+        action = np.array([1] + [0] * (train_env.n_assets - 1))
+        train_env.step(action)
+        assert train_env.total_trades == 0
 
 
 # ============================================================================
@@ -379,6 +337,44 @@ class TestEpisodeComplete:
 # ============================================================================
 
 
+class TestRewardParams:
+    def test_default_reward_params(self, train_env):
+        assert train_env.reward_buy_executed == 0.1
+        assert train_env.reward_overtrading_immediate == -0.02
+        assert train_env.reward_invalid_trade == -0.01
+        assert train_env.reward_bad_price == -0.05
+        assert train_env.reward_good_return_bonus == 0.3
+        assert train_env.reward_high_winrate_bonus == 0.2
+
+    def test_custom_reward_params(self, market_data):
+        env = TradingEnv(
+            market_data,
+            mode="train",
+            reward_buy_executed=0.05,
+            reward_overtrading=-0.1,
+            reward_invalid_trade=-0.03,
+            reward_bad_price=-0.1,
+        )
+        assert env.reward_buy_executed == 0.05
+        assert env.reward_overtrading_immediate == -0.1
+        assert env.reward_invalid_trade == -0.03
+        assert env.reward_bad_price == -0.1
+
+
+class TestTransactionModel:
+    def test_backtest_uses_transaction_model(self, market_data):
+        env = TradingEnv(market_data, mode="backtest", seed=42)
+        env.reset()
+        assert env.transaction_model is not None
+
+    def test_train_volume_arrays_populated(self, market_data):
+        env = TradingEnv(market_data, mode="train", seed=42)
+        env.reset()
+        for ticker in env.tickers:
+            assert ticker in env.volume_arrays
+            assert len(env.volume_arrays[ticker]) > 0
+
+
 class TestReproducibility:
     def test_backtest_deterministic(self, market_data):
         env1 = TradingEnv(market_data, mode="backtest", seed=42)
@@ -394,3 +390,11 @@ class TestReproducibility:
             obs2, r2, d2, _, info2 = env2.step(action)
             assert np.allclose(obs1, obs2), "Observations diverge"
             assert abs(r1 - r2) < 1e-6, "Rewards diverge"
+
+    def test_different_seeds_differ(self, market_data):
+        env1 = TradingEnv(market_data, mode="train", seed=42)
+        env2 = TradingEnv(market_data, mode="train", seed=99)
+        obs1, _ = env1.reset()
+        obs2, _ = env2.reset()
+        # Different seeds should give different starting positions in train mode
+        assert env1.current_step != env2.current_step or not np.allclose(obs1, obs2)

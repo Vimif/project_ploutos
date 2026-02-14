@@ -1,9 +1,12 @@
+import logging
 
 import numpy as np
 import pandas as pd
 from multiprocessing.shared_memory import SharedMemory
 import pickle
 from typing import Dict, Tuple, Any, List
+
+logger = logging.getLogger(__name__)
 
 class SharedDataManager:
     """
@@ -37,15 +40,15 @@ class SharedDataManager:
             arr = numeric_df.values
             
             # 2. Créer SharedMemory
-            print(f"Creating shm size: {arr.nbytes}")
+            logger.debug(f"Creating shm size: {arr.nbytes}")
             shm = SharedMemory(create=True, size=arr.nbytes)
-            print(f"Created shm: {shm.name}")
+            logger.debug(f"Created shm: {shm.name}")
             self._shm_registry.append(shm)
             
             # 3. Copier les données
             shared_arr = np.ndarray(arr.shape, dtype=arr.dtype, buffer=shm.buf)
             shared_arr[:] = arr[:]  # Copy data
-            print("Copied data to shm")
+            logger.debug("Copied data to shm")
             
             # 4. Stocker metadata
             metadata[key] = {
@@ -65,7 +68,7 @@ class SharedDataManager:
                 shm.close()
                 shm.unlink() # Détruit le bloc mémoire
             except Exception as e:
-                print(f"Warning cleanup shm {shm.name}: {e}")
+                logger.warning(f"Cleanup shm {shm.name}: {e}")
         self._shm_registry.clear()
 
 def load_shared_array(metadata_item: Dict[str, Any]) -> Tuple[SharedMemory, np.ndarray]:
@@ -90,7 +93,7 @@ def load_shared_data(metadata: Dict[str, Any]) -> Dict[str, pd.DataFrame]:
     
     for key, meta in metadata.items():
         try:
-            print(f"Loading shm: {meta['shm_name']}")
+            logger.debug(f"Loading shm: {meta['shm_name']}")
             # 1. Connecter à la Shm existante
             shm = SharedMemory(name=meta["shm_name"])
             
@@ -114,7 +117,7 @@ def load_shared_data(metadata: Dict[str, Any]) -> Dict[str, pd.DataFrame]:
                 columns=meta["columns"],
                 copy=True # Force la copie pour détacher de la SHM
             )
-            print(f"Loaded df: {df.columns}")
+            logger.debug(f"Loaded df: {list(df.columns)}")
             
             # Note: shm ne doit pas être close() ici si on veut garder l'accès buffer,
             # mais pandas copie souvent les données à l'init.
@@ -124,6 +127,6 @@ def load_shared_data(metadata: Dict[str, Any]) -> Dict[str, pd.DataFrame]:
             reconstructed_data[key] = df
             
         except Exception as e:
-            print(f"Error loading shared data for {key}: {e}")
+            logger.error(f"Error loading shared data for {key}: {e}")
             
     return reconstructed_data

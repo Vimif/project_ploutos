@@ -433,30 +433,8 @@ def run_walk_forward(
 
     logger.info(f"{len(data)} tickers loaded")
 
-    # 1.5 TURBO INIT: Pré-calculer les features maintenant (1 seule fois)
-    logger.info("🚀 Turbo Init: Pre-computing technical features for all tickers...")
+    # Feature engineer (used per-fold to avoid look-ahead bias)
     feature_engineer = FeatureEngineer()
-
-    # Paralléliser si possible, mais sinon simple boucle
-    # (TA-Lib release le GIL, donc Threading pourrait marcher, mais on reste simple)
-    processed_count = 0
-    for ticker, df in data.items():
-        # Sauvegarder l'index original (DatetimeIndex) pour éviter sa perte via Polars
-        original_index = df.index
-        
-        # Calculer les features
-        feat_df = feature_engineer.calculate_all_features(df)
-        
-        # Restaurer l'index si nécessaire
-        if len(feat_df) == len(original_index):
-            feat_df.index = original_index
-        else:
-            logger.warning(f"Feature engineering changed row count for {ticker} ({len(original_index)} -> {len(feat_df)}). Index mismatch possible.")
-            
-        data[ticker] = feat_df
-        processed_count += 1
-
-    logger.info(f"✅ Features computed for {processed_count} tickers. RAM usage will increase.")
 
     # 2. Télécharger données macro
     logger.info("Downloading macro data (VIX, TNX, DXY)...")
@@ -513,14 +491,34 @@ def run_walk_forward(
         # Macro data pour ce fold (si disponible)
         fold_macro = macro_data
 
+        # Compute features PER FOLD to avoid look-ahead bias
+        # Each fold gets features computed only from its own data slice
+        logger.info(f"  Computing features for fold {fold_idx + 1}...")
+        fold_train = {}
+        fold_test = {}
+        for ticker in split["train"]:
+            train_df = split["train"][ticker]
+            original_train_idx = train_df.index
+            feat_train = feature_engineer.calculate_all_features(train_df)
+            if len(feat_train) == len(original_train_idx):
+                feat_train.index = original_train_idx
+            fold_train[ticker] = feat_train
+
+            test_df = split["test"][ticker]
+            original_test_idx = test_df.index
+            feat_test = feature_engineer.calculate_all_features(test_df)
+            if len(feat_test) == len(original_test_idx):
+                feat_test.index = original_test_idx
+            fold_test[ticker] = feat_test
+
         # Ensemble : entraîner n_ensemble modèles avec des seeds différents
         if n_ensemble > 1:
             fold_metrics_list = []
             for ens_idx in range(n_ensemble):
                 seed = 42 + ens_idx * 1000
                 metrics = train_single_fold(
-                    train_data=split["train"],
-                    test_data=split["test"],
+                    train_data=fold_train,
+                    test_data=fold_test,
                     macro_data=fold_macro,
                     config=config,
                     fold_idx=fold_idx * n_ensemble + ens_idx,
@@ -542,8 +540,8 @@ def run_walk_forward(
             all_metrics.append(avg_metrics)
         else:
             metrics = train_single_fold(
-                train_data=split["train"],
-                test_data=split["test"],
+                train_data=fold_train,
+                test_data=fold_test,
                 macro_data=fold_macro,
                 config=config,
                 fold_idx=fold_idx,

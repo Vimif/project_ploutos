@@ -12,7 +12,7 @@ training:
   gae_lambda: 0.98
   clip_range: 0.2
   ent_coef: 0.01
-  use_shared_memory: false # ⚡ V9 Feature: Réduit consommation RAM (Zero-Copy)
+  use_shared_memory: true  # ⚡ V9: zero-copy data sharing across SubprocVecEnv workers
 
 environment:
   initial_balance: 100000
@@ -25,8 +25,8 @@ environment:
   max_trades_per_day: 10
   min_holding_period: 2
   slippage_model: realistic
-  spread_bps: 2.0
-  market_impact_factor: 0.0001
+  spread_bps: 5.0
+  market_impact_factor: 0.00015
   reward_scaling: 1.5
   use_sharpe_penalty: true
   use_drawdown_penalty: true
@@ -36,6 +36,7 @@ environment:
   warmup_steps: 100
   steps_per_trading_week: 78
   drawdown_threshold: 0.10
+  max_features_per_ticker: 30  # 0 = all features, >0 = top N by variance (reduces obs dims)
 
 data:
   tickers:
@@ -60,9 +61,8 @@ data:
 
 network:
   net_arch:
-    - 512
-    - 512
-    - 512
+    - 256
+    - 128
   activation_fn: tanh
   # LSTM (pour RecurrentPPO)
   lstm_hidden_size: 256

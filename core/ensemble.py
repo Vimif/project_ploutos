@@ -171,6 +171,61 @@ class EnsemblePredictor:
         avg_confidence = float(confidences.mean())
         return final_action, avg_confidence
 
+    def predict_filtered(
+        self,
+        observation: np.ndarray,
+        min_confidence: float = 0.5,
+        deterministic: bool = True,
+    ) -> np.ndarray:
+        """Predict with confidence-based filtering.
+
+        Actions below min_confidence are replaced with HOLD (0).
+        This prevents trades when models disagree.
+
+        Args:
+            observation: Environment observation.
+            min_confidence: Minimum agreement ratio to execute a trade.
+            deterministic: If True, deterministic predictions.
+
+        Returns:
+            Filtered action array (low-confidence trades become HOLD).
+        """
+        action, avg_conf = self.predict_with_confidence(observation, deterministic)
+
+        # For multi-asset, we need per-asset confidence
+        # Re-run to get per-asset confidences
+        if self.vecnormalize is not None:
+            obs = self.vecnormalize.normalize_obs(observation.reshape(1, -1)).flatten()
+        else:
+            obs = observation
+
+        all_actions = []
+        for i, model in enumerate(self.models):
+            if HAS_RECURRENT and isinstance(model, RecurrentPPO):
+                a, state = model.predict(
+                    obs, state=self.lstm_states[i], deterministic=deterministic
+                )
+                self.lstm_states[i] = state
+            else:
+                a, _ = model.predict(obs, deterministic=deterministic)
+            all_actions.append(a)
+
+        all_actions = np.array(all_actions)
+        if all_actions.ndim == 1:
+            all_actions = all_actions.reshape(-1, 1)
+
+        filtered = np.zeros(all_actions.shape[1], dtype=action.dtype)
+        for asset_idx in range(all_actions.shape[1]):
+            votes = all_actions[:, asset_idx]
+            values, counts = np.unique(votes, return_counts=True)
+            best_idx = np.argmax(counts)
+            confidence = counts[best_idx] / self.n_models
+            if confidence >= min_confidence:
+                filtered[asset_idx] = values[best_idx]
+            # else: stays 0 (HOLD)
+
+        return filtered
+
     def reset_states(self):
         """Reset LSTM states (appeler au début d'un nouvel épisode)."""
         self.lstm_states = [None] * self.n_models

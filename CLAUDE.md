@@ -1,6 +1,6 @@
 # Ploutos - RL Trading System
 
-Reinforcement Learning trading bot (PPO/RecurrentPPO) with walk-forward training, ensemble learning, and macro data integration. Currently on V8.
+Reinforcement Learning trading bot (PPO/RecurrentPPO) with walk-forward training, ensemble learning, and macro data integration. Currently on V9.
 
 Full roadmap: `docs/ROADMAP.md`
 
@@ -12,7 +12,7 @@ pip install -e ".[dev,training,web]"
 
 # Tests
 pytest                           # all tests
-pytest tests/test_trading_env.py # single file
+pytest tests/test_trading_env_v8.py # single file
 
 # Lint & Format
 black --check .                  # check formatting (line-length=100)
@@ -47,14 +47,19 @@ config/          YAML configs + settings
   training_config_v8.yaml        Standard training config
   training_config_v8_cloud.yaml  GPU cloud (manual override, --auto-scale preferred)
 core/            Core ML & environment logic
-  universal_environment_v8_lstm.py  Current V8 gym environment (1318 dims)
-  universal_environment_v6_better_timing.py  Legacy V6 env (used by V7/tests)
-  advanced_features_v2.py  60+ technical features (support/resistance, RSI, etc.)
-  data_fetcher.py  Yahoo Finance data fetching (max_workers configurable)
-  macro_data.py    VIX/TNX/DXY macro indicators (V8 only)
-  ensemble.py      Multi-model ensemble voting
-  data_pipeline.py Feature engineering pipeline + train/val/test splitting
-  transaction_costs.py  Realistic slippage/spread/commission model
+  environment.py     V9 gym environment (configurable obs dims via max_features_per_ticker)
+  env_config.py      EnvConfig dataclass (structured config for TradingEnv)
+  observation_builder.py  Observation vector construction (extracted from env)
+  reward_calculator.py    DSR reward with Welford online variance (extracted from env)
+  constants.py       Centralized constants (clip ranges, thresholds, finance params)
+  exceptions.py      Custom exception hierarchy (PloutosError, ConfigValidationError, etc.)
+  features.py        60+ technical features (support/resistance, RSI, etc.)
+  data_fetcher.py    Yahoo Finance data fetching (max_workers configurable)
+  macro_data.py      VIX/TNX/DXY macro indicators
+  ensemble.py        Multi-model ensemble voting with confidence filtering
+  data_pipeline.py   Feature engineering pipeline + train/val/test splitting
+  transaction_costs.py  Realistic slippage/spread/commission model (configurable vol_ceiling)
+  shared_memory_manager.py  V9 zero-copy shared memory for SubprocVecEnv
 training/        Training scripts
   train_walk_forward.py  V8 walk-forward training (main entry point)
   train_v7_sp500_sectors.py  V7 sector-based training (legacy)
@@ -63,8 +68,8 @@ scripts/         CLI tools
   optimize_hyperparams.py  Optuna hyperparameter search
   robustness_tests.py  Monte Carlo (parallelized) + stress tests
 trading/         Broker integrations (eToro, Alpaca)
-tests/           pytest test suite (93 tests: V6 env, V8 env, ensemble, features, pipeline, portfolio)
-.github/workflows/tests.yml  CI: pytest + black + ruff on push/PR
+tests/           pytest test suite (116 tests: env, ensemble, features, pipeline, transaction costs, reward, config)
+.github/workflows/tests.yml  CI: pytest + black + ruff + mypy (Python 3.10/3.11 matrix)
 ```
 
 ## Environment Setup
@@ -89,14 +94,16 @@ Key `.env` variables:
 
 ## Gotchas
 
-- **V8 uses YAML configs directly**: `yaml.safe_load()` in training scripts. No dataclass layer.
+- **V9 uses YAML configs directly**: `yaml.safe_load()` in training scripts. `EnvConfig` dataclass available via `TradingEnv.from_config()` but flat kwargs still work.
 - **`--auto-scale` replaces cloud config**: Detects GPU/CPU/RAM and overrides n_envs/batch_size/n_steps. The cloud YAML still works for manual overrides but `--auto-scale` is preferred.
 - **settings.py is minimal**: Only provides paths (`LOGS_DIR`, `TRADES_DIR`) and broker config. Used by `core/utils.py` and `trading/portfolio.py`. No training config — that's in YAML + `config/hardware.py`.
 - **SubprocVecEnv vs DummyVecEnv**: PPO uses SubprocVecEnv (parallel). RecurrentPPO requires DummyVecEnv (sequential). This is handled in `train_walk_forward.py`.
 - **Data caching**: `data_cache/` is gitignored. Yahoo Finance data gets cached locally.
 - **Models gitignored**: `models/` dir is in `.gitignore`. Trained models must be managed separately.
 - **Wandb disabled by default**: Set `wandb.enabled: true` in YAML config.
-- **Config validation**: `config/schema.py` validates YAML on load (types, ranges, typo detection). Runs automatically in `train_walk_forward.py`.
+- **Config validation**: `config/schema.py` validates YAML on load (types, ranges, typo detection, cross-field constraints). Raises `ConfigValidationError`. Runs automatically in `train_walk_forward.py`.
+- **Feature computation inside folds**: Features are computed per-fold inside the walk-forward loop to prevent look-ahead bias.
+- **Observation space reduction**: `max_features_per_ticker` in config.yaml selects top-N features by variance (default: 30).
 
 ## Coding Guidelines
 

@@ -4,6 +4,7 @@
 polars>=0.20.0
 pyarrow>=14.0.0
 
+# ========================================
 # CORE ML & RL
 # ========================================
 torch>=2.0.0
@@ -16,8 +17,6 @@ gymnasium>=0.29.0
 # ========================================
 yfinance>=0.2.33
 pandas>=2.1.4
-polars>=0.20.0  # V9 High Performance Data Engine
-pyarrow>=14.0.0 # Polars <> Pandas conversion
 numpy>=1.26.2
 ta>=0.11.0
 scipy>=1.11.0  # Pour drift detection (PSI, KS Test)
@@ -25,8 +24,6 @@ scipy>=1.11.0  # Pour drift detection (PSI, KS Test)
 # ========================================
 # TRADING
 # ========================================
-# Broker: eToro (défaut) - utilise requests (déjà inclus)
-# Broker: Alpaca (fallback)
 alpaca-py>=0.25.0
 
 # ========================================

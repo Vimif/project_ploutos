@@ -18,8 +18,19 @@ import pandas as pd
 from typing import Dict, Optional
 from collections import deque
 
+from core.constants import (
+    BANKRUPTCY_THRESHOLD,
+    EQUITY_EPSILON,
+    MAX_REWARD_CLIP,
+    MIN_POSITION_THRESHOLD,
+    PORTFOLIO_HISTORY_WINDOW,
+    RETURNS_HISTORY_WINDOW,
+)
+from core.env_config import EnvConfig
 from core.features import FeatureEngineer
 from core.macro_data import MacroDataFetcher
+from core.observation_builder import ObservationBuilder
+from core.reward_calculator import RewardCalculator
 from core.transaction_costs import AdvancedTransactionModel
 
 try:
@@ -75,6 +86,7 @@ class TradingEnv(gym.Env):
         good_return_threshold: float = 0.01,
         high_winrate_threshold: float = 0.6,
         features_precomputed: bool = False,  # Nouveau flag
+        max_features_per_ticker: int = 0,  # 0 = all features, >0 = top N by variance
         warmup_steps: int = 100,
         steps_per_trading_week: int = 78,
         drawdown_threshold: float = 0.10,
@@ -85,6 +97,7 @@ class TradingEnv(gym.Env):
             raise ValueError(f"mode doit être l'un de {VALID_MODES}, obtenu '{mode}'")
         self.mode = mode
         self.features_precomputed = features_precomputed  # Stocker le flag
+        self.max_features_per_ticker = max_features_per_ticker
 
         self._seed = seed
         self._rng = np.random.RandomState(seed)
@@ -148,8 +161,8 @@ class TradingEnv(gym.Env):
 
         self.portfolio = {ticker: 0.0 for ticker in self.tickers}
         self.entry_prices = {ticker: 0.0 for ticker in self.tickers}
-        self.portfolio_value_history = deque(maxlen=252)
-        self.returns_history = deque(maxlen=100)
+        self.portfolio_value_history = deque(maxlen=PORTFOLIO_HISTORY_WINDOW)
+        self.returns_history = deque(maxlen=RETURNS_HISTORY_WINDOW)
         self.peak_value = initial_balance
 
         self.trades_today = 0
@@ -164,36 +177,91 @@ class TradingEnv(gym.Env):
             rng=self._rng,
         )
 
-        # DSR (Differential Sharpe Ratio) state - Init
-        self.dsr_alpha = 0.05
-        self.run_avg_ret = 0.0
-        self.run_avg_sq_ret = 0.0
+        # Reward calculator (DSR + penalties)
+        self.reward_calculator = RewardCalculator(
+            reward_scaling=reward_scaling,
+            use_drawdown_penalty=use_drawdown_penalty,
+            drawdown_penalty_factor=drawdown_penalty_factor,
+            drawdown_threshold=drawdown_threshold,
+            penalty_overtrading=penalty_overtrading,
+        )
 
         # Préparer features techniques + macro
         self.macro_data = macro_data
         self._prepare_features(macro_data)
 
-        # Observation space
-        n_features_per_ticker = len(self.feature_columns)
+        # Observation builder
         self.n_macro_features = len(self.macro_columns) if self.macro_columns else 0
-        obs_size = (
-            self.n_assets * n_features_per_ticker
-            + self.n_macro_features
-            + self.n_assets  # positions
-            + 3  # cash_pct, total_return, drawdown
+        self.obs_builder = ObservationBuilder(
+            tickers=self.tickers,
+            feature_columns=self.feature_columns,
+            feature_arrays=self.feature_arrays,
+            macro_array=self.macro_array,
+            n_macro_features=self.n_macro_features,
         )
 
         self.observation_space = gym.spaces.Box(
-            low=-10.0, high=10.0, shape=(obs_size,), dtype=np.float32
+            low=-10.0, high=10.0, shape=(self.obs_builder.obs_size,), dtype=np.float32
         )
-
         self.action_space = gym.spaces.MultiDiscrete([3] * self.n_assets)
 
+        n_features_per_ticker = len(self.feature_columns)
         mode_label = {"train": "Training", "eval": "Evaluation", "backtest": "Backtest"}
         print(
             f"Env V9 [Memory Optimized] [{mode_label[self.mode]}]: "
             f"{self.n_assets} tickers x {n_features_per_ticker} features "
-            f"+ {self.n_macro_features} macro = {obs_size} dims"
+            f"+ {self.n_macro_features} macro = {self.obs_builder.obs_size} dims"
+        )
+
+    @classmethod
+    def from_config(
+        cls,
+        config: EnvConfig,
+        data: Dict[str, pd.DataFrame],
+        macro_data: Optional[pd.DataFrame] = None,
+        mode: str = "train",
+        seed: Optional[int] = None,
+    ) -> "TradingEnv":
+        """Create a TradingEnv from a structured EnvConfig dataclass."""
+        tx = config.transaction
+        rw = config.reward
+        tr = config.trading
+        return cls(
+            data=data,
+            macro_data=macro_data,
+            initial_balance=config.initial_balance,
+            commission=tx.commission,
+            sec_fee=tx.sec_fee,
+            finra_taf=tx.finra_taf,
+            slippage_model=tx.slippage_model,
+            spread_bps=tx.spread_bps,
+            market_impact_factor=tx.market_impact_factor,
+            max_steps=tr.max_steps,
+            buy_pct=tr.buy_pct,
+            max_position_pct=tr.max_position_pct,
+            max_trades_per_day=tr.max_trades_per_day,
+            min_holding_period=tr.min_holding_period,
+            warmup_steps=tr.warmup_steps,
+            steps_per_trading_week=tr.steps_per_trading_week,
+            drawdown_threshold=tr.drawdown_threshold,
+            reward_scaling=rw.reward_scaling,
+            use_sharpe_penalty=rw.use_sharpe_penalty,
+            use_drawdown_penalty=rw.use_drawdown_penalty,
+            reward_trade_success=rw.reward_trade_success,
+            penalty_overtrading=rw.penalty_overtrading,
+            drawdown_penalty_factor=rw.drawdown_penalty_factor,
+            reward_buy_executed=rw.reward_buy_executed,
+            reward_overtrading=rw.reward_overtrading,
+            reward_invalid_trade=rw.reward_invalid_trade,
+            reward_bad_price=rw.reward_bad_price,
+            reward_good_return_bonus=rw.reward_good_return_bonus,
+            reward_high_winrate_bonus=rw.reward_high_winrate_bonus,
+            good_return_threshold=rw.good_return_threshold,
+            high_winrate_threshold=rw.high_winrate_threshold,
+            features_precomputed=config.features_precomputed,
+            max_features_per_ticker=config.max_features_per_ticker,
+            mode=mode,
+            seed=seed,
         )
 
     def _prepare_features(self, macro_data: Optional[pd.DataFrame]):
@@ -211,10 +279,22 @@ class TradingEnv(gym.Env):
 
             self.processed_data[ticker] = df
 
-        exclude_cols = ["Open", "High", "Low", "Close", "Volume"]
-        self.feature_columns = [
-            col for col in self.processed_data[self.tickers[0]].columns if col not in exclude_cols
+        exclude_cols = {"Open", "High", "Low", "Close", "Volume", "Date", "Datetime", "Timestamp"}
+        ref_df = self.processed_data[self.tickers[0]]
+        all_feature_cols = [
+            col
+            for col in ref_df.columns
+            if col not in exclude_cols and ref_df[col].dtype in (np.float64, np.float32, np.int64)
         ]
+
+        # Feature selection by variance (reduces dimensionality)
+        if self.max_features_per_ticker > 0 and len(all_feature_cols) > self.max_features_per_ticker:
+            ref_df = self.processed_data[self.tickers[0]]
+            variances = ref_df[all_feature_cols].var().fillna(0)
+            top_features = variances.nlargest(self.max_features_per_ticker).index.tolist()
+            self.feature_columns = top_features
+        else:
+            self.feature_columns = all_feature_cols
 
         # Macro : aligner sur le premier ticker comme référence
         self.macro_columns = []
@@ -271,9 +351,7 @@ class TradingEnv(gym.Env):
         self.portfolio_value_history.clear()
         self.returns_history.clear()
 
-        # Reset DSR state
-        self.run_avg_ret = 0.0
-        self.run_avg_sq_ret = 0.0
+        self.reward_calculator.reset()
 
         if self.mode == "train":
             self.current_step = self._rng.randint(
@@ -312,13 +390,13 @@ class TradingEnv(gym.Env):
 
         self._update_equity()
         reward = self._calculate_reward(total_reward, trades_executed)
-        reward = np.clip(reward, -10, 10)
+        reward = np.clip(reward, -MAX_REWARD_CLIP, MAX_REWARD_CLIP)
 
         self.current_step += 1
 
         self.done = (
             self.current_step >= self.max_steps
-            or self.equity < self.initial_balance * 0.5
+            or self.equity < self.initial_balance * BANKRUPTCY_THRESHOLD
             or self.balance < 0
         )
 
@@ -368,7 +446,7 @@ class TradingEnv(gym.Env):
 
         elif action == 2:  # SELL
             quantity = self.portfolio[ticker]
-            if quantity < 1e-6:
+            if quantity < MIN_POSITION_THRESHOLD:
                 return self.reward_invalid_trade
 
             execution_price = self._apply_slippage_sell(ticker, current_price)
@@ -405,63 +483,16 @@ class TradingEnv(gym.Env):
             return 0.0
 
         prev_equity = self.portfolio_value_history[-2]
-        current_equity = self.equity
 
-        # Rendement pour ce step
-        if prev_equity > 0:
-            ret = (current_equity - prev_equity) / prev_equity
-        else:
-            ret = 0.0
-
+        ret = (self.equity - prev_equity) / prev_equity if prev_equity > 0 else 0.0
         self.returns_history.append(ret)
 
-        # --- Differential Sharpe Ratio (DSR) ---
-        # Mise à jour des moyennes mobiles exponentielles (EMA)
-        # A_t = A_{t-1} + alpha * (R_t - A_{t-1})
-        # B_t = B_{t-1} + alpha * (R_t^2 - B_{t-1})
-
-        delta_A = ret - self.run_avg_ret
-        delta_B = (ret**2) - self.run_avg_sq_ret
-
-        old_A = self.run_avg_ret
-        old_B = self.run_avg_sq_ret
-
-        self.run_avg_ret += self.dsr_alpha * delta_A
-        self.run_avg_sq_ret += self.dsr_alpha * delta_B
-
-        # Calcul du DSR (approximation directe de la dérivée)
-        # D_t ~ (B_{t-1} * delta_A - 0.5 * A_{t-1} * delta_B) / (B_{t-1} - A_{t-1}^2)^(1.5)
-        # Mais pour la stabilité numérique, on utilise une version simplifiée :
-        # On récompense si le Sharpe augmente.
-
-        variance = old_B - (old_A**2)
-        if variance < 1e-6:  # Éviter division par zéro
-            variance = 1e-6
-
-        std_dev = np.sqrt(variance)
-
-        # Formule de Moody & Saffell (2001)
-        # D_t = (R_t - A_{t-1}) / std_{t-1}
-        dsr = (ret - old_A) / std_dev
-
-        # Reward Scale (pour que les valeurs soient ~ [-1, 1])
-        reward = dsr * 0.1
-
-        # --- Pénalités Additionnelles (Hybridation) ---
-
-        # Drawdown Penalty (Critical)
-        if self.use_drawdown_penalty and self.peak_value > 0:
-            drawdown = (self.peak_value - current_equity) / self.peak_value
-            if drawdown > self.drawdown_threshold:
-                # Pénalité exponentielle
-                reward -= drawdown * self.drawdown_penalty_factor * 0.5
-
-        # Overtrading Penalty
-        if trades_executed > 0:
-            # Petit coût frictionnel pour éviter le "churning"
-            reward -= self.penalty_overtrading * 0.1
-
-        return reward * self.reward_scaling
+        return self.reward_calculator.calculate(
+            prev_equity=prev_equity,
+            current_equity=self.equity,
+            peak_value=self.peak_value,
+            trades_executed=trades_executed,
+        )
 
     def _apply_slippage_buy(self, ticker: str, price: float) -> float:
         if self.slippage_model == "none":
@@ -532,50 +563,16 @@ class TradingEnv(gym.Env):
             self.peak_value = self.equity
 
     def _get_observation(self) -> np.ndarray:
-        obs_parts = []
-
-        # Features techniques par ticker
-        for ticker in self.tickers:
-            features_array = self.feature_arrays[ticker]
-            if self.current_step >= len(features_array):
-                features = np.zeros(len(self.feature_columns), dtype=np.float32)
-            else:
-                features = features_array[self.current_step]
-            features = np.nan_to_num(features, nan=0.0, posinf=10.0, neginf=-10.0)
-            features = np.clip(features, -10, 10)
-            obs_parts.append(features)
-
-        # Features macro (partagées entre tous les tickers)
-        if self.macro_array is not None:
-            if self.current_step < len(self.macro_array):
-                macro_features = self.macro_array[self.current_step]
-            else:
-                macro_features = np.zeros(len(self.macro_columns), dtype=np.float32)
-            macro_features = np.nan_to_num(macro_features, nan=0.0, posinf=10.0, neginf=-10.0)
-            macro_features = np.clip(macro_features, -10, 10)
-            obs_parts.append(macro_features)
-
-        # Positions
-        for ticker in self.tickers:
-            price = self._get_current_price(ticker)
-            if price > 0:
-                position_value = self.portfolio[ticker] * price
-                position_pct = position_value / (self.equity + 1e-8)
-            else:
-                position_pct = 0.0
-            obs_parts.append([np.clip(position_pct, 0, 1)])
-
-        # Portfolio state
-        cash_pct = np.clip(self.balance / (self.equity + 1e-8), 0, 1)
-        total_return = np.clip((self.equity - self.initial_balance) / self.initial_balance, -1, 5)
-        drawdown = np.clip((self.peak_value - self.equity) / (self.peak_value + 1e-8), 0, 1)
-        obs_parts.append([cash_pct, total_return, drawdown])
-
-        obs = np.concatenate([np.array(p).flatten() for p in obs_parts])
-        obs = np.nan_to_num(obs, nan=0.0, posinf=10.0, neginf=-10.0)
-        obs = np.clip(obs, -10, 10)
-
-        return obs.astype(np.float32)
+        prices = {t: self._get_current_price(t) for t in self.tickers}
+        return self.obs_builder.build(
+            current_step=self.current_step,
+            portfolio=self.portfolio,
+            prices=prices,
+            equity=self.equity,
+            balance=self.balance,
+            initial_balance=self.initial_balance,
+            peak_value=self.peak_value,
+        )
 
     def _get_info(self) -> dict:
         return {

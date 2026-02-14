@@ -29,12 +29,13 @@ class AdvancedTransactionModel:
         )
     """
     
-    def __init__(self, 
+    def __init__(self,
                  base_commission=0.001,    # 0.1% commission de base
                  min_slippage=0.0005,      # 0.05% slippage minimum
                  max_slippage=0.005,       # 0.5% slippage maximum
-                 market_impact_coef=0.0001,
+                 market_impact_coef=0.00015,
                  latency_std=0.0002,       # 0.02% latence aléatoire
+                 vol_ceiling=0.05,         # Max volatility for normalization
                  rng=None):                # RandomState pour reproductibilité
         """
         Args:
@@ -43,6 +44,7 @@ class AdvancedTransactionModel:
             max_slippage: Slippage maximum (marchés illiquides)
             market_impact_coef: Coefficient d'impact de marché
             latency_std: Écart-type latence (mouvement prix pendant exécution)
+            vol_ceiling: Plafond de volatilité pour normalisation du slippage
             rng: np.random.RandomState optionnel (pour reproductibilité)
         """
         self.base_commission = base_commission
@@ -50,6 +52,7 @@ class AdvancedTransactionModel:
         self.max_slippage = max_slippage
         self.market_impact_coef = market_impact_coef
         self.latency_std = latency_std
+        self.vol_ceiling = vol_ceiling
         self._rng = rng if rng is not None else np.random
         
         # Cache pour volatilités (optimisation)
@@ -124,7 +127,7 @@ class AdvancedTransactionModel:
         
         # Normaliser volatilité (0-1)
         # Volatilité typique : 0.01-0.05 pour actions
-        normalized_vol = np.clip(volatility / 0.05, 0, 1)
+        normalized_vol = np.clip(volatility / self.vol_ceiling, 0, 1)
         
         # Slippage proportionnel à volatilité
         slippage = self.min_slippage + (self.max_slippage - self.min_slippage) * normalized_vol
