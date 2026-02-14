@@ -163,6 +163,10 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
             dtype=np.float32
         )
 
+        # ⚡ OPTIMISATION: Buffer d'observation pré-alloué
+        self._obs_buffer = np.zeros(obs_size, dtype=np.float32)
+        self._n_features = n_features_per_ticker
+
         self.action_space = gym.spaces.MultiDiscrete([3] * self.n_assets)
 
         mode_label = {"train": "Training", "eval": "Evaluation", "backtest": "Backtest"}
@@ -200,7 +204,12 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
 
         for ticker in self.tickers:
             df = self.processed_data[ticker]
-            self.feature_arrays[ticker] = df[self.feature_columns].values.astype(np.float32)
+            arr = df[self.feature_columns].values.astype(np.float32)
+            # Pre-clean features pour éviter de le faire à chaque step
+            arr = np.nan_to_num(arr, nan=0.0, posinf=10.0, neginf=-10.0)
+            arr = np.clip(arr, -10, 10)
+            self.feature_arrays[ticker] = arr
+
             self.close_prices[ticker] = df['Close'].values.astype(np.float32)
             # Volume pour AdvancedTransactionModel
             if 'Volume' in df.columns:
@@ -496,21 +505,20 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
             self.peak_value = self.equity
 
     def _get_observation(self) -> np.ndarray:
-        obs_parts = []
-
+        # 1. Features (pré-nettoyées)
+        start_idx = 0
         for ticker in self.tickers:
             features_array = self.feature_arrays[ticker]
+            end_idx = start_idx + self._n_features
 
-            if self.current_step >= len(features_array):
-                features = np.zeros(len(self.feature_columns), dtype=np.float32)
+            if self.current_step < len(features_array):
+                self._obs_buffer[start_idx:end_idx] = features_array[self.current_step]
             else:
-                features = features_array[self.current_step]
+                self._obs_buffer[start_idx:end_idx] = 0.0
 
-            features = np.nan_to_num(features, nan=0.0, posinf=10.0, neginf=-10.0)
-            features = np.clip(features, -10, 10)
+            start_idx = end_idx
 
-            obs_parts.append(features)
-
+        # 2. Positions
         for ticker in self.tickers:
             price = self._get_current_price(ticker)
             if price > 0:
@@ -519,9 +527,11 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
             else:
                 position_pct = 0.0
 
-            position_pct = np.clip(position_pct, 0, 1)
-            obs_parts.append([position_pct])
+            # Direct assignment to buffer
+            self._obs_buffer[start_idx] = np.clip(position_pct, 0, 1)
+            start_idx += 1
 
+        # 3. Global stats
         cash_pct = np.clip(self.balance / (self.equity + 1e-8), 0, 1)
         total_return = np.clip(
             (self.equity - self.initial_balance) / self.initial_balance, -1, 5
@@ -530,14 +540,15 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
             (self.peak_value - self.equity) / (self.peak_value + 1e-8), 0, 1
         )
 
-        obs_parts.append([cash_pct, total_return, drawdown])
+        self._obs_buffer[start_idx] = cash_pct
+        self._obs_buffer[start_idx + 1] = total_return
+        self._obs_buffer[start_idx + 2] = drawdown
 
-        obs = np.concatenate([np.array(p).flatten() for p in obs_parts])
+        # Final safety check (fast)
+        if np.isnan(self._obs_buffer[-3:]).any(): # Check only calculated parts if needed, but buffer is reused
+             np.nan_to_num(self._obs_buffer, copy=False, nan=0.0, posinf=10.0, neginf=-10.0)
 
-        obs = np.nan_to_num(obs, nan=0.0, posinf=10.0, neginf=-10.0)
-        obs = np.clip(obs, -10, 10)
-
-        return obs.astype(np.float32)
+        return self._obs_buffer.copy()
 
     def _get_info(self) -> dict:
         return {
