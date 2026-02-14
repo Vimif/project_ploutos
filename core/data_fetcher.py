@@ -308,6 +308,10 @@ class UniversalDataFetcher:
             DataFrame avec [Open, High, Low, Close, Volume] et index DatetimeIndex
         """
         
+        # 0. Aplatir MultiIndex columns (nouveau yfinance)
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+
         # 1. Nettoyer l'index
         if not isinstance(df.index, pd.DatetimeIndex):
             if 'timestamp' in df.columns:
