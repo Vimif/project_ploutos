@@ -45,8 +45,18 @@ Pour saturer la machine et accélérer l'entraînement :
 - **Ensemble** : Lancer 10 ou 20 modèles en parallèle (`--ensemble 20`).
 
 ### Risques
-- **OOM (Out Of Memory)** : Si 256 envs consomment plus que la RAM dispo (peu probable avec 1TB, mais possible).
 - **Latence de démarrage** : Initialiser 256 environnements prend du temps (1-2 minutes).
+
+### 🚨 Thread Explosion (OpenBLAS / MKL)
+- **Symptôme** : `OpenBLAS blas_thread_init: pthread_create failed`, `Resource temporarily unavailable`, `BrokenPipeError`.
+- **Cause** : Si on lance 256 processus (`n_envs`) et que chaque processus lance 128 threads (OpenBLAS par défaut), on atteint **32 768 threads**. Linux tue le programme.
+- **Solution** : Forcer 1 thread par processus via variables d'env :
+  ```bash
+  export OMP_NUM_THREADS=1
+  export MKL_NUM_THREADS=1
+  export OPENBLAS_NUM_THREADS=1
+  ```
+- **Script** : Utiliser `./start_training.sh` qui configure tout cela automatiquement.
 
 ---
 
