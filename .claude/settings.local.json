@@ -8,7 +8,9 @@
       "Bash(grep:*)",
       "Bash(python -m pytest:*)",
       "Bash(git rm:*)",
-      "Bash(fc:*)"
+      "Bash(fc:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfeat: Add hardware auto-scaling and training pipeline orchestrator\n\nIntroduce --auto-scale flag across all training scripts to auto-detect\nGPU/CPU/RAM and compute optimal n_envs, batch_size, and worker counts.\nParallelize Monte Carlo robustness tests via ProcessPoolExecutor.\nAdd run_pipeline.py orchestrator for single-command training+robustness.\nClean dead code from settings.py and update all documentation.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")"
     ]
   }
 }
