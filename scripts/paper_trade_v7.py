@@ -605,9 +605,9 @@ def main():
     parser.add_argument('--buy-pct', type=float, default=0.15,
                         help='Pourcentage equity par achat (defaut: 0.15)')
     parser.add_argument('--max-drawdown', type=float, default=KILL_SWITCH_MAX_DRAWDOWN,
-                        help=f'Kill switch drawdown max (defaut: {KILL_SWITCH_MAX_DRAWDOWN:.0%})')
+                        help=f'Kill switch drawdown max (defaut: {KILL_SWITCH_MAX_DRAWDOWN*100:.0f}%%)')
     parser.add_argument('--max-daily-loss', type=float, default=KILL_SWITCH_MAX_DAILY_LOSS,
-                        help=f'Kill switch perte journaliere max (defaut: {KILL_SWITCH_MAX_DAILY_LOSS:.0%})')
+                        help=f'Kill switch perte journaliere max (defaut: {KILL_SWITCH_MAX_DAILY_LOSS*100:.0f}%%)')
     args = parser.parse_args()
 
     if args.mode == 'alpaca':

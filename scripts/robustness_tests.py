@@ -24,6 +24,7 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 from typing import Dict, Optional
+from scipy.stats import skew, kurtosis, norm
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import VecNormalize, DummyVecEnv
@@ -76,6 +77,38 @@ def add_price_noise(data: Dict[str, pd.DataFrame], noise_std: float = 0.001) -> 
 
         noisy_data[ticker] = noisy_df
     return noisy_data
+
+
+def calculate_psr(returns: np.array, benchmark_sr: float = 0.0) -> float:
+    """Calcule le Probabilistic Sharpe Ratio (PSR)."""
+    if len(returns) < 2 or np.std(returns) == 0:
+        return 0.0
+
+    sr_est = np.mean(returns) / np.std(returns)
+    skew_est = skew(returns)
+    kurt_est = kurtosis(returns)
+    n = len(returns)
+
+    denom = n - 1
+    if denom <= 0: return 0.0
+
+    sigma_sr_sq = (1 + (0.5 * sr_est**2) - (skew_est * sr_est) + ((kurt_est / 4) * sr_est**2)) / denom
+    if sigma_sr_sq <= 0: return 0.0
+    
+    sigma_sr = np.sqrt(sigma_sr_sq)
+    psr = norm.cdf((sr_est - benchmark_sr) / sigma_sr)
+    return float(psr)
+
+
+def calculate_dsr(returns: np.array, n_trials: int = 1) -> float:
+    """Calcule le Deflated Sharpe Ratio (DSR) simplifié."""
+    if n_trials <= 1:
+        return calculate_psr(returns, 0.0)
+    
+    # Benchmark ajusté pour le biais de sélection (Multiple Testing)
+    # E[max(SR)] approx sqrt(2 * logN)
+    benchmark_sr = np.sqrt(2 * np.log(n_trials)) * 0.05 # Scale factor empirique pour hourly
+    return calculate_psr(returns, benchmark_sr)
 
 
 def simulate_crash(
@@ -246,8 +279,23 @@ def monte_carlo_test(
         'avg_max_drawdown': float(np.mean(drawdowns)),
     }
 
+    # Calcul PSR/DSR sur la distribution des *moyennes* de rendement des simulations
+    # Note: Le PSR s'applique normalement à une série temporelle de rendements d'UNE stratégie.
+    # Ici on l'applique à la distribution des Sharpes de Monte Carlo pour voir la robustesse globale.
+    
+    # Agrégation des rendements de tous les MC pour un PSR global "Meta"
+    # On prend le rendement moyen par pas de temps sur toutes les sims
+    # C'est une approximation pour voir si la stratégie "en moyenne" a un PSR élevé.
+    all_returns_flat = np.array(returns) # Rendements totaux des épisodes
+    
+    # Calcul PSR sur la distribution des Scénarios (Est-ce que >95% des scénarios battent 0 ?)
+    # On utilise simplement le taux de perte pour ça, mais le PSR ajoute la nuance de la variance.
+    psr = calculate_psr(np.array(returns), benchmark_sr=0.0)
+    report['psr'] = psr
+    report['dsr'] = calculate_dsr(np.array(returns), n_trials=n_simulations)
+
     logger.info("\n" + "=" * 50)
-    logger.info("MONTE CARLO RESULTS")
+    logger.info("MONTE CARLO RESULTS (Robuste)")
     logger.info("=" * 50)
     logger.info(f"  Simulations: {n_simulations}")
     logger.info(f"  Loss Rate:   {loss_rate:.1%} {'OVERFIT' if report['is_overfit'] else 'OK'}")
@@ -256,6 +304,7 @@ def monte_carlo_test(
     logger.info(f"  Range:       [{report['min_return']:+.2%}, {report['max_return']:+.2%}]")
     logger.info(f"  P5/P95:      [{report['p5_return']:+.2%}, {report['p95_return']:+.2%}]")
     logger.info(f"  Avg Sharpe:  {report['avg_sharpe']:.2f}")
+    logger.info(f"  PSR (Prob):  {report['psr']:.4f} (>{'0.95 OK' if report['psr']>0.95 else 'FAIL'})")
     logger.info(f"  Avg MaxDD:   {report['avg_max_drawdown']:.2%}")
 
     if report['is_overfit']:
@@ -340,8 +389,8 @@ def main():
     parser.add_argument('--stress-test', action='store_true', help='Run crash stress test')
     parser.add_argument('--all', action='store_true', help='Run all tests')
     parser.add_argument('--recurrent', action='store_true', help='Model is RecurrentPPO')
-    parser.add_argument('--noise-std', type=float, default=0.001, help='MC noise std (default: 0.1%)')
-    parser.add_argument('--crash-pct', type=float, default=-0.20, help='Crash severity (default: -20%)')
+    parser.add_argument('--noise-std', type=float, default=0.001, help='MC noise std (default: 0.1%%)')
+    parser.add_argument('--crash-pct', type=float, default=-0.20, help='Crash severity (default: -20%%)')
     parser.add_argument(
         '--auto-scale', action='store_true',
         help='Auto-detect hardware and parallelize Monte Carlo',

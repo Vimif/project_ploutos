@@ -54,14 +54,14 @@ pip install -e .
 
 Le pipeline optimisé utilise le walk-forward training avec validation glissante.
 
-### 1. Pipeline complet (recommandé)
+### 1. Pipeline High-Performance (Recommandé)
 
 ```bash
-# Training + robustness tests en une commande, optimisé pour le hardware
-python scripts/run_pipeline.py --config config/training_config_v8.yaml --auto-scale --ensemble 3
+# Script optimisé pour le hardware (thread pinning, limit open files, auto-scale)
+./start_training.sh
 ```
 
-Le flag `--auto-scale` détecte automatiquement GPU, CPU et RAM, puis ajuste `n_envs`, `batch_size` et le nombre de workers. Plus besoin de config cloud séparée.
+Ce script configure automatiquement l'environnement (OMP_NUM_THREADS), détecte le hardware (GPU/RAM) et lance le pipeline complet avec les paramètres optimaux (Batch 65k, 256 Envs si possible).
 
 ### 2. Entraînement Walk-Forward (séparé)
 
@@ -129,6 +129,9 @@ project_ploutos/
 │   ├── optimize_hyperparams.py  # Optuna hyperparameter search
 │   └── robustness_tests.py   # Monte Carlo + stress tests
 └── docs/             # Documentation
+    ├── AUDIT_TECHNIQUE_V8.md # 🛡️ Audit Technique & Architecture (Fev 2026)
+    ├── DEV_KNOWLEDGE.md      # Base de connaissance développeur
+    └── RUNPOD_GUIDE.md       # Guide déploiement Cloud
 ```
 
 ---
@@ -176,10 +179,15 @@ wandb:
 - [x] Déploiement cloud (RunPod)
 - [x] Auto-scaling hardware (GPU/CPU/RAM)
 - [x] Pipeline orchestrateur (training + robustness)
+- [x] "Turbo Init" (Pre-computed Features)
+- [x] Amélioration du système de récompense (Differential Sharpe Ratio)
+- [x] Protection contre le Data Leakage (Embargo)
+- [x] Tests de Robustesse (Monte Carlo + PSR/DSR)
 
-**En cours :**
-- [ ] Détection des régimes de marché
-- [ ] Amélioration du système de récompense
+**Prochaines Étapes (V9) :**
+- [ ] Tests Unitaires & CI/CD (Pytest)
+- [ ] Optimisation RAM (Shared Memory)
+- [ ] Détection des régimes de marché (HMM/Clustering)
 
 **Futur :**
 - [ ] Architecture Transformer

@@ -13,23 +13,23 @@ Ce document decrit la "Golden Path" pour construire l'IA de trading la plus perf
 
 Une IA ne vaut que ce qu'elle mange.
 
-- [ ] **1. Univers Dynamique (Selectif)**
+- [x] **1. Univers Dynamique (Selectif)**
     - Au lieu de trader 500 actions (bruit), selectionner chaque trimestre les **50 actions les plus fortes** (Top Momentum + Volatilite suffisante).
     - *Pourquoi ?* L'IA detecte mieux les signaux sur des actifs qui bougent vraiment.
-- [ ] **2. Donnees Macroeconomiques (Contexte)**
+- [x] **2. Donnees Macroeconomiques (Contexte)**
     - Integrer en entree du reseau :
         - **VIX (Volatilite)** : Pour savoir quand etre defensif.
         - **TNX (Taux 10 ans)** : Impacte fortement la Tech.
         - **DXY (Dollar Index)** : Impacte les matieres premieres.
-- [ ] **3. Profondeur Historique**
+- [x] **3. Profondeur Historique**
     - Recuperer des **donnees horaires (1h) depuis 2010** (minimum 2 cycles economiques : Bull run, Crash Covid, Hausse des taux).
 
 ## Phase 2 : Architecture & Modele (Le Cerveau)
 
-- [ ] **4. Memoire (LSTM / RecurrentPPO)**
+- [x] **4. Memoire (LSTM / RecurrentPPO)**
     - Utiliser `RecurrentPPO` (de stable-baselines3-contrib) au lieu de PPO standard.
     - *Avantage* : L'IA se "souvient" des bougies precedentes et du contexte (ex: "ca baisse depuis 3 jours") au lieu de juste voir l'instant T.
-- [ ] **5. Ensemble Learning (Le Conseil des Sages)**
+- [x] **5. Ensemble Learning (Le Conseil des Sages)**
     - Entrainer **3 a 5 modeles** identiques avec des "seeds" differentes.
     - Pour prendre une decision : Vote a la majorite.
     - *Avantage* : Lisse les erreurs individuelles et augmente considerablement la fiabilite.
@@ -38,7 +38,7 @@ Une IA ne vaut que ce qu'elle mange.
 
 C'est ici que se joue 80% de la performance future.
 
-- [ ] **6. Walk-Forward Analysis (Le Gold Standard)**
+- [x] **6. Walk-Forward Analysis (Le Gold Standard)**
     - Ne jamais entrainer sur 2010-2020 et tester sur 2021.
     - Faire :
         - Train 2010-2015 -> Test 2016
@@ -51,10 +51,10 @@ C'est ici que se joue 80% de la performance future.
 
 ## Phase 4 : Robustesse & Validation (Le Crash Test)
 
-- [ ] **8. Monte Carlo Simulations**
+- [x] **8. Monte Carlo Simulations**
     - Lancer 1000 backtests en ajoutant du bruit aleatoire aux prix (+/- 0.1%).
     - Si l'IA perd de l'argent dans >5% des cas, elle est **sur-optimisee** (overfitting) -> Poubelle.
-- [ ] **9. Stress Test "Krach"**
+- [x] **9. Stress Test "Krach"**
     - Simuler manuellement une chute de -20% en une journee. Verifier que l'IA coupe ses positions (Stop Loss) ou se met short immediatement.
 
 ## Phase 5 : Production (Le Reel)
@@ -71,7 +71,7 @@ C'est ici que se joue 80% de la performance future.
 
 ## Todo List Immediate (V7 -> V8)
 
-1. [ ] Coder `core/macro_data.py` pour recuperer VIX/TNX.
-2. [ ] Creer l'environnement `UniversalTradingEnvV8_LSTM` (compatible memoire).
-3. [ ] Mettre en place le script `train_walk_forward.py`.
-4. [ ] Tester l'approche "Ensemble" sur le S&P 500 actuel.
+1. [x] Coder `core/macro_data.py` pour recuperer VIX/TNX.
+2. [x] Creer l'environnement `UniversalTradingEnvV8_LSTM` (compatible memoire).
+3. [x] Mettre en place le script `train_walk_forward.py`.
+4. [x] Tester l'approche "Ensemble" sur le S&P 500 actuel.
