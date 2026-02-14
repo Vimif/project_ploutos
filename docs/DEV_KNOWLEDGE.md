@@ -58,9 +58,10 @@ Pour saturer la machine et accélérer l'entraînement :
   ```
 - **Script** : Utiliser `./start_training.sh` qui configure tout cela automatiquement.
 
----
-
-- **Script** : Utiliser `./start_training.sh` qui configure tout cela automatiquement.
+### 🚨 RAM Limitation (116 GB)
+- **Symptôme** : Crash "Out Of Memory" (OOM) au démarrage des 256 environnements.
+- **Cause** : Chaque env consomme ~400Mo. 256 * 400Mo = ~100Go + Système = Saturation.
+- **Solution** : Le script `config/hardware.py` limite désormais automatiquement `n_envs` à **~90-128** si < 128GB RAM détectés.
 
 ---
 
@@ -90,4 +91,24 @@ Pour saturer la machine et accélérer l'entraînement :
 - **Injection** : Les DataFrames enrichis sont passés aux environnements avec le flag `features_precomputed=True`.
 - **Environnement** : `UniversalTradingEnvV8LSTM` détecte le flag et **saute** le calcul interne.
 - **Gain** : Démarrage quasi-instantané des 256 environnements (juste copie mémoire).
+
+---
+
+## 6. Méthodologie Institutionnelle (V8.1 - Février 2026)
+
+### 🛡️ Embargo (Anti-Leak)
+- **Problème** : Les indicateurs techniques (ex: EMA 200, RSI 14) "regardent en arrière". Si le Test Set commence immédiatement après le Train Set, les premières 200 bougies de Test contiennent de l'information déjà vue par le Train (Data Leakage).
+- **Solution** : `training/train_walk_forward.py` impose un **Embargo** (gap) de 1 mois entre la fin du Train et le début du Test.
+- **Impact** : Performance Test légèrement moins bonne MAIS beaucoup plus réaliste.
+
+### 📈 Differential Sharpe Ratio (DSR)
+- **Problème** : Récompenser le Profit ($) incite à la prise de risque excessive (gambling).
+- **Solution** : `core/universal_environment_v8_lstm.py` implémente le **DSR** (ref: Moody & Saffell, 2001).
+- **Principe** : L'agent est récompensé si son action augmente le Sharpe Ratio glissant (Risk-Adjusted Return) plutôt que le PnL brut.
+- **Formule** : $R_t \approx \frac{Ret_t - A_{t-1}}{std_{t-1}}$ (Simplifiée pour stabilité RL).
+
+### 🐢 Hyperparamètres PPO "Investisseur"
+- **GAE Lambda** : Augmenté à **0.98** (vs 0.95) pour favoriser les tendances long terme et réduire le bruit.
+- **Overtrading Penalty** : Doublée (`0.01`) pour punir sévèrement le "churning" (achat/vente inutile).
+- **Trade Success Reward** : Réduite (`0.2`) pour ne pas biaiser l'agent vers des stratégies à haut taux de réussite mais faible gain moyen.
 

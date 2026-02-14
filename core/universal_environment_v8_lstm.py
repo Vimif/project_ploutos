@@ -170,6 +170,7 @@ class UniversalTradingEnvV8LSTM(gym.Env):
             f"{self.n_assets} tickers x {n_features_per_ticker} features "
             f"+ {self.n_macro_features} macro = {obs_size} dims"
         )
+    def _prepare_features(self, macro_data: Optional[pd.DataFrame]):
         """Préparer Features V2 + macro."""
         self.processed_data = {}
         self.feature_engineer = AdvancedFeaturesV2()
