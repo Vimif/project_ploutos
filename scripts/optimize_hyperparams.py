@@ -181,10 +181,11 @@ def create_objective(train_data, val_data, macro_data, base_config):
     return objective
 
 
-def optimize(config_path: str, n_trials: int = 50):
+def optimize(config_path: str, n_trials: int = 50, n_jobs: int = 1):
     """Lance l'optimisation Optuna."""
     logger.info("=" * 70)
     logger.info("OPTUNA HYPERPARAMETER OPTIMIZATION")
+    logger.info(f"  Trials: {n_trials} | Parallel jobs: {n_jobs}")
     logger.info("=" * 70)
 
     config = load_config(config_path)
@@ -227,8 +228,8 @@ def optimize(config_path: str, n_trials: int = 50):
 
     objective = create_objective(train_data, val_data, macro_data, config)
 
-    logger.info(f"Starting {n_trials} trials...")
-    study.optimize(objective, n_trials=n_trials, show_progress_bar=True)
+    logger.info(f"Starting {n_trials} trials (n_jobs={n_jobs})...")
+    study.optimize(objective, n_trials=n_trials, n_jobs=n_jobs, show_progress_bar=True)
 
     # Résultats
     logger.info("\n" + "=" * 70)
@@ -260,6 +261,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Optuna Hyperparameter Optimization')
     parser.add_argument('--config', type=str, default='config/training_config_v8.yaml')
     parser.add_argument('--n-trials', type=int, default=50)
+    parser.add_argument('--n-jobs', type=int, default=1,
+                        help='Parallel trials (ex: 4 trials x 8 envs au lieu de 1 x 32)')
 
     args = parser.parse_args()
-    optimize(config_path=args.config, n_trials=args.n_trials)
+    optimize(config_path=args.config, n_trials=args.n_trials, n_jobs=args.n_jobs)

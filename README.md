@@ -71,6 +71,9 @@ python training/train_walk_forward.py --config config/training_config_v8.yaml --
 
 ```bash
 python scripts/optimize_hyperparams.py --config config/training_config_v8.yaml --n-trials 50
+
+# Sur GPU cloud : paralléliser les trials
+python scripts/optimize_hyperparams.py --config config/training_config_v8.yaml --n-trials 50 --n-jobs 4
 ```
 
 ### 3. Tests de robustesse

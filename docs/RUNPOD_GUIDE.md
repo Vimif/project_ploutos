@@ -49,33 +49,35 @@ chmod +x scripts/setup_runpod.sh
 
 ## 4. Lancer les Entraînements
 
-Vous pouvez lancer plusieurs entraînements en parallèle (screen / nohup) :
+> **Important :** Utiliser la config cloud (`training_config_v8_cloud.yaml`) qui exploite le GPU avec 32 envs parallèles au lieu de 8.
 
 ### A. Baseline (PPO Standard)
 ```bash
-./run_ppo.sh
-# Logs : tail -f logs/train_ppo_wfa.log
+python training/train_walk_forward.py --config config/training_config_v8_cloud.yaml
 ```
 
-### B. Recurrent PPO (LSTM - Expérimental)
+### B. Recurrent PPO (LSTM)
 ```bash
-./run_lstm.sh
-# Logs : tail -f logs/train_lstm_wfa.log
+python training/train_walk_forward.py --config config/training_config_v8_cloud.yaml --recurrent
 ```
 
-### C. Ensemble (Robustesse Max - Recommandé)
-Lance 3 modèles avec des seeds différentes pour lisser les résultats.
+### C. Ensemble (3 modèles - Recommandé)
 ```bash
-./run_ensemble.sh
-# Logs : tail -f logs/train_ensemble.log
+python training/train_walk_forward.py --config config/training_config_v8_cloud.yaml --ensemble 3
 ```
 
-### D. Optimisation (Optuna)
-Trouver les meilleurs hyperparamètres (learning rate, etc.).
+### D. Optimisation Hyperparamètres (Optuna)
 ```bash
-./run_optuna.sh
-# Logs : tail -f logs/optuna.log
+# 4 trials en parallèle sur le GPU (recommandé)
+python scripts/optimize_hyperparams.py --config config/training_config_v8.yaml --n-trials 50 --n-jobs 4
 ```
+
+### E. Tests de Robustesse
+```bash
+python scripts/robustness_tests.py --model models/v8/model.zip --all
+```
+
+> **Tip :** Utiliser `screen` ou `nohup` pour garder le process actif après déconnexion SSH.
 
 ---
 
