@@ -41,6 +41,7 @@ from core.universal_environment_v8_lstm import UniversalTradingEnvV8LSTM
 from core.macro_data import MacroDataFetcher
 from core.data_fetcher import download_data
 from core.utils import setup_logging
+from config.hardware import auto_scale_config, detect_hardware, compute_optimal_params
 
 logger = setup_logging(__name__, 'train_walk_forward.log')
 
@@ -328,7 +329,10 @@ def evaluate_on_test(
     }
 
 
-def run_walk_forward(config_path: str, use_recurrent: bool = False, n_ensemble: int = 1):
+def run_walk_forward(
+    config_path: str, use_recurrent: bool = False,
+    n_ensemble: int = 1, auto_scale: bool = False,
+):
     """Pipeline complet Walk-Forward Analysis."""
     logger.info("=" * 70)
     logger.info("WALK-FORWARD ANALYSIS V8")
@@ -338,12 +342,21 @@ def run_walk_forward(config_path: str, use_recurrent: bool = False, n_ensemble: 
     if config is None:
         return
 
+    if auto_scale:
+        hw = detect_hardware()
+        params = compute_optimal_params(hw, use_recurrent=use_recurrent)
+        config = auto_scale_config(config, use_recurrent=use_recurrent)
+        max_workers = params["max_workers"]
+    else:
+        max_workers = 3
+
     # 1. Télécharger données
     logger.info("Downloading data...")
     data = download_data(
         tickers=config['data']['tickers'],
         period=config['data'].get('period', '5y'),
         interval=config['data'].get('interval', '1h'),
+        max_workers=max_workers,
     )
 
     if not data:
@@ -476,6 +489,7 @@ def run_walk_forward(config_path: str, use_recurrent: bool = False, n_ensemble: 
         'algorithm': algo,
         'n_folds': len(all_metrics),
         'n_ensemble': n_ensemble,
+        'output_dir': output_dir,
         'avg_return': float(np.mean(returns)),
         'avg_sharpe': float(np.mean(sharpes)),
         'avg_max_drawdown': float(np.mean(drawdowns)),
@@ -501,6 +515,10 @@ if __name__ == '__main__':
     parser.add_argument('--config', type=str, default='config/training_config_v8.yaml')
     parser.add_argument('--recurrent', action='store_true', help='Use RecurrentPPO (LSTM)')
     parser.add_argument('--ensemble', type=int, default=1, help='Ensemble size (1=single model)')
+    parser.add_argument(
+        '--auto-scale', action='store_true',
+        help='Auto-detect hardware and scale n_envs/batch_size/n_steps',
+    )
 
     args = parser.parse_args()
 
@@ -508,4 +526,5 @@ if __name__ == '__main__':
         config_path=args.config,
         use_recurrent=args.recurrent,
         n_ensemble=args.ensemble,
+        auto_scale=args.auto_scale,
     )

@@ -54,48 +54,55 @@ pip install -e .
 
 Le pipeline optimisé utilise le walk-forward training avec validation glissante.
 
-### 1. Entraînement Walk-Forward
+### 1. Pipeline complet (recommandé)
 
 ```bash
-# PPO standard (recommandé pour commencer)
-python training/train_walk_forward.py --config config/training_config_v8.yaml
-
-# RecurrentPPO avec LSTM (capture les dépendances temporelles)
-python training/train_walk_forward.py --config config/training_config_v8.yaml --recurrent
-
-# Ensemble de 3 modèles (plus robuste, recommandé pour production)
-python training/train_walk_forward.py --config config/training_config_v8.yaml --ensemble 3
+# Training + robustness tests en une commande, optimisé pour le hardware
+python scripts/run_pipeline.py --config config/training_config_v8.yaml --auto-scale --ensemble 3
 ```
 
-### 2. Optimisation des hyperparamètres (optionnel)
+Le flag `--auto-scale` détecte automatiquement GPU, CPU et RAM, puis ajuste `n_envs`, `batch_size` et le nombre de workers. Plus besoin de config cloud séparée.
+
+### 2. Entraînement Walk-Forward (séparé)
 
 ```bash
-python scripts/optimize_hyperparams.py --config config/training_config_v8.yaml --n-trials 50
+# PPO standard
+python training/train_walk_forward.py --config config/training_config_v8.yaml --auto-scale
 
-# Sur GPU cloud : paralléliser les trials
+# RecurrentPPO avec LSTM
+python training/train_walk_forward.py --config config/training_config_v8.yaml --recurrent --auto-scale
+
+# Ensemble de 3 modèles
+python training/train_walk_forward.py --config config/training_config_v8.yaml --ensemble 3 --auto-scale
+```
+
+### 3. Optimisation des hyperparamètres (optionnel)
+
+```bash
+# Auto-détecte le nombre de jobs parallèles et n_envs par trial
+python scripts/optimize_hyperparams.py --config config/training_config_v8.yaml --n-trials 50 --auto-scale
+
+# Ou manuellement : 4 trials parallèles
 python scripts/optimize_hyperparams.py --config config/training_config_v8.yaml --n-trials 50 --n-jobs 4
 ```
 
-### 3. Tests de robustesse
+### 4. Tests de robustesse (séparé)
 
 ```bash
-# Tous les tests
-python scripts/robustness_tests.py --model models/v8/model.zip --all
+# Monte Carlo parallélisé + stress test
+python scripts/robustness_tests.py --model models/<fold>/model.zip --vecnorm models/<fold>/vecnormalize.pkl --all --auto-scale
 
-# Monte Carlo (1000 simulations)
-python scripts/robustness_tests.py --model models/v8/model.zip --monte-carlo 1000
-
-# Stress test (crash de -30%)
-python scripts/robustness_tests.py --model models/v8/model.zip --stress-test --crash-pct -0.30
+# Monte Carlo seul
+python scripts/robustness_tests.py --model models/<fold>/model.zip --monte-carlo 1000 --auto-scale
 ```
 
-### 4. Paper trading
+### 5. Paper trading
 
 ```bash
 python scripts/paper_trade_v7.py
 ```
 
-> **GPU Cloud** : Pour un entraînement ~10x plus rapide, voir le [guide RunPod](docs/RUNPOD_GUIDE.md).
+> **GPU Cloud** : Avec `--auto-scale`, un seul config suffit pour dev et cloud. Voir le [guide RunPod](docs/RUNPOD_GUIDE.md).
 
 ---
 
@@ -103,7 +110,11 @@ python scripts/paper_trade_v7.py
 
 ```
 project_ploutos/
-├── config/           # Configuration (YAML V8 + dataclasses)
+├── config/           # Configuration
+│   ├── hardware.py            # Auto-détection GPU/CPU/RAM + scaling
+│   ├── settings.py            # Chemins, broker, WandB
+│   ├── training_config_v8.yaml         # Config training standard
+│   └── training_config_v8_cloud.yaml   # Config cloud (override manuel)
 ├── core/             # Code principal
 │   ├── universal_environment_v8_lstm.py  # Environnement Gym (V8)
 │   ├── data_fetcher.py       # Récupération des données (Yahoo Finance)
@@ -113,7 +124,10 @@ project_ploutos/
 │   └── risk_manager.py       # Gestion du risque
 ├── trading/          # Intégrations broker (eToro, Alpaca)
 ├── training/         # Walk-forward training (V8)
-├── scripts/          # CLI (backtest, optimisation, paper trade)
+├── scripts/          # CLI (pipeline, optimisation, robustness, paper trade)
+│   ├── run_pipeline.py       # Pipeline complet training→robustness
+│   ├── optimize_hyperparams.py  # Optuna hyperparameter search
+│   └── robustness_tests.py   # Monte Carlo + stress tests
 └── docs/             # Documentation
 ```
 
@@ -160,6 +174,8 @@ wandb:
 - [x] Données macro (VIX/TNX/DXY)
 - [x] RecurrentPPO (LSTM)
 - [x] Déploiement cloud (RunPod)
+- [x] Auto-scaling hardware (GPU/CPU/RAM)
+- [x] Pipeline orchestrateur (training + robustness)
 
 **En cours :**
 - [ ] Détection des régimes de marché

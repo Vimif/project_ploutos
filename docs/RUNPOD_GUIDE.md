@@ -49,35 +49,43 @@ chmod +x scripts/setup_runpod.sh
 
 ## 4. Lancer les Entraînements
 
-> **Important :** Utiliser la config cloud (`training_config_v8_cloud.yaml`) qui exploite le GPU avec 32 envs parallèles au lieu de 8.
+### A. Pipeline complet (recommandé)
 
-### A. Baseline (PPO Standard)
+Le flag `--auto-scale` détecte automatiquement le GPU, CPU et RAM du pod et ajuste `n_envs`, `batch_size` et le nombre de workers. Plus besoin de config cloud séparée.
+
 ```bash
-python training/train_walk_forward.py --config config/training_config_v8_cloud.yaml
+# Training + tests de robustesse en une commande
+python scripts/run_pipeline.py --config config/training_config_v8.yaml --auto-scale --ensemble 3
 ```
 
-### B. Recurrent PPO (LSTM)
+### B. Commandes individuelles
+
 ```bash
-python training/train_walk_forward.py --config config/training_config_v8_cloud.yaml --recurrent
+# PPO standard
+python training/train_walk_forward.py --config config/training_config_v8.yaml --auto-scale
+
+# RecurrentPPO (LSTM)
+python training/train_walk_forward.py --config config/training_config_v8.yaml --recurrent --auto-scale
+
+# Ensemble de 3 modèles
+python training/train_walk_forward.py --config config/training_config_v8.yaml --ensemble 3 --auto-scale
 ```
 
-### C. Ensemble (3 modèles - Recommandé)
+### C. Optimisation Hyperparamètres (Optuna)
 ```bash
-python training/train_walk_forward.py --config config/training_config_v8_cloud.yaml --ensemble 3
+# Auto-détecte le nombre de jobs parallèles et envs par trial
+python scripts/optimize_hyperparams.py --config config/training_config_v8.yaml --n-trials 50 --auto-scale
 ```
 
-### D. Optimisation Hyperparamètres (Optuna)
+### D. Tests de Robustesse
 ```bash
-# 4 trials en parallèle sur le GPU (recommandé)
-python scripts/optimize_hyperparams.py --config config/training_config_v8.yaml --n-trials 50 --n-jobs 4
-```
-
-### E. Tests de Robustesse
-```bash
-python scripts/robustness_tests.py --model models/v8/model.zip --all
+# Monte Carlo parallélisé + stress test
+python scripts/robustness_tests.py --model models/<fold>/model.zip --vecnorm models/<fold>/vecnormalize.pkl --all --auto-scale
 ```
 
 > **Tip :** Utiliser `screen` ou `nohup` pour garder le process actif après déconnexion SSH.
+>
+> **Note :** Le config cloud (`training_config_v8_cloud.yaml`) reste disponible pour un override manuel, mais `--auto-scale` est la méthode recommandée.
 
 ---
 

@@ -39,6 +39,7 @@ from core.macro_data import MacroDataFetcher
 from core.data_fetcher import download_data
 from core.data_pipeline import DataSplitter
 from core.utils import setup_logging
+from config.hardware import detect_hardware, compute_optimal_params
 
 logger = setup_logging(__name__, 'optimize_hyperparams.log')
 
@@ -181,14 +182,29 @@ def create_objective(train_data, val_data, macro_data, base_config):
     return objective
 
 
-def optimize(config_path: str, n_trials: int = 50, n_jobs: int = 1):
+def optimize(
+    config_path: str, n_trials: int = 50, n_jobs: int = 1,
+    auto_scale: bool = False,
+):
     """Lance l'optimisation Optuna."""
     logger.info("=" * 70)
     logger.info("OPTUNA HYPERPARAMETER OPTIMIZATION")
-    logger.info(f"  Trials: {n_trials} | Parallel jobs: {n_jobs}")
     logger.info("=" * 70)
 
     config = load_config(config_path)
+
+    if auto_scale:
+        hw = detect_hardware()
+        params = compute_optimal_params(hw)
+        if n_jobs == 1:
+            n_jobs = params["optuna_n_jobs"]
+        config.setdefault("training", {})["n_envs"] = params["optuna_n_envs_per_trial"]
+        logger.info(
+            f"Auto-scale: {n_jobs} parallel jobs, "
+            f"{params['optuna_n_envs_per_trial']} envs/trial"
+        )
+
+    logger.info(f"  Trials: {n_trials} | Parallel jobs: {n_jobs}")
 
     # Télécharger données
     logger.info("Downloading data...")
@@ -263,6 +279,13 @@ if __name__ == '__main__':
     parser.add_argument('--n-trials', type=int, default=50)
     parser.add_argument('--n-jobs', type=int, default=1,
                         help='Parallel trials (ex: 4 trials x 8 envs au lieu de 1 x 32)')
+    parser.add_argument(
+        '--auto-scale', action='store_true',
+        help='Auto-detect hardware and scale n_jobs/n_envs per trial',
+    )
 
     args = parser.parse_args()
-    optimize(config_path=args.config, n_trials=args.n_trials, n_jobs=args.n_jobs)
+    optimize(
+        config_path=args.config, n_trials=args.n_trials,
+        n_jobs=args.n_jobs, auto_scale=args.auto_scale,
+    )

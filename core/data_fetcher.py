@@ -359,7 +359,10 @@ class UniversalDataFetcher:
         
         return df
     
-    def bulk_fetch(self, tickers, start_date=None, end_date=None, interval='1h', save_to_cache=True):
+    def bulk_fetch(
+        self, tickers, start_date=None, end_date=None, interval='1h',
+        save_to_cache=True, max_workers=3,
+    ):
         """
         Récupère plusieurs tickers en parallèle
         
@@ -389,7 +392,7 @@ class UniversalDataFetcher:
                 logger.error(f"❌ {ticker} : Échec du fetch", exc_info=True)
                 return (ticker, None)
         
-        with ThreadPoolExecutor(max_workers=3) as executor:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = [executor.submit(fetch_one, ticker) for ticker in tickers]
             
             for future in as_completed(futures):
@@ -444,7 +447,7 @@ class UniversalDataFetcher:
 
 
 # ✅ AJOUT : Fonction wrapper pour compatibilité
-def download_data(tickers, period='2y', interval='1h'):
+def download_data(tickers, period='2y', interval='1h', max_workers=3):
     """
     Fonction wrapper simple pour télécharger des données
     
@@ -480,4 +483,7 @@ def download_data(tickers, period='2y', interval='1h'):
         return fetcher.fetch(tickers, start_date, end_date, interval)
     
     # Si liste de tickers
-    return fetcher.bulk_fetch(tickers, start_date, end_date, interval, save_to_cache=False)
+    return fetcher.bulk_fetch(
+        tickers, start_date, end_date, interval,
+        save_to_cache=False, max_workers=max_workers,
+    )

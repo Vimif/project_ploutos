@@ -34,6 +34,7 @@ from core.macro_data import MacroDataFetcher
 from core.data_fetcher import download_data
 from core.data_pipeline import DataSplitter
 from core.utils import setup_logging
+from config.hardware import detect_hardware, compute_optimal_params
 
 logger = setup_logging(__name__, 'robustness_tests.log')
 
@@ -163,6 +164,15 @@ def run_backtest(model, data, macro_data, vecnorm_env=None, env_kwargs=None) -> 
     }
 
 
+def _mc_worker(args):
+    """Worker pour Monte Carlo parallèle. Top-level pour pickle."""
+    test_data, macro_data, noise_std, env_kwargs, model_path, use_recurrent, seed = args
+    np.random.seed(seed)
+    model = load_model(model_path, use_recurrent=use_recurrent)
+    noisy_data = add_price_noise(test_data, noise_std=noise_std)
+    return run_backtest(model, noisy_data, macro_data, vecnorm_env=None, env_kwargs=env_kwargs)
+
+
 def monte_carlo_test(
     model,
     test_data: Dict[str, pd.DataFrame],
@@ -171,26 +181,46 @@ def monte_carlo_test(
     noise_std: float = 0.001,
     vecnorm_env=None,
     env_kwargs: dict = None,
+    n_workers: int = 1,
+    model_path: str = None,
+    use_recurrent: bool = False,
 ) -> dict:
     """Monte Carlo Simulations.
 
     Lance n_simulations backtests avec du bruit aléatoire.
     Critère: si >5% des simulations perdent de l'argent -> overfitting.
+    n_workers > 1 parallélise via ProcessPoolExecutor.
     """
-    logger.info(f"Monte Carlo: {n_simulations} simulations (noise={noise_std*100:.1f}%)")
+    logger.info(
+        f"Monte Carlo: {n_simulations} simulations "
+        f"(noise={noise_std*100:.1f}%, workers={n_workers})"
+    )
 
-    results = []
-    for i in range(n_simulations):
-        noisy_data = add_price_noise(test_data, noise_std=noise_std)
-        metrics = run_backtest(model, noisy_data, macro_data, vecnorm_env, env_kwargs)
-        results.append(metrics)
+    if n_workers > 1 and model_path:
+        from concurrent.futures import ProcessPoolExecutor
 
-        if (i + 1) % 100 == 0:
-            losses = sum(1 for r in results if r['total_return'] < 0)
-            logger.info(
-                f"  Progress: {i+1}/{n_simulations} | "
-                f"Losses: {losses}/{i+1} ({losses/(i+1)*100:.1f}%)"
-            )
+        worker_args = [
+            (test_data, macro_data, noise_std, env_kwargs,
+             model_path, use_recurrent, 42 + i)
+            for i in range(n_simulations)
+        ]
+        with ProcessPoolExecutor(max_workers=n_workers) as pool:
+            results = list(pool.map(_mc_worker, worker_args))
+        losses = sum(1 for r in results if r['total_return'] < 0)
+        logger.info(f"  Done: {n_simulations} sims | Losses: {losses}/{n_simulations}")
+    else:
+        results = []
+        for i in range(n_simulations):
+            noisy_data = add_price_noise(test_data, noise_std=noise_std)
+            metrics = run_backtest(model, noisy_data, macro_data, vecnorm_env, env_kwargs)
+            results.append(metrics)
+
+            if (i + 1) % 100 == 0:
+                losses = sum(1 for r in results if r['total_return'] < 0)
+                logger.info(
+                    f"  Progress: {i+1}/{n_simulations} | "
+                    f"Losses: {losses}/{i+1} ({losses/(i+1)*100:.1f}%)"
+                )
 
     # Analyser
     returns = [r['total_return'] for r in results]
@@ -312,6 +342,10 @@ def main():
     parser.add_argument('--recurrent', action='store_true', help='Model is RecurrentPPO')
     parser.add_argument('--noise-std', type=float, default=0.001, help='MC noise std (default: 0.1%)')
     parser.add_argument('--crash-pct', type=float, default=-0.20, help='Crash severity (default: -20%)')
+    parser.add_argument(
+        '--auto-scale', action='store_true',
+        help='Auto-detect hardware and parallelize Monte Carlo',
+    )
 
     args = parser.parse_args()
 
@@ -367,6 +401,14 @@ def main():
         vecnorm_env.training = False
         vecnorm_env.norm_reward = False
 
+    # Auto-scale
+    n_workers = 1
+    if args.auto_scale:
+        hw = detect_hardware()
+        params = compute_optimal_params(hw)
+        n_workers = params["mc_workers"]
+        logger.info(f"Auto-scale: {n_workers} MC workers")
+
     # Output
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     output_dir = f"models/robustness_{timestamp}"
@@ -382,6 +424,9 @@ def main():
             noise_std=args.noise_std,
             vecnorm_env=vecnorm_env,
             env_kwargs=env_kwargs,
+            n_workers=n_workers,
+            model_path=args.model,
+            use_recurrent=args.recurrent,
         )
         all_results['monte_carlo'] = mc_report
 
