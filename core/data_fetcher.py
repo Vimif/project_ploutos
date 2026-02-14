@@ -467,6 +467,9 @@ def download_data(tickers, period='2y', interval='1h', max_workers=3, dataset_pa
     from core.data_fetcher import UniversalDataFetcher, logger # Réutiliser logger existant
 
     # 1. Chargement LOCAL (Priorité absolue si dataset_path fourni)
+    import glob
+    if dataset_path:
+        print(f"DEBUG DATASET_PATH: {dataset_path} (Exists: {os.path.exists(dataset_path)})")
     if dataset_path and os.path.exists(dataset_path):
         import glob
         logger.info(f"📂 Loading data from local dataset: {dataset_path}")

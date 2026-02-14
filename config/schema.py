@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 # Clés attendues par section avec (type, min, max) ou (type, None, None)
 SCHEMA = {
     "training": {
-        "total_timesteps": (int, 100_000, 1_000_000_000),
+        "total_timesteps": (int, 128, 1_000_000_000),
         "n_envs": (int, 1, 512),
         "batch_size": (int, 32, 131_072),
         "n_steps": (int, 64, 16_384),
