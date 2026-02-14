@@ -31,7 +31,7 @@ logs/
 
 # Data
 data_cache/
-*.csv
+# *.csv
 
 # Models
 models/
