@@ -33,7 +33,7 @@ class UniversalTradingEnvV8LSTM(gym.Env):
         backtest: Start 0, AdvancedTransactionModel, seed fixé.
     """
 
-    metadata = {'render_modes': ['human']}
+    metadata = {"render_modes": ["human"]}
 
     def __init__(
         self,
@@ -45,7 +45,7 @@ class UniversalTradingEnvV8LSTM(gym.Env):
         finra_taf: float = 0.000145,
         max_steps: int = 2500,
         buy_pct: float = 0.20,
-        slippage_model: str = 'realistic',
+        slippage_model: str = "realistic",
         spread_bps: float = 2.0,
         market_impact_factor: float = 0.0001,
         max_position_pct: float = 0.25,
@@ -67,14 +67,17 @@ class UniversalTradingEnvV8LSTM(gym.Env):
         reward_high_winrate_bonus: float = 0.2,
         good_return_threshold: float = 0.01,
         high_winrate_threshold: float = 0.6,
-        features_precomputed: bool = False, # Nouveau flag
+        features_precomputed: bool = False,  # Nouveau flag
+        warmup_steps: int = 100,
+        steps_per_trading_week: int = 78,
+        drawdown_threshold: float = 0.10,
     ):
         super().__init__()
 
         if mode not in VALID_MODES:
             raise ValueError(f"mode doit être l'un de {VALID_MODES}, obtenu '{mode}'")
         self.mode = mode
-        self.features_precomputed = features_precomputed # Stocker le flag
+        self.features_precomputed = features_precomputed  # Stocker le flag
 
         self._seed = seed
         self._rng = np.random.RandomState(seed)
@@ -116,6 +119,9 @@ class UniversalTradingEnvV8LSTM(gym.Env):
 
         self.max_trades_per_day = max_trades_per_day
         self.min_holding_period = min_holding_period
+        self.warmup_steps = warmup_steps
+        self.steps_per_trading_week = steps_per_trading_week
+        self.drawdown_threshold = drawdown_threshold
 
         self.current_step = 0
         self.max_steps = max_steps
@@ -170,6 +176,7 @@ class UniversalTradingEnvV8LSTM(gym.Env):
             f"{self.n_assets} tickers x {n_features_per_ticker} features "
             f"+ {self.n_macro_features} macro = {obs_size} dims"
         )
+
     def _prepare_features(self, macro_data: Optional[pd.DataFrame]):
         """Préparer Features V2 + macro."""
         self.processed_data = {}
@@ -177,18 +184,17 @@ class UniversalTradingEnvV8LSTM(gym.Env):
         self.macro_fetcher = MacroDataFetcher()
 
         for ticker in self.tickers:
-            df = self.data[ticker].copy() # Copie locale légère
-            
+            df = self.data[ticker].copy()  # Copie locale légère
+
             if not self.features_precomputed:
                 # Calcul COÛTEUX (seulement si non pré-calculé)
                 df = self.feature_engineer.calculate_all_features(df)
-            
+
             self.processed_data[ticker] = df
 
-        exclude_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
+        exclude_cols = ["Open", "High", "Low", "Close", "Volume"]
         self.feature_columns = [
-            col for col in self.processed_data[self.tickers[0]].columns
-            if col not in exclude_cols
+            col for col in self.processed_data[self.tickers[0]].columns if col not in exclude_cols
         ]
 
         # Macro : aligner sur le premier ticker comme référence
@@ -202,7 +208,9 @@ class UniversalTradingEnvV8LSTM(gym.Env):
             if not aligned.empty:
                 self.macro_columns = list(aligned.columns)
                 self.macro_array = aligned.values.astype(np.float32)
-                print(f"  Macro features: {len(self.macro_columns)} ({', '.join(self.macro_columns[:5])}...)")
+                print(
+                    f"  Macro features: {len(self.macro_columns)} ({', '.join(self.macro_columns[:5])}...)"
+                )
 
         print(f"  {len(self.feature_columns)} features/ticker + {len(self.macro_columns)} macro")
 
@@ -214,15 +222,15 @@ class UniversalTradingEnvV8LSTM(gym.Env):
         for ticker in self.tickers:
             df = self.processed_data[ticker]
             self.feature_arrays[ticker] = df[self.feature_columns].values.astype(np.float32)
-            self.close_prices[ticker] = df['Close'].values.astype(np.float32)
-            if 'Volume' in df.columns:
-                self.volume_arrays[ticker] = df['Volume'].values.astype(np.float64)
+            self.close_prices[ticker] = df["Close"].values.astype(np.float32)
+            if "Volume" in df.columns:
+                self.volume_arrays[ticker] = df["Volume"].values.astype(np.float64)
             else:
                 self.volume_arrays[ticker] = np.full(len(df), 1_000_000.0)
 
         self.max_steps = min(
             self.max_steps,
-            min(len(df) for df in self.processed_data.values()) - 100,
+            min(len(df) for df in self.processed_data.values()) - self.warmup_steps,
         )
 
     def reset(self, seed=None, options=None):
@@ -249,9 +257,11 @@ class UniversalTradingEnvV8LSTM(gym.Env):
         self.run_avg_sq_ret = 0.0
 
         if self.mode == "train":
-            self.current_step = self._rng.randint(100, max(101, self.max_steps // 2))
+            self.current_step = self._rng.randint(
+                self.warmup_steps, max(self.warmup_steps + 1, self.max_steps // 2)
+            )
         elif self.mode == "eval":
-            self.current_step = 100
+            self.current_step = self.warmup_steps
         elif self.mode == "backtest":
             self.current_step = 0
 
@@ -269,7 +279,7 @@ class UniversalTradingEnvV8LSTM(gym.Env):
         if self.done:
             return self._get_observation(), 0.0, True, False, self._get_info()
 
-        if self.current_step % 78 == 0:
+        if self.current_step % self.steps_per_trading_week == 0:
             self.trades_today = 0
 
         total_reward = 0.0
@@ -377,92 +387,94 @@ class UniversalTradingEnvV8LSTM(gym.Env):
 
         prev_equity = self.portfolio_value_history[-2]
         current_equity = self.equity
-        
+
         # Rendement pour ce step
         if prev_equity > 0:
             ret = (current_equity - prev_equity) / prev_equity
         else:
             ret = 0.0
-            
+
         self.returns_history.append(ret)
 
         # --- Differential Sharpe Ratio (DSR) ---
         # Mise à jour des moyennes mobiles exponentielles (EMA)
         # A_t = A_{t-1} + alpha * (R_t - A_{t-1})
         # B_t = B_{t-1} + alpha * (R_t^2 - B_{t-1})
-        
+
         delta_A = ret - self.run_avg_ret
-        delta_B = (ret ** 2) - self.run_avg_sq_ret
-        
+        delta_B = (ret**2) - self.run_avg_sq_ret
+
         old_A = self.run_avg_ret
         old_B = self.run_avg_sq_ret
-        
+
         self.run_avg_ret += self.dsr_alpha * delta_A
         self.run_avg_sq_ret += self.dsr_alpha * delta_B
-        
+
         # Calcul du DSR (approximation directe de la dérivée)
         # D_t ~ (B_{t-1} * delta_A - 0.5 * A_{t-1} * delta_B) / (B_{t-1} - A_{t-1}^2)^(1.5)
         # Mais pour la stabilité numérique, on utilise une version simplifiée :
         # On récompense si le Sharpe augmente.
-        
-        variance = old_B - (old_A ** 2)
-        if variance < 1e-6: # Éviter division par zéro
+
+        variance = old_B - (old_A**2)
+        if variance < 1e-6:  # Éviter division par zéro
             variance = 1e-6
-            
+
         std_dev = np.sqrt(variance)
-        
+
         # Formule de Moody & Saffell (2001)
         # D_t = (R_t - A_{t-1}) / std_{t-1}
         dsr = (ret - old_A) / std_dev
-        
+
         # Reward Scale (pour que les valeurs soient ~ [-1, 1])
-        reward = dsr * 0.1 
+        reward = dsr * 0.1
 
         # --- Pénalités Additionnelles (Hybridation) ---
-        
+
         # Drawdown Penalty (Critical)
         if self.use_drawdown_penalty and self.peak_value > 0:
             drawdown = (self.peak_value - current_equity) / self.peak_value
-            if drawdown > 0.10: # Tolérance abaissée à 10%
-                 # Pénalité exponentielle
-                reward -= (drawdown * self.drawdown_penalty_factor * 0.5)
+            if drawdown > self.drawdown_threshold:
+                # Pénalité exponentielle
+                reward -= drawdown * self.drawdown_penalty_factor * 0.5
 
         # Overtrading Penalty
         if trades_executed > 0:
-             # Petit coût frictionnel pour éviter le "churning"
+            # Petit coût frictionnel pour éviter le "churning"
             reward -= self.penalty_overtrading * 0.1
 
         return reward * self.reward_scaling
 
     def _apply_slippage_buy(self, ticker: str, price: float) -> float:
-        if self.slippage_model == 'none':
+        if self.slippage_model == "none":
             return price
-        if self.mode == "backtest":
-            volume = self._get_current_volume(ticker)
-            recent_prices = self._get_recent_prices(ticker)
-            quantity = (self.balance * self.buy_pct) / price
-            exec_price, _ = self.transaction_model.calculate_execution_price(
-                ticker=ticker, intended_price=price, order_size=quantity,
-                current_volume=volume, side='buy', recent_prices=recent_prices,
-            )
-            return exec_price
-        slippage_pct = self._rng.uniform(0.0001, 0.001)
-        return price * (1 + slippage_pct)
+        volume = self._get_current_volume(ticker)
+        recent_prices = self._get_recent_prices(ticker)
+        quantity = (self.balance * self.buy_pct) / price
+        exec_price, _ = self.transaction_model.calculate_execution_price(
+            ticker=ticker,
+            intended_price=price,
+            order_size=quantity,
+            current_volume=volume,
+            side="buy",
+            recent_prices=recent_prices,
+        )
+        return exec_price
 
     def _apply_slippage_sell(self, ticker: str, price: float) -> float:
-        if self.slippage_model == 'none':
+        if self.slippage_model == "none":
             return price
-        if self.mode == "backtest":
-            volume = self._get_current_volume(ticker)
-            recent_prices = self._get_recent_prices(ticker)
-            quantity = self.portfolio[ticker]
-            exec_price, _ = self.transaction_model.calculate_execution_price(
-                ticker=ticker, intended_price=price, order_size=quantity,
-                current_volume=volume, side='sell', recent_prices=recent_prices,
-            )
-            return exec_price
-        slippage_pct = self._rng.uniform(0.0001, 0.001)
-        return price * (1 - slippage_pct)
+        volume = self._get_current_volume(ticker)
+        recent_prices = self._get_recent_prices(ticker)
+        quantity = self.portfolio[ticker]
+        exec_price, _ = self.transaction_model.calculate_execution_price(
+            ticker=ticker,
+            intended_price=price,
+            order_size=quantity,
+            current_volume=volume,
+            side="sell",
+            recent_prices=recent_prices,
+        )
+        return exec_price
 
     def _get_current_price(self, ticker: str) -> float:
         prices = self.close_prices[ticker]
@@ -536,12 +548,8 @@ class UniversalTradingEnvV8LSTM(gym.Env):
 
         # Portfolio state
         cash_pct = np.clip(self.balance / (self.equity + 1e-8), 0, 1)
-        total_return = np.clip(
-            (self.equity - self.initial_balance) / self.initial_balance, -1, 5
-        )
-        drawdown = np.clip(
-            (self.peak_value - self.equity) / (self.peak_value + 1e-8), 0, 1
-        )
+        total_return = np.clip((self.equity - self.initial_balance) / self.initial_balance, -1, 5)
+        drawdown = np.clip((self.peak_value - self.equity) / (self.peak_value + 1e-8), 0, 1)
         obs_parts.append([cash_pct, total_return, drawdown])
 
         obs = np.concatenate([np.array(p).flatten() for p in obs_parts])
@@ -552,24 +560,18 @@ class UniversalTradingEnvV8LSTM(gym.Env):
 
     def _get_info(self) -> dict:
         return {
-            'equity': float(self.equity),
-            'balance': float(self.balance),
-            'total_return': float(
-                (self.equity - self.initial_balance) / self.initial_balance
-            ),
-            'total_trades': int(self.total_trades),
-            'winning_trades': int(self.winning_trades),
-            'losing_trades': int(self.losing_trades),
-            'current_step': int(self.current_step),
-            'mode': self.mode,
+            "equity": float(self.equity),
+            "balance": float(self.balance),
+            "total_return": float((self.equity - self.initial_balance) / self.initial_balance),
+            "total_trades": int(self.total_trades),
+            "winning_trades": int(self.winning_trades),
+            "losing_trades": int(self.losing_trades),
+            "current_step": int(self.current_step),
+            "mode": self.mode,
         }
 
-    def render(self, mode='human'):
-        win_rate = (
-            self.winning_trades / self.total_trades
-            if self.total_trades > 0
-            else 0
-        )
+    def render(self, mode="human"):
+        win_rate = self.winning_trades / self.total_trades if self.total_trades > 0 else 0
         print(
             f"Step: {self.current_step} | Equity: ${self.equity:,.2f} | "
             f"Return: {(self.equity / self.initial_balance - 1) * 100:.2f}% | "

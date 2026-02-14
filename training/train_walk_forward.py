@@ -19,6 +19,7 @@ Usage:
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import os
@@ -33,7 +34,9 @@ from typing import Dict, List, Optional
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv, VecNormalize
 from stable_baselines3.common.callbacks import (
-    CheckpointCallback, EvalCallback, StopTrainingOnNoModelImprovement,
+    CheckpointCallback,
+    EvalCallback,
+    StopTrainingOnNoModelImprovement,
 )
 from stable_baselines3.common.monitor import Monitor
 
@@ -42,13 +45,15 @@ from core.macro_data import MacroDataFetcher
 from core.data_fetcher import download_data
 from core.utils import setup_logging
 from config.hardware import auto_scale_config, detect_hardware, compute_optimal_params
-from core.advanced_features_v2 import AdvancedFeaturesV2 # Turbo Init
+from config.schema import validate_config
+from core.advanced_features_v2 import AdvancedFeaturesV2  # Turbo Init
 
-logger = setup_logging(__name__, 'train_walk_forward.log')
+logger = setup_logging(__name__, "train_walk_forward.log")
 
 # Essayer d'importer RecurrentPPO (optionnel)
 try:
     from sb3_contrib import RecurrentPPO
+
     HAS_RECURRENT = True
 except ImportError:
     HAS_RECURRENT = False
@@ -59,8 +64,12 @@ def load_config(config_path: str) -> dict:
     if not os.path.exists(config_path):
         logger.error(f"Config {config_path} non trouvé")
         return None
-    with open(config_path, 'r') as f:
-        return yaml.safe_load(f)
+    with open(config_path, "r") as f:
+        config = yaml.safe_load(f)
+    warnings = validate_config(config)
+    for w in warnings:
+        logger.warning(w)
+    return config
 
 
 def generate_walk_forward_splits(
@@ -68,7 +77,7 @@ def generate_walk_forward_splits(
     train_years: int = 5,
     test_months: int = 12,
     step_months: int = 12,
-    embargo_months: int = 1, # Anti-Leak Embargo (buffer pour les indicateurs)
+    embargo_months: int = 1,  # Anti-Leak Embargo (buffer pour les indicateurs)
 ) -> List[Dict]:
     """Génère les fenêtres walk-forward.
 
@@ -104,7 +113,7 @@ def generate_walk_forward_splits(
 
         for ticker, df in data.items():
             train_mask = (df.index >= start_date) & (df.index < train_end)
-            test_mask = (df.index >= test_start) & (df.index < test_end) # Start APRES l'embargo
+            test_mask = (df.index >= test_start) & (df.index < test_end)  # Start APRES l'embargo
 
             train_slice = df.loc[train_mask]
             test_slice = df.loc[test_mask]
@@ -116,14 +125,16 @@ def generate_walk_forward_splits(
             test_data[ticker] = test_slice.copy()
 
         if train_data and test_data and len(train_data) == len(data):
-            splits.append({
-                'train': train_data,
-                'test': test_data,
-                'train_start': str(start_date.date()),
-                'train_end': str(train_end.date()),
-                'test_start': str(test_start.date()),
-                'test_end': str(test_end.date()),
-            })
+            splits.append(
+                {
+                    "train": train_data,
+                    "test": test_data,
+                    "train_start": str(start_date.date()),
+                    "train_end": str(train_end.date()),
+                    "test_start": str(test_start.date()),
+                    "test_end": str(test_end.date()),
+                }
+            )
             logger.info(
                 f"  Split {len(splits)}: "
                 f"Train {start_date.date()}->{train_end.date()} "
@@ -139,14 +150,13 @@ def generate_walk_forward_splits(
 
 def make_env(data, macro_data, config, mode="train", features_precomputed=False):
     def _init():
-        env_kwargs = {k: v for k, v in config.get('environment', {}).items()}
-        env_kwargs['mode'] = mode
-        env_kwargs['features_precomputed'] = features_precomputed # Turbo Init
-        env = UniversalTradingEnvV8LSTM(
-            data=data, macro_data=macro_data, **env_kwargs
-        )
+        env_kwargs = {k: v for k, v in config.get("environment", {}).items()}
+        env_kwargs["mode"] = mode
+        env_kwargs["features_precomputed"] = features_precomputed  # Turbo Init
+        env = UniversalTradingEnvV8LSTM(data=data, macro_data=macro_data, **env_kwargs)
         env = Monitor(env)
         return env
+
     return _init
 
 
@@ -168,91 +178,104 @@ def train_single_fold(
     fold_dir = os.path.join(output_dir, f"fold_{fold_idx:02d}")
     os.makedirs(fold_dir, exist_ok=True)
 
-    n_envs = config.get('training', {}).get('n_envs', 4)
+    n_envs = config.get("training", {}).get("n_envs", 4)
 
     # Environnements d'entraînement
     if use_recurrent:
         # RecurrentPPO nécessite DummyVecEnv (pas SubprocVecEnv)
-        envs = DummyVecEnv([
-            make_env(train_data, macro_data, config, mode="train", features_precomputed=True)
-            for _ in range(n_envs)
-        ])
+        envs = DummyVecEnv(
+            [
+                make_env(train_data, macro_data, config, mode="train", features_precomputed=True)
+                for _ in range(n_envs)
+            ]
+        )
     else:
-        envs = SubprocVecEnv([
-            make_env(train_data, macro_data, config, mode="train", features_precomputed=True)
-            for _ in range(n_envs)
-        ])
+        envs = SubprocVecEnv(
+            [
+                make_env(train_data, macro_data, config, mode="train", features_precomputed=True)
+                for _ in range(n_envs)
+            ]
+        )
 
     envs = VecNormalize(
-        envs, norm_obs=True, norm_reward=True,
-        clip_obs=10.0, clip_reward=10.0,
-        gamma=config.get('training', {}).get('gamma', 0.99),
+        envs,
+        norm_obs=True,
+        norm_reward=True,
+        clip_obs=10.0,
+        clip_reward=10.0,
+        gamma=config.get("training", {}).get("gamma", 0.99),
     )
 
     # Architecture réseau
-    net_arch = config.get('network', {}).get('net_arch', [512, 512, 256])
-    activation_name = config.get('network', {}).get('activation_fn', 'tanh')
-    activation_fn = torch.nn.Tanh if activation_name == 'tanh' else torch.nn.ReLU
+    net_arch = config.get("network", {}).get("net_arch", [512, 512, 256])
+    activation_name = config.get("network", {}).get("activation_fn", "tanh")
+    activation_fn = torch.nn.Tanh if activation_name == "tanh" else torch.nn.ReLU
 
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    training_cfg = config.get('training', {})
-    timesteps = training_cfg.get('total_timesteps', 5_000_000)
+    training_cfg = config.get("training", {})
+    timesteps = training_cfg.get("total_timesteps", 5_000_000)
 
     # Créer le modèle
     if use_recurrent and HAS_RECURRENT:
         policy_kwargs = {
-            'net_arch': net_arch,
-            'activation_fn': activation_fn,
-            'lstm_hidden_size': config.get('network', {}).get('lstm_hidden_size', 256),
-            'n_lstm_layers': config.get('network', {}).get('n_lstm_layers', 1),
+            "net_arch": net_arch,
+            "activation_fn": activation_fn,
+            "lstm_hidden_size": config.get("network", {}).get("lstm_hidden_size", 256),
+            "n_lstm_layers": config.get("network", {}).get("n_lstm_layers", 1),
         }
         model = RecurrentPPO(
-            'MlpLstmPolicy', envs,
-            learning_rate=training_cfg.get('learning_rate', 0.0003),
-            n_steps=training_cfg.get('n_steps', 2048),
-            batch_size=training_cfg.get('batch_size', 128),
-            n_epochs=training_cfg.get('n_epochs', 10),
-            gamma=training_cfg.get('gamma', 0.99),
-            gae_lambda=training_cfg.get('gae_lambda', 0.95),
-            clip_range=training_cfg.get('clip_range', 0.2),
-            ent_coef=training_cfg.get('ent_coef', 0.01),
-            vf_coef=training_cfg.get('vf_coef', 0.5),
-            max_grad_norm=training_cfg.get('max_grad_norm', 0.5),
+            "MlpLstmPolicy",
+            envs,
+            learning_rate=training_cfg.get("learning_rate", 0.0003),
+            n_steps=training_cfg.get("n_steps", 2048),
+            batch_size=training_cfg.get("batch_size", 128),
+            n_epochs=training_cfg.get("n_epochs", 10),
+            gamma=training_cfg.get("gamma", 0.99),
+            gae_lambda=training_cfg.get("gae_lambda", 0.95),
+            clip_range=training_cfg.get("clip_range", 0.2),
+            ent_coef=training_cfg.get("ent_coef", 0.01),
+            vf_coef=training_cfg.get("vf_coef", 0.5),
+            max_grad_norm=training_cfg.get("max_grad_norm", 0.5),
             policy_kwargs=policy_kwargs,
-            verbose=0, device=device, seed=seed,
-            tensorboard_log=os.path.join(fold_dir, 'tb_logs'),
+            verbose=0,
+            device=device,
+            seed=seed,
+            tensorboard_log=os.path.join(fold_dir, "tb_logs"),
         )
         logger.info(f"  Fold {fold_idx}: RecurrentPPO (LSTM) on {device}")
     else:
         policy_kwargs = {
-            'net_arch': [{'pi': net_arch, 'vf': net_arch}],
-            'activation_fn': activation_fn,
+            "net_arch": [{"pi": net_arch, "vf": net_arch}],
+            "activation_fn": activation_fn,
         }
         model = PPO(
-            'MlpPolicy', envs,
-            learning_rate=training_cfg.get('learning_rate', 0.0003),
-            n_steps=training_cfg.get('n_steps', 2048),
-            batch_size=training_cfg.get('batch_size', 2048),
-            n_epochs=training_cfg.get('n_epochs', 10),
-            gamma=training_cfg.get('gamma', 0.99),
-            gae_lambda=training_cfg.get('gae_lambda', 0.95),
-            clip_range=training_cfg.get('clip_range', 0.2),
-            ent_coef=training_cfg.get('ent_coef', 0.01),
-            vf_coef=training_cfg.get('vf_coef', 0.5),
-            max_grad_norm=training_cfg.get('max_grad_norm', 0.5),
-            target_kl=training_cfg.get('target_kl', 0.02),
+            "MlpPolicy",
+            envs,
+            learning_rate=training_cfg.get("learning_rate", 0.0003),
+            n_steps=training_cfg.get("n_steps", 2048),
+            batch_size=training_cfg.get("batch_size", 2048),
+            n_epochs=training_cfg.get("n_epochs", 10),
+            gamma=training_cfg.get("gamma", 0.99),
+            gae_lambda=training_cfg.get("gae_lambda", 0.95),
+            clip_range=training_cfg.get("clip_range", 0.2),
+            ent_coef=training_cfg.get("ent_coef", 0.01),
+            vf_coef=training_cfg.get("vf_coef", 0.5),
+            max_grad_norm=training_cfg.get("max_grad_norm", 0.5),
+            target_kl=training_cfg.get("target_kl", 0.02),
             policy_kwargs=policy_kwargs,
-            verbose=0, device=device, seed=seed,
-            tensorboard_log=os.path.join(fold_dir, 'tb_logs'),
+            verbose=0,
+            device=device,
+            seed=seed,
+            tensorboard_log=os.path.join(fold_dir, "tb_logs"),
         )
         logger.info(f"  Fold {fold_idx}: PPO standard on {device}")
 
     # Callbacks
     checkpoint_cb = CheckpointCallback(
         save_freq=max(timesteps // 10, 10000),
-        save_path=os.path.join(fold_dir, 'checkpoints'),
-        name_prefix=f'fold_{fold_idx:02d}',
+        save_path=os.path.join(fold_dir, "checkpoints"),
+        name_prefix=f"fold_{fold_idx:02d}",
     )
 
     # Entraîner
@@ -260,17 +283,21 @@ def train_single_fold(
     model.learn(total_timesteps=timesteps, callback=[checkpoint_cb], progress_bar=True)
 
     # Sauvegarder le modèle
-    model_path = os.path.join(fold_dir, 'model')
+    model_path = os.path.join(fold_dir, "model")
     model.save(model_path)
-    envs.save(os.path.join(fold_dir, 'vecnormalize.pkl'))
+    envs.save(os.path.join(fold_dir, "vecnormalize.pkl"))
 
-    # Évaluer sur le test set
+    # Évaluer sur le test set (geler les stats de normalisation)
     logger.info(f"  Fold {fold_idx}: Evaluating on test period...")
-    metrics = evaluate_on_test(model, envs, test_data, macro_data, config, features_precomputed=True)
+    envs.training = False
+    envs.norm_reward = False
+    metrics = evaluate_on_test(
+        model, envs, test_data, macro_data, config, features_precomputed=True
+    )
 
     # Sauvegarder métriques
-    metrics_path = os.path.join(fold_dir, 'metrics.json')
-    with open(metrics_path, 'w') as f:
+    metrics_path = os.path.join(fold_dir, "metrics.json")
+    with open(metrics_path, "w") as f:
         json.dump(metrics, f, indent=2)
 
     envs.close()
@@ -286,6 +313,12 @@ def train_single_fold(
     return metrics
 
 
+def _annualization_factor(interval: str) -> float:
+    """Facteur d'annualisation du Sharpe ratio selon l'intervalle des données."""
+    factors = {"1h": 252 * 6.5, "1d": 252, "1wk": 52, "1mo": 12}
+    return np.sqrt(factors.get(interval, 252))
+
+
 def evaluate_on_test(
     model, train_envs, test_data, macro_data, config, features_precomputed=False
 ) -> dict:
@@ -294,14 +327,12 @@ def evaluate_on_test(
     Returns:
         Dict avec total_return, sharpe_ratio, max_drawdown, etc.
     """
-    env_kwargs = {k: v for k, v in config.get('environment', {}).items()}
-    env_kwargs['mode'] = 'backtest'
-    env_kwargs['seed'] = 42
-    env_kwargs['features_precomputed'] = features_precomputed
+    env_kwargs = {k: v for k, v in config.get("environment", {}).items()}
+    env_kwargs["mode"] = "backtest"
+    env_kwargs["seed"] = 42
+    env_kwargs["features_precomputed"] = features_precomputed
 
-    test_env = UniversalTradingEnvV8LSTM(
-        data=test_data, macro_data=macro_data, **env_kwargs
-    )
+    test_env = UniversalTradingEnvV8LSTM(data=test_data, macro_data=macro_data, **env_kwargs)
 
     obs, info = test_env.reset()
     done = False
@@ -312,7 +343,7 @@ def evaluate_on_test(
         obs_normalized = train_envs.normalize_obs(obs.reshape(1, -1)).flatten()
         action, _ = model.predict(obs_normalized, deterministic=True)
         obs, reward, done, truncated, info = test_env.step(action)
-        equity_curve.append(info['equity'])
+        equity_curve.append(info["equity"])
 
     # Calculer métriques
     equity_series = pd.Series(equity_curve)
@@ -322,24 +353,27 @@ def evaluate_on_test(
     max_drawdown = ((equity_series.cummax() - equity_series) / equity_series.cummax()).max()
 
     sharpe_ratio = 0.0
+    interval = config.get("data", {}).get("interval", "1h")
     if len(returns) > 1 and returns.std() > 0:
-        sharpe_ratio = (returns.mean() / returns.std()) * np.sqrt(252 * 6.5)  # Hourly data
+        sharpe_ratio = (returns.mean() / returns.std()) * _annualization_factor(interval)
 
     return {
-        'total_return': float(total_return),
-        'sharpe_ratio': float(sharpe_ratio),
-        'max_drawdown': float(max_drawdown),
-        'total_trades': info.get('total_trades', 0),
-        'winning_trades': info.get('winning_trades', 0),
-        'losing_trades': info.get('losing_trades', 0),
-        'final_equity': float(equity_series.iloc[-1]),
-        'n_steps': len(equity_curve),
+        "total_return": float(total_return),
+        "sharpe_ratio": float(sharpe_ratio),
+        "max_drawdown": float(max_drawdown),
+        "total_trades": info.get("total_trades", 0),
+        "winning_trades": info.get("winning_trades", 0),
+        "losing_trades": info.get("losing_trades", 0),
+        "final_equity": float(equity_series.iloc[-1]),
+        "n_steps": len(equity_curve),
     }
 
 
 def run_walk_forward(
-    config_path: str, use_recurrent: bool = False,
-    n_ensemble: int = 1, auto_scale: bool = False,
+    config_path: str,
+    use_recurrent: bool = False,
+    n_ensemble: int = 1,
+    auto_scale: bool = False,
 ):
     """Pipeline complet Walk-Forward Analysis."""
     logger.info("=" * 70)
@@ -361,11 +395,11 @@ def run_walk_forward(
     # 1. Télécharger données
     logger.info("Downloading data...")
     data = download_data(
-        tickers=config['data']['tickers'],
-        period=config['data'].get('period', '5y'),
-        interval=config['data'].get('interval', '1h'),
+        tickers=config["data"]["tickers"],
+        period=config["data"].get("period", "5y"),
+        interval=config["data"].get("interval", "1h"),
         max_workers=max_workers,
-        dataset_path=config['data'].get('dataset_path'),
+        dataset_path=config["data"].get("dataset_path"),
     )
 
     if not data:
@@ -377,7 +411,7 @@ def run_walk_forward(
     # 1.5 TURBO INIT: Pré-calculer les features maintenant (1 seule fois)
     logger.info("🚀 Turbo Init: Pre-computing technical features for all tickers...")
     feature_engineer = AdvancedFeaturesV2()
-    
+
     # Paralléliser si possible, mais sinon simple boucle
     # (TA-Lib release le GIL, donc Threading pourrait marcher, mais on reste simple)
     processed_count = 0
@@ -385,7 +419,7 @@ def run_walk_forward(
         # Calculer et remplacer in-place
         data[ticker] = feature_engineer.calculate_all_features(df)
         processed_count += 1
-    
+
     logger.info(f"✅ Features computed for {processed_count} tickers. RAM usage will increase.")
 
     # 2. Télécharger données macro
@@ -397,7 +431,7 @@ def run_walk_forward(
     macro_data = macro_fetcher.fetch_all(
         start_date=str(ref_df.index[0].date()),
         end_date=str(ref_df.index[-1].date()),
-        interval=config['data'].get('interval', '1h'),
+        interval=config["data"].get("interval", "1h"),
     )
 
     if macro_data.empty:
@@ -405,13 +439,13 @@ def run_walk_forward(
         macro_data = None
 
     # 3. Générer splits walk-forward
-    wf_cfg = config.get('walk_forward', {})
+    wf_cfg = config.get("walk_forward", {})
     logger.info("Generating walk-forward splits...")
     splits = generate_walk_forward_splits(
         data,
-        train_years=wf_cfg.get('train_years', 1),
-        test_months=wf_cfg.get('test_months', 6),
-        step_months=wf_cfg.get('step_months', 6),
+        train_years=wf_cfg.get("train_years", 1),
+        test_months=wf_cfg.get("test_months", 6),
+        step_months=wf_cfg.get("step_months", 6),
     )
 
     if not splits:
@@ -419,7 +453,7 @@ def run_walk_forward(
         return
 
     # 4. Output directory
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     algo = "recurrent_ppo" if use_recurrent else "ppo"
     output_dir = f"models/walk_forward_{algo}_{timestamp}"
     os.makedirs(output_dir, exist_ok=True)
@@ -445,8 +479,8 @@ def run_walk_forward(
             for ens_idx in range(n_ensemble):
                 seed = 42 + ens_idx * 1000
                 metrics = train_single_fold(
-                    train_data=split['train'],
-                    test_data=split['test'],
+                    train_data=split["train"],
+                    test_data=split["test"],
                     macro_data=fold_macro,
                     config=config,
                     fold_idx=fold_idx * n_ensemble + ens_idx,
@@ -461,15 +495,15 @@ def run_walk_forward(
                 key: float(np.mean([m[key] for m in fold_metrics_list]))
                 for key in fold_metrics_list[0]
             }
-            avg_metrics['ensemble_size'] = n_ensemble
-            avg_metrics['fold_idx'] = fold_idx
-            avg_metrics['train_period'] = f"{split['train_start']}->{split['train_end']}"
-            avg_metrics['test_period'] = f"{split['test_start']}->{split['test_end']}"
+            avg_metrics["ensemble_size"] = n_ensemble
+            avg_metrics["fold_idx"] = fold_idx
+            avg_metrics["train_period"] = f"{split['train_start']}->{split['train_end']}"
+            avg_metrics["test_period"] = f"{split['test_start']}->{split['test_end']}"
             all_metrics.append(avg_metrics)
         else:
             metrics = train_single_fold(
-                train_data=split['train'],
-                test_data=split['test'],
+                train_data=split["train"],
+                test_data=split["test"],
                 macro_data=fold_macro,
                 config=config,
                 fold_idx=fold_idx,
@@ -477,9 +511,9 @@ def run_walk_forward(
                 use_recurrent=use_recurrent,
                 seed=42,
             )
-            metrics['fold_idx'] = fold_idx
-            metrics['train_period'] = f"{split['train_start']}->{split['train_end']}"
-            metrics['test_period'] = f"{split['test_start']}->{split['test_end']}"
+            metrics["fold_idx"] = fold_idx
+            metrics["train_period"] = f"{split['train_start']}->{split['train_end']}"
+            metrics["test_period"] = f"{split['test_start']}->{split['test_end']}"
             all_metrics.append(metrics)
 
     # 6. Rapport final
@@ -487,9 +521,9 @@ def run_walk_forward(
     logger.info("WALK-FORWARD RESULTS")
     logger.info("=" * 70)
 
-    returns = [m['total_return'] for m in all_metrics]
-    sharpes = [m['sharpe_ratio'] for m in all_metrics]
-    drawdowns = [m['max_drawdown'] for m in all_metrics]
+    returns = [m["total_return"] for m in all_metrics]
+    sharpes = [m["sharpe_ratio"] for m in all_metrics]
+    drawdowns = [m["max_drawdown"] for m in all_metrics]
 
     for m in all_metrics:
         logger.info(
@@ -509,20 +543,20 @@ def run_walk_forward(
 
     # Sauvegarder résultats
     results = {
-        'algorithm': algo,
-        'n_folds': len(all_metrics),
-        'n_ensemble': n_ensemble,
-        'output_dir': output_dir,
-        'avg_return': float(np.mean(returns)),
-        'avg_sharpe': float(np.mean(sharpes)),
-        'avg_max_drawdown': float(np.mean(drawdowns)),
-        'cumulative_return': float(np.prod([1 + r for r in returns]) - 1),
-        'win_fold_ratio': sum(1 for r in returns if r > 0) / len(returns),
-        'folds': all_metrics,
+        "algorithm": algo,
+        "n_folds": len(all_metrics),
+        "n_ensemble": n_ensemble,
+        "output_dir": output_dir,
+        "avg_return": float(np.mean(returns)),
+        "avg_sharpe": float(np.mean(sharpes)),
+        "avg_max_drawdown": float(np.mean(drawdowns)),
+        "cumulative_return": float(np.prod([1 + r for r in returns]) - 1),
+        "win_fold_ratio": sum(1 for r in returns if r > 0) / len(returns),
+        "folds": all_metrics,
     }
 
-    results_path = os.path.join(output_dir, 'walk_forward_results.json')
-    with open(results_path, 'w') as f:
+    results_path = os.path.join(output_dir, "walk_forward_results.json")
+    with open(results_path, "w") as f:
         json.dump(results, f, indent=2, default=str)
 
     logger.info(f"\nResults saved: {results_path}")
@@ -531,16 +565,17 @@ def run_walk_forward(
     return results
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description='Walk-Forward Analysis V8')
-    parser.add_argument('--config', type=str, default='config/training_config_v8.yaml')
-    parser.add_argument('--recurrent', action='store_true', help='Use RecurrentPPO (LSTM)')
-    parser.add_argument('--ensemble', type=int, default=1, help='Ensemble size (1=single model)')
+    parser = argparse.ArgumentParser(description="Walk-Forward Analysis V8")
+    parser.add_argument("--config", type=str, default="config/training_config_v8.yaml")
+    parser.add_argument("--recurrent", action="store_true", help="Use RecurrentPPO (LSTM)")
+    parser.add_argument("--ensemble", type=int, default=1, help="Ensemble size (1=single model)")
     parser.add_argument(
-        '--auto-scale', action='store_true',
-        help='Auto-detect hardware and scale n_envs/batch_size/n_steps',
+        "--auto-scale",
+        action="store_true",
+        help="Auto-detect hardware and scale n_envs/batch_size/n_steps",
     )
 
     args = parser.parse_args()

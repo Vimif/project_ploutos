@@ -10,7 +10,14 @@
       "Bash(git rm:*)",
       "Bash(fc:*)",
       "Bash(git add:*)",
-      "Bash(git commit -m \"$\\(cat <<''EOF''\nfeat: Add hardware auto-scaling and training pipeline orchestrator\n\nIntroduce --auto-scale flag across all training scripts to auto-detect\nGPU/CPU/RAM and compute optimal n_envs, batch_size, and worker counts.\nParallelize Monte Carlo robustness tests via ProcessPoolExecutor.\nAdd run_pipeline.py orchestrator for single-command training+robustness.\nClean dead code from settings.py and update all documentation.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")"
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfeat: Add hardware auto-scaling and training pipeline orchestrator\n\nIntroduce --auto-scale flag across all training scripts to auto-detect\nGPU/CPU/RAM and compute optimal n_envs, batch_size, and worker counts.\nParallelize Monte Carlo robustness tests via ProcessPoolExecutor.\nAdd run_pipeline.py orchestrator for single-command training+robustness.\nClean dead code from settings.py and update all documentation.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(python -m black:*)",
+      "Bash(pip install:*)",
+      "Bash(python -m ruff check:*)",
+      "Bash(python:*)",
+      "Bash(test:*)",
+      "Bash(del \"d:\\\\Dev\\\\Github\\\\project_ploutos\\\\.claude\\\\worktrees\\\\infallible-faraday\\\\CLAUDE.md\")",
+      "Bash(del \"d:\\\\Dev\\\\Github\\\\project_ploutos\\\\.claude\\\\worktrees\\\\amazing-meninsky\\\\CLAUDE.md\")"
     ]
   }
 }

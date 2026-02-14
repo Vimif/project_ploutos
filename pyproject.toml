@@ -36,6 +36,7 @@ training = [
     "sb3-contrib>=2.0.0",
     "tensorboard>=2.13.0",
     "tqdm>=4.65.0",
+    "optuna>=3.0.0",
 ]
 dev = [
     "pytest>=7.4.0",

@@ -32,6 +32,9 @@ environment:
   reward_trade_success: 0.2
   penalty_overtrading: 0.01
   drawdown_penalty_factor: 3.0
+  warmup_steps: 100
+  steps_per_trading_week: 78
+  drawdown_threshold: 0.10
 
 data:
   tickers:

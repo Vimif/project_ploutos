@@ -25,6 +25,7 @@ from stable_baselines3.common.vec_env import VecNormalize, DummyVecEnv
 
 try:
     from sb3_contrib import RecurrentPPO
+
     HAS_RECURRENT = True
 except ImportError:
     HAS_RECURRENT = False
@@ -53,8 +54,8 @@ class EnsemblePredictor:
         vecnorm_path: Optional[str] = None,
         env=None,
         use_recurrent: bool = False,
-        device: str = 'auto',
-    ) -> 'EnsemblePredictor':
+        device: str = "auto",
+    ) -> "EnsemblePredictor":
         """Charge N modèles depuis le disque.
 
         Args:
@@ -98,7 +99,7 @@ class EnsemblePredictor:
         # Collecter les votes de chaque modèle
         all_actions = []
         for i, model in enumerate(self.models):
-            if hasattr(model, 'predict') and self.lstm_states[i] is not None:
+            if HAS_RECURRENT and isinstance(model, RecurrentPPO):
                 # RecurrentPPO avec state
                 action, state = model.predict(
                     obs, state=self.lstm_states[i], deterministic=deterministic
@@ -114,6 +115,7 @@ class EnsemblePredictor:
         if all_actions.ndim == 1:
             # Un seul asset
             from scipy import stats
+
             result = stats.mode(all_actions, keepdims=False)
             return np.array([result.mode])
 
@@ -126,9 +128,7 @@ class EnsemblePredictor:
 
         return final_action
 
-    def predict_with_confidence(
-        self, observation: np.ndarray, deterministic: bool = True
-    ) -> tuple:
+    def predict_with_confidence(self, observation: np.ndarray, deterministic: bool = True) -> tuple:
         """Prédit avec un score de confiance (unanimité du vote).
 
         Returns:
@@ -141,7 +141,13 @@ class EnsemblePredictor:
 
         all_actions = []
         for i, model in enumerate(self.models):
-            action, _ = model.predict(obs, deterministic=deterministic)
+            if HAS_RECURRENT and isinstance(model, RecurrentPPO):
+                action, state = model.predict(
+                    obs, state=self.lstm_states[i], deterministic=deterministic
+                )
+                self.lstm_states[i] = state
+            else:
+                action, _ = model.predict(obs, deterministic=deterministic)
             all_actions.append(action)
 
         all_actions = np.array(all_actions)
