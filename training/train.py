@@ -441,8 +441,19 @@ def run_walk_forward(
     # (TA-Lib release le GIL, donc Threading pourrait marcher, mais on reste simple)
     processed_count = 0
     for ticker, df in data.items():
-        # Calculer et remplacer in-place
-        data[ticker] = feature_engineer.calculate_all_features(df)
+        # Sauvegarder l'index original (DatetimeIndex) pour éviter sa perte via Polars
+        original_index = df.index
+        
+        # Calculer les features
+        feat_df = feature_engineer.calculate_all_features(df)
+        
+        # Restaurer l'index si nécessaire
+        if len(feat_df) == len(original_index):
+            feat_df.index = original_index
+        else:
+            logger.warning(f"Feature engineering changed row count for {ticker} ({len(original_index)} -> {len(feat_df)}). Index mismatch possible.")
+            
+        data[ticker] = feat_df
         processed_count += 1
 
     logger.info(f"✅ Features computed for {processed_count} tickers. RAM usage will increase.")
