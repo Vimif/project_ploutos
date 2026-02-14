@@ -1,4 +1,1 @@
-"""Configuration Ploutos"""
-from .config import PloutosConfig
-
-__all__ = ['PloutosConfig']
+"""Configuration Ploutos - V8 uses YAML configs loaded directly."""
