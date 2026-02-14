@@ -368,9 +368,8 @@ class AdvancedFeaturesV2:
         atr = tr.rolling(period, min_periods=1).mean()
         
         # Directional Movement
-        # Convertir en Series pour alignement
-        up_move = pd.Series(up_move, index=df.index).fillna(0)
-        down_move = pd.Series(down_move, index=df.index).fillna(0)
+        up_move = (high - high.shift(1)).fillna(0)
+        down_move = (low.shift(1) - low).fillna(0)
         
         plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0.0)
         minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0.0)
