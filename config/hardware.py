@@ -63,29 +63,29 @@ def compute_optimal_params(hw: dict, use_recurrent: bool = False) -> dict:
     usable_cores = max(cpu_count - 2, 2)
 
     if use_recurrent:
-        n_envs = min(usable_cores, 16)
+        n_envs = min(usable_cores, 32)
     else:
-        n_envs = min(usable_cores, 64)
+        n_envs = min(usable_cores, 256)
 
     # Cap par RAM: ~400 MB par process env
-    max_envs_by_ram = max(int((ram_gb - 4) / 0.4), 4)
+    max_envs_by_ram = max(int((ram_gb - 4) / 0.5), 4)
     n_envs = min(n_envs, max_envs_by_ram)
 
     # --- batch_size ---
     if vram_gb >= 20:
-        batch_size = 8192
+        batch_size = 65536
     elif vram_gb >= 10:
-        batch_size = 4096
+        batch_size = 16384
     elif vram_gb >= 6:
-        batch_size = 2048
+        batch_size = 4096
     else:
         batch_size = 1024
 
     # --- n_steps ---
-    n_steps = 2048
+    n_steps = 4096
     # buffer = n_envs * n_steps doit être >= batch_size
     if n_envs * n_steps < batch_size:
-        n_steps = max(batch_size // n_envs, 512)
+        n_steps = max(batch_size // n_envs, 2048)
 
     # --- data fetching ---
     max_workers = min(usable_cores, 8)
