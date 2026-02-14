@@ -35,7 +35,11 @@ def detect_hardware() -> dict:
             props = torch.cuda.get_device_properties(0)
             hw["gpu_available"] = True
             hw["gpu_name"] = props.name
-            hw["gpu_vram_gb"] = round(props.total_mem / (1024**3), 1)
+            if hasattr(props, 'total_memory'):
+                hw["gpu_vram_gb"] = round(props.total_memory / (1024**3), 1)
+            else:
+                # Fallback for older torch versions or different attributes
+                hw["gpu_vram_gb"] = round(getattr(props, 'total_mem', 0) / (1024**3), 1)
     except ImportError:
         pass
 
