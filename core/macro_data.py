@@ -89,12 +89,25 @@ class MacroDataFetcher:
                     progress=False,
                     auto_adjust=True,
                 )
+                # Gestion du MultiIndex (nouveau yfinance)
                 if isinstance(df.columns, pd.MultiIndex):
-                    df.columns = df.columns.get_level_values(0)
+                    # Essayer de récupérer 'Close' pour ce ticker s'il est présent en niveau 1
+                    try:
+                         # Si format : Price | Ticker
+                         #             Close | ^VIX
+                         series = df.xs('Close', axis=1, level=0)
+                         if isinstance(series, pd.DataFrame):
+                             series = series.iloc[:, 0] # Prendre la première colonne si encore DataFrame
+                    except KeyError:
+                         # Si format plat ou autre, on prend juste la colonne 'Close'
+                         series = df['Close']
+                else:
+                    series = df['Close']
 
-                if len(df) > 0:
-                    raw[name] = df['Close'].rename(name)
-                    logger.info(f"  {name} ({ticker}): {len(df)} bars")
+                if len(series) > 0:
+                    series.name = name # Renommer la Série
+                    raw[name] = series
+                    logger.info(f"  {name} ({ticker}): {len(series)} bars")
                 else:
                     logger.warning(f"  {name} ({ticker}): aucune donnée")
             except Exception:
