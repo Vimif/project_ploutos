@@ -453,11 +453,15 @@ def run_walk_forward(
     ref_ticker = list(data.keys())[0]
     ref_df = data[ref_ticker]
 
-    macro_data = macro_fetcher.fetch_all(
-        start_date=str(ref_df.index[0].date()),
-        end_date=str(ref_df.index[-1].date()),
-        interval=config["data"].get("interval", "1h"),
-    )
+    try:
+        macro_data = macro_fetcher.fetch_all(
+            start_date=str(ref_df.index[0].date()),
+            end_date=str(ref_df.index[-1].date()),
+            interval=config["data"].get("interval", "1h"),
+        )
+    except Exception as e:
+        logger.warning(f"Failed to fetch macro data (index issue?): {e}")
+        macro_data = pd.DataFrame() # Empty DF
 
     if macro_data.empty:
         logger.warning("No macro data available, proceeding without")

@@ -18,5 +18,5 @@ echo "   - Threads per process forced to 1 to avoid resource exhaustion"
 echo "   - Walking Forward on 5 years of history"
 echo "   - Ensemble of 10 models"
 
-# 3. Lancer le pipeline
-python3 scripts/run_pipeline.py --config config/config.yaml --auto-scale --ensemble 10
+# 3. Lancer le pipeline (V9 Enabled: Shared Memory)
+python3 scripts/run_pipeline.py --config config/config.yaml --auto-scale --ensemble 10 --shared-memory

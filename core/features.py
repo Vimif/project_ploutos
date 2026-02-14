@@ -95,6 +95,8 @@ class FeatureEngineer:
                 res_df = res_df.set_index('date')
             elif 'time' in res_df.columns:
                 res_df = res_df.set_index('time')
+            elif 'index' in res_df.columns:
+                res_df = res_df.set_index('index')
             return res_df
         
         return pdf

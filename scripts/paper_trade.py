@@ -591,7 +591,7 @@ def run_paper_trading(model_path, mode='simulate', api_key=None, api_secret=None
 # ============================================================================
 
 def main():
-    parser = argparse.ArgumentParser(description='Paper Trader V7 — Live Simulation')
+    parser = argparse.ArgumentParser(description='Paper Trader V9 — Live Simulation')
     parser.add_argument('--model', type=str, required=True, help='Chemin du modele V7 (.zip)')
     parser.add_argument('--mode', type=str, default='simulate', choices=['simulate', 'alpaca'],
                         help='Mode: simulate (local) ou alpaca (paper trading)')

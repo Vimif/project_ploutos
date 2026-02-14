@@ -31,6 +31,7 @@ def main():
     parser.add_argument('--recurrent', action='store_true', help='Use RecurrentPPO (LSTM)')
     parser.add_argument('--ensemble', type=int, default=1, help='Ensemble size')
     parser.add_argument('--auto-scale', action='store_true', help='Auto-detect hardware')
+    parser.add_argument('--shared-memory', action='store_true', help='Use Shared Memory for training (V9)')
     parser.add_argument(
         '--mc-sims', type=int, default=1000,
         help='Monte Carlo simulations (default: 1000)',
@@ -54,7 +55,7 @@ def main():
     )
     logger.info(f"Config: {args.config}")
     logger.info(f"Ensemble: {args.ensemble} | Recurrent: {args.recurrent}")
-    logger.info(f"Auto-scale: {args.auto_scale}")
+    logger.info(f"Auto-scale: {args.auto_scale} | Shared Memory: {args.shared_memory}")
 
     # === Phase 1 : Walk-Forward Training ===
     logger.info("\n" + "=" * 70)
@@ -68,6 +69,7 @@ def main():
         use_recurrent=args.recurrent,
         n_ensemble=args.ensemble,
         auto_scale=args.auto_scale,
+        use_shared_memory=args.shared_memory,
     )
 
     if not results:

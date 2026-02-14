@@ -55,8 +55,8 @@ echo "📝 Creating launch helper scripts..."
 # Launch PPO Walk-Forward
 cat <<EOT > run_ppo.sh
 #!/bin/bash
-echo "🚀 Launching PPO Walk-Forward..."
-nohup python3 training/train.py --config config/config.yaml > logs/train_ppo_wfa.log 2>&1 &
+echo "🚀 Launching PPO Walk-Forward (V9)..."
+nohup python3 training/train.py --config config/config.yaml --shared-memory > logs/train_ppo_wfa.log 2>&1 &
 echo "✅ Started in background. Logs: tail -f logs/train_ppo_wfa.log"
 EOT
 chmod +x run_ppo.sh
@@ -64,8 +64,8 @@ chmod +x run_ppo.sh
 # Launch RecurrentPPO Walk-Forward
 cat <<EOT > run_lstm.sh
 #!/bin/bash
-echo "🚀 Launching RecurrentPPO (LSTM) Walk-Forward..."
-nohup python3 training/train.py --config config/config.yaml --recurrent > logs/train_lstm_wfa.log 2>&1 &
+echo "🚀 Launching RecurrentPPO (LSTM) Walk-Forward (V9)..."
+nohup python3 training/train.py --config config/config.yaml --recurrent --shared-memory > logs/train_lstm_wfa.log 2>&1 &
 echo "✅ Started in background. Logs: tail -f logs/train_lstm_wfa.log"
 EOT
 chmod +x run_lstm.sh
@@ -73,8 +73,8 @@ chmod +x run_lstm.sh
 # Launch Ensemble
 cat <<EOT > run_ensemble.sh
 #!/bin/bash
-echo "🚀 Launching Ensemble Walk-Forward (N=3)..."
-nohup python3 training/train.py --config config/config.yaml --ensemble 3 > logs/train_ensemble.log 2>&1 &
+echo "🚀 Launching Ensemble Walk-Forward (N=3) (V9)..."
+nohup python3 training/train.py --config config/config.yaml --ensemble 3 --shared-memory > logs/train_ensemble.log 2>&1 &
 echo "✅ Started in background. Logs: tail -f logs/train_ensemble.log"
 EOT
 chmod +x run_ensemble.sh
