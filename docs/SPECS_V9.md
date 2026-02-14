@@ -48,21 +48,26 @@ Remplacer `argparse` et `hardware.py` par **Hydra** (`config.yaml` hiérarchique
 
 ## 📅 Roadmap d'Implémentation
 
-### Phase 9.0 : Fondation (Tests)
-- [x] Mise en place de `pytest` et premiers tests unitaires (`tests/test_trading_env.py`).
-- [ ] Migration vers Hydra pour la configuration (Reporté).
+### Phase 9.0 : Fondation (Completed)
+- [x] Mise en place de `pytest` et premiers tests unitaires.
+- [x] 116 tests couvrant env, reward, config, transaction costs, ensemble, features.
+- [x] CI/CD GitHub Actions (pytest + black + ruff + mypy, matrice Python 3.10/3.11).
+- [ ] Migration vers Hydra pour la configuration (Reporte).
 
-### Phase 9.1 : Scalabilité (Completed ✅)
-- [x] Implémentation du `SharedMemoryLoader` (`core/shared_memory_manager.py`).
-- [x] Benchmark RAM vs V8 (Gain x10 confirmé).
+### Phase 9.1 : Scalabilite (Completed)
+- [x] Implementation du `SharedMemoryLoader` (`core/shared_memory_manager.py`).
+- [x] Benchmark RAM vs V8 (Gain x10 confirme).
+- [x] Refactoring composants : EnvConfig, RewardCalculator, ObservationBuilder, constants, exceptions.
+- [x] Fix look-ahead bias (features par fold), dtype filter, Polars index round-trip.
 
-### Phase 9.2 : Moteur de Données (Completed ✅)
+### Phase 9.2 : Moteur de Donnees (Completed)
 - [x] Migration du `FeatureEngineer` vers Polars (`core/features.py`).
 - [x] Gain de performance (0.09s vs 5s).
+- [x] Index round-trip fiable via `__date_idx`.
 
-### Phase 9.3 : Intelligence (Semaine 4)
+### Phase 9.3 : Intelligence (A venir)
 - [ ] Module `MarketRegimeDetector`.
-- [ ] Intégration dans l'observation space du RL.
+- [ ] Integration dans l'observation space du RL.
 
 ---
-*Document généré par l'Architecte Technique - Février 2026*
+*Document mis a jour - Fevrier 2026 (V9.1)*

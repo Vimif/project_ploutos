@@ -73,7 +73,7 @@ Pour saturer la machine et accélérer l'entraînement :
 
 ### Correction
 - **Fenêtre d'entraînement** : Minimum **5 ans** (`train_years: 5`).
-- **Simplicité** : Réseau de neurones plus large mais moins profond (`[512, 512, 512]` au lieu de 4 couches).
+- **Simplicite** : Reseau `[256, 128]` au lieu de `[512, 512, 512]` (meilleur ratio parametres/samples).
 - **Moins d'aléatoire** : `ent_coef` réduit à `0.01` (vs 0.05).
 - **Ensemble Learning** : Toujours utiliser plusieurs modèles (`--ensemble 5+`) pour lisser la variance.
 
@@ -86,11 +86,11 @@ Pour saturer la machine et accélérer l'entraînement :
 - **Coût** : 256 processus x 15 tickers x 50k bougies = **192 Millions de calculs** au démarrage.
 - **Résultat** : CPU à 100% pendant des minutes, risque de timeout ou crash.
 
-### Solution : Calcul Unique & Partage
-- **Modification** : `training/train.py` calcule les features **une seule fois** au début (dans le processus principal).
-- **Injection** : Les DataFrames enrichis sont passés aux environnements avec le flag `features_precomputed=True`.
-- **Environnement** : `TradingEnv` détecte le flag et **saute** le calcul interne.
-- **Gain** : Démarrage quasi-instantané des 256 environnements (juste copie mémoire).
+### Solution : Calcul par Fold & Partage
+- **V9.1** : `training/train.py` calcule les features **par fold** (pas sur tout le dataset) pour eviter le look-ahead bias.
+- **Injection** : Les DataFrames enrichis sont passes aux environnements avec le flag `features_precomputed=True`.
+- **Environnement** : `TradingEnv` detecte le flag et **saute** le calcul interne.
+- **Gain** : Demarrage quasi-instantane des 256 environnements (juste copie memoire).
 
 ---
 
@@ -101,14 +101,47 @@ Pour saturer la machine et accélérer l'entraînement :
 - **Solution** : `training/train.py` impose un **Embargo** (gap) de 1 mois entre la fin du Train et le début du Test.
 - **Impact** : Performance Test légèrement moins bonne MAIS beaucoup plus réaliste.
 
-### 📈 Differential Sharpe Ratio (DSR)
-- **Problème** : Récompenser le Profit ($) incite à la prise de risque excessive (gambling).
-- **Solution** : `core/universal_environment_v8_lstm.py` implémente le **DSR** (ref: Moody & Saffell, 2001).
-- **Principe** : L'agent est récompensé si son action augmente le Sharpe Ratio glissant (Risk-Adjusted Return) plutôt que le PnL brut.
-- **Formule** : $R_t \approx \frac{Ret_t - A_{t-1}}{std_{t-1}}$ (Simplifiée pour stabilité RL).
+### Differential Sharpe Ratio (DSR)
+- **Probleme** : Recompenser le Profit ($) incite a la prise de risque excessive (gambling).
+- **Solution** : `core/reward_calculator.py` implemente le **DSR** avec l'algorithme de **Welford** pour la variance online (ref: Moody & Saffell, 2001).
+- **Principe** : L'agent est recompense si son action augmente le Sharpe Ratio glissant (Risk-Adjusted Return) plutot que le PnL brut.
+- **Stabilite** : Welford evite l'explosion numerique quand `std(returns) ≈ 0` (marche plat). Floor de variance a `1e-4`.
 
-### 🐢 Hyperparamètres PPO "Investisseur"
-- **GAE Lambda** : Augmenté à **0.98** (vs 0.95) pour favoriser les tendances long terme et réduire le bruit.
-- **Overtrading Penalty** : Doublée (`0.01`) pour punir sévèrement le "churning" (achat/vente inutile).
-- **Trade Success Reward** : Réduite (`0.2`) pour ne pas biaiser l'agent vers des stratégies à haut taux de réussite mais faible gain moyen.
+### Hyperparametres PPO "Investisseur"
+- **GAE Lambda** : Augmente a **0.98** (vs 0.95) pour favoriser les tendances long terme et reduire le bruit.
+- **Overtrading Penalty** : Doublee (`0.01`) pour punir severement le "churning" (achat/vente inutile).
+- **Trade Success Reward** : Reduite (`0.2`) pour ne pas biaiser l'agent vers des strategies a haut taux de reussite mais faible gain moyen.
+
+---
+
+## 7. Divergence SHM / Raw Data Path (V9.1 - Fevrier 2026)
+
+### Probleme : Train/Test Feature Set Mismatch
+- **Symptome** : `TypeError: float() argument must be a string or a real number, not 'Timestamp'` lors de `evaluate_on_test`.
+- **Cause racine** : Le chemin training (SharedMemory) et le chemin test (DataFrames bruts) produisaient des feature sets differents.
+  - SHM : `select_dtypes(include=[np.number]).astype(float32)` homogeneise tous les types numeriques (int32 -> float32).
+  - Raw : le filtre dtype `(np.float64, np.float32, np.int64)` excluait les colonnes `int32` produites par Polars `cast(pl.Int32)` (~25 features binaires).
+- **Fix** : Remplacer le filtre explicite par `pd.api.types.is_numeric_dtype()` dans `_prepare_features()`.
+
+### Probleme : Polars Index Round-Trip
+- **Symptome** : Colonne datetime residuelle dans le DataFrame apres conversion Polars -> Pandas.
+- **Cause** : Le nom d'index varie ('Date', 'Datetime', None) et la logique de restauration `set_index('date')` est case-sensitive.
+- **Fix** : Normaliser l'index en `__date_idx` avant conversion, restaurer apres.
+
+### Regle d'Or
+Toujours verifier la parite entre le chemin SHM (training) et le chemin raw (test). Si le test crash mais le training fonctionne, le probleme est probablement une divergence dtype.
+
+---
+
+## 8. Tests & Mocking (V9.1 - Fevrier 2026)
+
+### Mocking torch/SB3 dans les tests
+- Mocker TOUS les sous-modules torch : `torch.nn`, `torch.nn.functional`, `torch.optim`, `torch.utils`, `torch.utils.data`, `torch.distributions`.
+- Aussi : `stable_baselines3`, `stable_baselines3.common`, `stable_baselines3.common.vec_env`, etc.
+- **NE PAS** mettre le mock torch dans `conftest.py` — ca casse les tests e2e qui ont besoin du vrai torch.
+- `isinstance()` crashe si le 2e argument est un MagicMock (pas un type) — utiliser `HAS_RECURRENT=False` + `patch.object()`.
+
+### Tests de look-ahead bias
+- **NE PAS** generer deux datasets separes avec `np.random.seed(42)` — l'etat RNG diverge apres des generations de longueurs differentes.
+- Generer UN seul dataset long, le decouper pour la version courte : `df_short = df_long.iloc[:200].copy()`.
 

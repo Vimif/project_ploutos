@@ -21,7 +21,7 @@ ruff check .                     # lint
 # Full pipeline (training + robustness, auto-scales to hardware)
 python scripts/run_pipeline.py --config config/config.yaml --auto-scale --ensemble 3
 
-# Training (V8 walk-forward)
+# Training (V9 walk-forward)
 python training/train.py --config config/config.yaml --auto-scale
 python training/train.py --config config/config.yaml --recurrent --auto-scale
 python training/train.py --config config/config.yaml --ensemble 3 --auto-scale
@@ -53,15 +53,15 @@ core/            Core ML & environment logic
   reward_calculator.py    DSR reward with Welford online variance (extracted from env)
   constants.py       Centralized constants (clip ranges, thresholds, finance params)
   exceptions.py      Custom exception hierarchy (PloutosError, ConfigValidationError, etc.)
-  features.py        60+ technical features (support/resistance, RSI, etc.)
-  data_fetcher.py    Yahoo Finance data fetching (max_workers configurable)
+  features.py        60+ technical features via Polars (support/resistance, RSI, ADX, etc.)
+  data_fetcher.py    Yahoo Finance / Alpaca data fetching (max_workers configurable)
   macro_data.py      VIX/TNX/DXY macro indicators
-  ensemble.py        Multi-model ensemble voting with confidence filtering
+  ensemble.py        Multi-model ensemble voting with confidence filtering + predict_filtered()
   data_pipeline.py   Feature engineering pipeline + train/val/test splitting
   transaction_costs.py  Realistic slippage/spread/commission model (configurable vol_ceiling)
   shared_memory_manager.py  V9 zero-copy shared memory for SubprocVecEnv
 training/        Training scripts
-  train_walk_forward.py  V8 walk-forward training (main entry point)
+  train.py           V9 walk-forward training (main entry point, per-fold feature computation)
   train_v7_sp500_sectors.py  V7 sector-based training (legacy)
 scripts/         CLI tools
   run_pipeline.py    Full pipeline: training → robustness (single command)
@@ -97,13 +97,16 @@ Key `.env` variables:
 - **V9 uses YAML configs directly**: `yaml.safe_load()` in training scripts. `EnvConfig` dataclass available via `TradingEnv.from_config()` but flat kwargs still work.
 - **`--auto-scale` replaces cloud config**: Detects GPU/CPU/RAM and overrides n_envs/batch_size/n_steps. The cloud YAML still works for manual overrides but `--auto-scale` is preferred.
 - **settings.py is minimal**: Only provides paths (`LOGS_DIR`, `TRADES_DIR`) and broker config. Used by `core/utils.py` and `trading/portfolio.py`. No training config — that's in YAML + `config/hardware.py`.
-- **SubprocVecEnv vs DummyVecEnv**: PPO uses SubprocVecEnv (parallel). RecurrentPPO requires DummyVecEnv (sequential). This is handled in `train_walk_forward.py`.
+- **SubprocVecEnv vs DummyVecEnv**: PPO uses SubprocVecEnv (parallel). RecurrentPPO requires DummyVecEnv (sequential). This is handled in `train.py`.
 - **Data caching**: `data_cache/` is gitignored. Yahoo Finance data gets cached locally.
 - **Models gitignored**: `models/` dir is in `.gitignore`. Trained models must be managed separately.
 - **Wandb disabled by default**: Set `wandb.enabled: true` in YAML config.
-- **Config validation**: `config/schema.py` validates YAML on load (types, ranges, typo detection, cross-field constraints). Raises `ConfigValidationError`. Runs automatically in `train_walk_forward.py`.
-- **Feature computation inside folds**: Features are computed per-fold inside the walk-forward loop to prevent look-ahead bias.
+- **Config validation**: `config/schema.py` validates YAML on load (types, ranges, typo detection, cross-field constraints for training/environment/data/walk_forward/network/checkpoint/eval). Raises `ConfigValidationError`. Runs automatically in `train.py`.
+- **Feature computation inside folds**: Features are computed per-fold inside the walk-forward loop to prevent look-ahead bias. Never pre-compute features on the full dataset.
 - **Observation space reduction**: `max_features_per_ticker` in config.yaml selects top-N features by variance (default: 30).
+- **Dtype filtering**: `_prepare_features()` uses `pd.api.types.is_numeric_dtype()` to detect feature columns. Never use explicit dtype tuples — Polars `cast(pl.Int32)` produces `int32` which would be missed by `(np.float64, np.float32, np.int64)`.
+- **SHM vs raw data path parity**: SharedMemory path homogenizes all numeric types to float32. The raw path (test env) keeps original mixed dtypes. Both paths must select the same features — ensured by `is_numeric_dtype()`.
+- **Polars index round-trip**: The FeatureEngineer normalizes the index column to `__date_idx` before Polars conversion and restores it after. This handles any index name ('Date', 'Datetime', None, etc.).
 
 ## Coding Guidelines
 

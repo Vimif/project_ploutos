@@ -35,6 +35,7 @@ from core.transaction_costs import AdvancedTransactionModel
 
 try:
     from core.shared_memory_manager import load_shared_data
+
     SHARED_MEMORY_AVAILABLE = True
 except ImportError:
     SHARED_MEMORY_AVAILABLE = False
@@ -109,7 +110,7 @@ class TradingEnv(gym.Env):
             if isinstance(first_val, dict) and "shm_name" in first_val:
                 print("⚡ V9: Loading environment data from Shared Memory...")
                 self.data = load_shared_data(data)
-                self.features_precomputed = True # Force precomputed (SHM is read-only usually)
+                self.features_precomputed = True  # Force precomputed (SHM is read-only usually)
             else:
                 self.data = data
         else:
@@ -284,11 +285,14 @@ class TradingEnv(gym.Env):
         all_feature_cols = [
             col
             for col in ref_df.columns
-            if col not in exclude_cols and ref_df[col].dtype in (np.float64, np.float32, np.int64)
+            if col not in exclude_cols and pd.api.types.is_numeric_dtype(ref_df[col])
         ]
 
         # Feature selection by variance (reduces dimensionality)
-        if self.max_features_per_ticker > 0 and len(all_feature_cols) > self.max_features_per_ticker:
+        if (
+            self.max_features_per_ticker > 0
+            and len(all_feature_cols) > self.max_features_per_ticker
+        ):
             ref_df = self.processed_data[self.tickers[0]]
             variances = ref_df[all_feature_cols].var().fillna(0)
             top_features = variances.nlargest(self.max_features_per_ticker).index.tolist()
@@ -320,7 +324,10 @@ class TradingEnv(gym.Env):
 
         for ticker in self.tickers:
             df = self.processed_data[ticker]
-            self.feature_arrays[ticker] = df[self.feature_columns].values.astype(np.float32)
+            feature_data = pd.to_numeric(
+                df[self.feature_columns].values.flatten(), errors="coerce"
+            ).reshape(len(df), len(self.feature_columns))
+            self.feature_arrays[ticker] = np.nan_to_num(feature_data, nan=0.0).astype(np.float32)
             self.close_prices[ticker] = df["Close"].values.astype(np.float32)
             if "Volume" in df.columns:
                 self.volume_arrays[ticker] = df["Volume"].values.astype(np.float64)

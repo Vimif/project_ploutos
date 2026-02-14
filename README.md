@@ -1,4 +1,4 @@
-# Ploutos Trading V9 (Polars + Shared Memory)
+# Ploutos Trading V9.1 (Polars + Shared Memory + Component Architecture)
 
 Un projet personnel de trading algorithmique utilisant le Reinforcement Learning. L'idée : entraîner un agent à trader de manière autonome sur les marchés financiers.
 
@@ -115,12 +115,18 @@ project_ploutos/
 ├── config/             # Configuration
 │   ├── hardware.py          # Auto-détection GPU/CPU/RAM + scaling
 │   └── config.yaml          # Config training standard
-├── core/               # Code principal V9
-│   ├── environment.py       # Environnement V9 (Unified + SharedMem)
+├── core/               # Code principal V9.1
+│   ├── environment.py       # Environnement V9 (orchestrateur)
+│   ├── env_config.py        # EnvConfig dataclass
+│   ├── observation_builder.py # Construction observations
+│   ├── reward_calculator.py # DSR + Welford online variance
+│   ├── constants.py         # Constantes centralisees
+│   ├── exceptions.py        # Exceptions custom
 │   ├── features.py          # Moteur Polars (x100 speed)
+│   ├── transaction_costs.py # Slippage/spread/commission
+│   ├── ensemble.py          # Multi-model voting
 │   ├── shared_memory_manager.py # Gestionnaire Shared Memory
-│   ├── data_fetcher.py      # Récupération des données
-│   └── risk_manager.py      # Gestion du risque
+│   └── data_fetcher.py      # Yahoo Finance / Alpaca
 ├── trading/            # Intégrations broker (eToro, Alpaca)
 ├── training/           # Module d'entraînement
 │   └── train.py             # Script Walk-Forward V9
@@ -185,12 +191,19 @@ wandb:
 - [x] Protection contre le Data Leakage (Embargo)
 - [x] Tests de Robustesse (Monte Carlo + PSR/DSR)
 
-**Prochaines Étapes :**
-- [ ] Tests Unitaires & CI/CD (Pytest 100% coverage)
-- [ ] Détection des régimes de marché (HMM/Clustering)
+**V9.1 (Fevrier 2026) :**
+- [x] 116 Tests Unitaires & CI/CD (pytest + black + ruff + mypy)
+- [x] Refactoring : EnvConfig, RewardCalculator, ObservationBuilder, constants, exceptions
+- [x] Fix look-ahead bias (features par fold)
+- [x] Fix production Timestamp crash (dtype filter, Polars index round-trip)
+- [x] Observation space reduction (max_features_per_ticker)
+- [x] DSR stabilise avec Welford
+
+**Prochaines Etapes :**
+- [ ] Detection des regimes de marche (HMM/Clustering)
+- [ ] Architecture Transformer
 
 **Futur :**
-- [ ] Architecture Transformer
 - [ ] Meta-learning (MAML)
 
 ---
@@ -201,4 +214,4 @@ MIT
 
 ---
 
-*Dernière mise à jour : Février 2026 (V9)*
+*Derniere mise a jour : Fevrier 2026 (V9.1)*

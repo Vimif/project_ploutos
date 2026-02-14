@@ -46,8 +46,8 @@ C'est ici que se joue 80% de la performance future.
         - ...
         - Train 2010-2023 -> Test 2024
     - *Resultat* : Une courbe de performance realiste qui simule le trading reel annee apres annee.
-- [ ] **7. Hyperparameter Tuning (Optuna)**
-    - Utiliser un script d'optimisation (Optuna) pour trouver le meilleur `learning_rate`, `batch_size`, `gamma` automatiquement. C'est souvent +20% de performance gratuite.
+- [x] **7. Hyperparameter Tuning (Optuna)**
+    - Script `scripts/optimize_hyperparams.py` opérationnel avec Optuna + `--auto-scale`.
 
 ## Phase 4 : Robustesse & Validation (Le Crash Test)
 
@@ -71,21 +71,26 @@ C'est ici que se joue 80% de la performance future.
 
 L'objectif de la V9 est de passer à l'échelle (Scale) et d'ajouter une couche d'intelligence de marché avancée.
 
-- [ ] **12. Architecture Scalable (Performance)**
-    - **Shared Memory (Zero-Copy)** : Optimisation critique pour réduire la RAM de 100Go à 5Go lors du training massif.
-    - **Polars Data Engine** : Remplacer Pandas par Polars pour un feature engineering 50x plus rapide.
+- [x] **12. Architecture Scalable (Performance)**
+    - **Shared Memory (Zero-Copy)** : `core/shared_memory_manager.py` réduit la RAM de 100Go à 5Go.
+    - **Polars Data Engine** : `core/features.py` utilise Polars pour un feature engineering x100.
 - [ ] **13. Intelligence de Marché (Alpha)**
     - **Détection de Régime (HMM)** : Classifier le marché (Bull/Bear/Volatile) et adapter la stratégie.
     - **Transformer Architecture** : Tester une architecture basée sur l'Attention (Decision Transformer).
-- [ ] **14. Qualité Logicielle (CI/CD)**
-    - **Tests Unitaires** : Couverture > 80% sur le Core.
-    - **Hydra Config** : Gestion modulaire des configurations.
+- [x] **14. Qualité Logicielle (CI/CD)**
+    - **Tests Unitaires** : 116 tests couvrant env, reward, config, transaction costs, ensemble, features.
+    - **CI/CD** : GitHub Actions avec pytest + black + ruff + mypy (matrice Python 3.10/3.11).
+    - **Config Validation** : `config/schema.py` valide types, ranges et contraintes croisées.
 
 ---
 
-## Todo List Immédiate (V8 -> V9)
+## Todo List (V9.1 -> V10)
 
-1. [ ] Mettre en place `pytest` et les premiers tests unitaires.
-2. [ ] Implémenter le `SharedMemoryLoader` pour réduire la consommation RAM.
+1. [x] ~~Mettre en place `pytest` et les premiers tests unitaires~~ — 116 tests, CI/CD actif.
+2. [x] ~~Implémenter le `SharedMemoryLoader`~~ — `core/shared_memory_manager.py` opérationnel.
 3. [ ] Migrer `hardware.py` vers Hydra ou une classe de config plus robuste.
-4. [ ] Refondre le `FeatureEngineer` avec Polars.
+4. [x] ~~Refondre le `FeatureEngineer` avec Polars~~ — `core/features.py` (x100 perf).
+5. [x] Refactoring V9 : EnvConfig dataclass, RewardCalculator, ObservationBuilder, constants, exceptions.
+6. [x] Fix production bugs : dtype filter, Polars index round-trip, SHM/raw path parity.
+7. [ ] Détection de régime de marché (HMM/Clustering).
+8. [ ] Architecture Transformer (Decision Transformer).
