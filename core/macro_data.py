@@ -194,8 +194,26 @@ class MacroDataFetcher:
         if macro_df.empty:
             return pd.DataFrame(index=ticker_df.index)
 
-        # Réindexer sur l'index du ticker, forward-fill
+        # 1. Aligner les Timezones
+        ticker_tz = getattr(ticker_df.index, 'tz', None)
+        macro_tz = getattr(macro_df.index, 'tz', None)
+
+        # Copie pour ne pas modifier l'original
+        macro_df = macro_df.copy()
+
+        if ticker_tz is not None and macro_tz is None:
+            # Ticker est UTC (aware), Macro est naïf -> Localize UTC
+            macro_df.index = macro_df.index.tz_localize('UTC')
+        elif ticker_tz is None and macro_tz is not None:
+            # Ticker est naïf, Macro est UTC -> Remove TZ
+            macro_df.index = macro_df.index.tz_localize(None)
+        
+        # 2. Réindexer sur l'index du ticker, forward-fill
+        # Utiliser reindex avec la méthode 'ffill' (pad) pour propager la dernière valeur connue
+        # limit=None pour propager indéfiniment (la macro change peu)
         aligned = macro_df.reindex(ticker_df.index, method='ffill')
+        
+        # Remplir les nan initiaux (backfill) et finaux (0)
         aligned = aligned.bfill().fillna(0)
 
         return aligned
