@@ -68,6 +68,7 @@ def generate_walk_forward_splits(
     train_years: int = 5,
     test_months: int = 12,
     step_months: int = 12,
+    embargo_months: int = 1, # Anti-Leak Embargo (buffer pour les indicateurs)
 ) -> List[Dict]:
     """Génère les fenêtres walk-forward.
 
@@ -76,6 +77,7 @@ def generate_walk_forward_splits(
         train_years: Nombre minimum d'années d'entraînement.
         test_months: Durée de la fenêtre de test en mois.
         step_months: Pas entre chaque fenêtre (en mois).
+        embargo_months: Mois à sauter entre train et test (Data Leakage protection).
 
     Returns:
         Liste de dicts avec 'train' et 'test' (chacun Dict[str, DataFrame]).
@@ -90,7 +92,9 @@ def generate_walk_forward_splits(
     train_end = start_date + pd.DateOffset(years=train_years)
 
     while True:
-        test_end = train_end + pd.DateOffset(months=test_months)
+        # Période d'Embargo (zone tampon)
+        test_start = train_end + pd.DateOffset(months=embargo_months)
+        test_end = test_start + pd.DateOffset(months=test_months)
 
         if test_end > end_date:
             break
@@ -100,7 +104,7 @@ def generate_walk_forward_splits(
 
         for ticker, df in data.items():
             train_mask = (df.index >= start_date) & (df.index < train_end)
-            test_mask = (df.index >= train_end) & (df.index < test_end)
+            test_mask = (df.index >= test_start) & (df.index < test_end) # Start APRES l'embargo
 
             train_slice = df.loc[train_mask]
             test_slice = df.loc[test_mask]
@@ -117,18 +121,19 @@ def generate_walk_forward_splits(
                 'test': test_data,
                 'train_start': str(start_date.date()),
                 'train_end': str(train_end.date()),
-                'test_start': str(train_end.date()),
+                'test_start': str(test_start.date()),
                 'test_end': str(test_end.date()),
             })
             logger.info(
                 f"  Split {len(splits)}: "
                 f"Train {start_date.date()}->{train_end.date()} "
-                f"| Test {train_end.date()}->{test_end.date()}"
+                f"| Embargo ({embargo_months}m) "
+                f"| Test {test_start.date()}->{test_end.date()}"
             )
 
         train_end += pd.DateOffset(months=step_months)
 
-    logger.info(f"Total: {len(splits)} walk-forward splits")
+    logger.info(f"Total: {len(splits)} walk-forward splits with {embargo_months}m embargo")
     return splits
 
 

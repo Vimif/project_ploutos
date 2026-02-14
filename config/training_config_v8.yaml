@@ -9,7 +9,7 @@ training:
   n_epochs: 30
   learning_rate: 0.0001
   gamma: 0.99
-  gae_lambda: 0.95
+  gae_lambda: 0.98
   clip_range: 0.2
   ent_coef: 0.01
 
@@ -29,8 +29,8 @@ environment:
   reward_scaling: 1.5
   use_sharpe_penalty: true
   use_drawdown_penalty: true
-  reward_trade_success: 0.5
-  penalty_overtrading: 0.005
+  reward_trade_success: 0.2
+  penalty_overtrading: 0.01
   drawdown_penalty_factor: 3.0
 
 data:
