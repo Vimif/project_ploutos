@@ -55,26 +55,26 @@ Le flag `--auto-scale` détecte automatiquement le GPU, CPU et RAM du pod et aju
 
 ```bash
 # Training + tests de robustesse en une commande
-python scripts/run_pipeline.py --config config/training_config_v8.yaml --auto-scale --ensemble 3
+python scripts/run_pipeline.py --config config/config.yaml --auto-scale --ensemble 3
 ```
 
 ### B. Commandes individuelles
 
 ```bash
 # PPO standard
-python training/train_walk_forward.py --config config/training_config_v8.yaml --auto-scale
+python training/train.py --config config/config.yaml --auto-scale
 
 # RecurrentPPO (LSTM)
-python training/train_walk_forward.py --config config/training_config_v8.yaml --recurrent --auto-scale
+python training/train.py --config config/config.yaml --recurrent --auto-scale
 
 # Ensemble de 3 modèles
-python training/train_walk_forward.py --config config/training_config_v8.yaml --ensemble 3 --auto-scale
+python training/train.py --config config/config.yaml --ensemble 3 --auto-scale
 ```
 
 ### C. Optimisation Hyperparamètres (Optuna)
 ```bash
 # Auto-détecte le nombre de jobs parallèles et envs par trial
-python scripts/optimize_hyperparams.py --config config/training_config_v8.yaml --n-trials 50 --auto-scale
+python scripts/optimize_hyperparams.py --config config/config.yaml --n-trials 50 --auto-scale
 ```
 
 ### D. Tests de Robustesse

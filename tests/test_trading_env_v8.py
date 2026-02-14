@@ -1,4 +1,4 @@
-"""Tests unitaires pour UniversalTradingEnvV8LSTM."""
+"""Tests unitaires pour TradingEnv."""
 
 import sys
 from unittest.mock import MagicMock
@@ -9,8 +9,8 @@ sys.modules.setdefault("torch", MagicMock())
 import pytest
 import numpy as np
 import pandas as pd
-from core.universal_environment_v8_lstm import (
-    UniversalTradingEnvV8LSTM,
+from core.environment import (
+    TradingEnv,
     VALID_MODES,
 )
 
@@ -85,22 +85,22 @@ def macro_data():
 
 @pytest.fixture
 def train_env(market_data):
-    return UniversalTradingEnvV8LSTM(market_data, mode="train", seed=42)
+    return TradingEnv(market_data, mode="train", seed=42)
 
 
 @pytest.fixture
 def eval_env(market_data):
-    return UniversalTradingEnvV8LSTM(market_data, mode="eval", seed=42)
+    return TradingEnv(market_data, mode="eval", seed=42)
 
 
 @pytest.fixture
 def backtest_env(market_data):
-    return UniversalTradingEnvV8LSTM(market_data, mode="backtest", seed=42)
+    return TradingEnv(market_data, mode="backtest", seed=42)
 
 
 @pytest.fixture
 def env_with_macro(market_data, macro_data):
-    return UniversalTradingEnvV8LSTM(market_data, macro_data=macro_data, mode="train", seed=42)
+    return TradingEnv(market_data, macro_data=macro_data, mode="train", seed=42)
 
 
 # ============================================================================
@@ -111,17 +111,17 @@ def env_with_macro(market_data, macro_data):
 class TestEnvModes:
     def test_valid_modes(self, market_data):
         for mode in VALID_MODES:
-            env = UniversalTradingEnvV8LSTM(market_data, mode=mode)
+            env = TradingEnv(market_data, mode=mode)
             assert env.mode == mode
 
     def test_invalid_mode(self, market_data):
         with pytest.raises(ValueError, match="mode doit être"):
-            UniversalTradingEnvV8LSTM(market_data, mode="invalid")
+            TradingEnv(market_data, mode="invalid")
 
     def test_train_mode_random_start(self, market_data):
         starts = set()
         for seed_val in range(20):
-            env = UniversalTradingEnvV8LSTM(market_data, mode="train", seed=seed_val)
+            env = TradingEnv(market_data, mode="train", seed=seed_val)
             env.reset()
             starts.add(env.current_step)
         assert len(starts) > 3, f"Trop peu de starts différents: {starts}"
@@ -193,8 +193,8 @@ class TestMacroData:
         assert env_with_macro.macro_array is not None
 
     def test_obs_size_differs_with_macro(self, market_data, macro_data):
-        env_no_macro = UniversalTradingEnvV8LSTM(market_data, mode="train", seed=42)
-        env_macro = UniversalTradingEnvV8LSTM(
+        env_no_macro = TradingEnv(market_data, mode="train", seed=42)
+        env_macro = TradingEnv(
             market_data, macro_data=macro_data, mode="train", seed=42
         )
         assert env_macro.observation_space.shape[0] > env_no_macro.observation_space.shape[0]
@@ -207,21 +207,21 @@ class TestMacroData:
 
 class TestFeaturesPrecomputed:
     def test_precomputed_flag_stored(self, market_data):
-        env = UniversalTradingEnvV8LSTM(market_data, mode="train", features_precomputed=True)
+        env = TradingEnv(market_data, mode="train", features_precomputed=True)
         assert env.features_precomputed is True
 
     def test_precomputed_vs_computed_same_columns(self, market_data):
-        from core.advanced_features_v2 import AdvancedFeaturesV2
+        from core.features import FeatureEngineer
 
-        fe = AdvancedFeaturesV2()
+        fe = FeatureEngineer()
         precomputed_data = {
             ticker: fe.calculate_all_features(df.copy()) for ticker, df in market_data.items()
         }
 
-        env_raw = UniversalTradingEnvV8LSTM(
+        env_raw = TradingEnv(
             market_data, mode="train", seed=42, features_precomputed=False
         )
-        env_pre = UniversalTradingEnvV8LSTM(
+        env_pre = TradingEnv(
             precomputed_data, mode="train", seed=42, features_precomputed=True
         )
 
@@ -262,8 +262,8 @@ class TestDSR:
 class TestSlippage:
     def test_slippage_consistent_across_modes(self, market_data):
         """After bug fix, train and backtest both use AdvancedTransactionModel."""
-        env_train = UniversalTradingEnvV8LSTM(market_data, mode="train", seed=42)
-        env_back = UniversalTradingEnvV8LSTM(market_data, mode="backtest", seed=42)
+        env_train = TradingEnv(market_data, mode="train", seed=42)
+        env_back = TradingEnv(market_data, mode="backtest", seed=42)
         env_train.reset()
         env_back.reset()
 
@@ -275,7 +275,7 @@ class TestSlippage:
         assert env_back.transaction_model is not None
 
     def test_slippage_none_returns_price(self, market_data):
-        env = UniversalTradingEnvV8LSTM(market_data, mode="train", seed=42, slippage_model="none")
+        env = TradingEnv(market_data, mode="train", seed=42, slippage_model="none")
         env.reset()
         ticker = env.tickers[0]
         price = 150.0
@@ -381,8 +381,8 @@ class TestEpisodeComplete:
 
 class TestReproducibility:
     def test_backtest_deterministic(self, market_data):
-        env1 = UniversalTradingEnvV8LSTM(market_data, mode="backtest", seed=42)
-        env2 = UniversalTradingEnvV8LSTM(market_data, mode="backtest", seed=42)
+        env1 = TradingEnv(market_data, mode="backtest", seed=42)
+        env2 = TradingEnv(market_data, mode="backtest", seed=42)
 
         obs1, _ = env1.reset()
         obs2, _ = env2.reset()

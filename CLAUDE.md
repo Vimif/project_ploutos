@@ -19,21 +19,21 @@ black --check .                  # check formatting (line-length=100)
 ruff check .                     # lint
 
 # Full pipeline (training + robustness, auto-scales to hardware)
-python scripts/run_pipeline.py --config config/training_config_v8.yaml --auto-scale --ensemble 3
+python scripts/run_pipeline.py --config config/config.yaml --auto-scale --ensemble 3
 
 # Training (V8 walk-forward)
-python training/train_walk_forward.py --config config/training_config_v8.yaml --auto-scale
-python training/train_walk_forward.py --config config/training_config_v8.yaml --recurrent --auto-scale
-python training/train_walk_forward.py --config config/training_config_v8.yaml --ensemble 3 --auto-scale
+python training/train.py --config config/config.yaml --auto-scale
+python training/train.py --config config/config.yaml --recurrent --auto-scale
+python training/train.py --config config/config.yaml --ensemble 3 --auto-scale
 
 # Hyperparameter optimization
-python scripts/optimize_hyperparams.py --config config/training_config_v8.yaml --n-trials 50 --auto-scale
+python scripts/optimize_hyperparams.py --config config/config.yaml --n-trials 50 --auto-scale
 
 # Robustness tests (requires trained model, MC parallelized with --auto-scale)
 python scripts/robustness_tests.py --model models/<fold>/model.zip --all --auto-scale
 
 # Paper trading
-python scripts/paper_trade_v7.py
+python scripts/paper_trade.py
 ```
 
 ## Architecture

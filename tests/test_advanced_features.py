@@ -1,9 +1,9 @@
-"""Tests unitaires pour AdvancedFeaturesV2."""
+"""Tests unitaires pour FeatureEngineer."""
 
 import pytest
 import numpy as np
 import pandas as pd
-from core.advanced_features_v2 import AdvancedFeaturesV2
+from core.features import FeatureEngineer
 
 # ============================================================================
 # Fixtures
@@ -37,7 +37,7 @@ def df():
 
 @pytest.fixture
 def fe():
-    return AdvancedFeaturesV2()
+    return FeatureEngineer()
 
 
 @pytest.fixture

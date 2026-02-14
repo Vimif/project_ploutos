@@ -24,7 +24,7 @@ Cependant, cette montée en gamme s'accompagne d'une **Dette Technique modérée
     *   `training/` : Boucle d'apprentissage (RL Loop, Callbacks).
     *   `config/` : Centralisation des hyperparamètres (reproductibilité).
 *   **Pipeline Orchestration** : Le script `run_pipeline.py` agit comme une véritable "usine" logicielle, enchaînant Data -> Train -> Test -> Robustness de manière fluide.
-*   **Abstraction Environnementale** : La classe `UniversalTradingEnvV8LSTM` masque efficacement la complexité financière (Frais, Spread, Slippage, Macro) pour l'agent RL.
+*   **Abstraction Environnementale** : La classe `TradingEnv` masque efficacement la complexité financière (Frais, Spread, Slippage, Macro) pour l'agent RL.
 
 ### ⚠️ Points de Friction (Weaknesses)
 *   **Gestion Mémoire (RAM Scaling)** :

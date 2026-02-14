@@ -6,9 +6,9 @@ Orchestre l'entraînement et la validation en une seule commande.
 Avec --auto-scale, détecte le hardware et optimise les paramètres.
 
 Usage:
-    python scripts/run_pipeline.py --config config/training_config_v8.yaml --auto-scale
-    python scripts/run_pipeline.py --config config/training_config_v8.yaml --auto-scale --ensemble 3
-    python scripts/run_pipeline.py --config config/training_config_v8.yaml --auto-scale --ensemble 3 --mc-sims 500
+    python scripts/run_pipeline.py --config config/config.yaml --auto-scale
+    python scripts/run_pipeline.py --config config/config.yaml --auto-scale --ensemble 3
+    python scripts/run_pipeline.py --config config/config.yaml --auto-scale --ensemble 3 --mc-sims 500
 """
 
 import sys
@@ -27,7 +27,7 @@ logger = setup_logging(__name__, 'pipeline.log')
 
 def main():
     parser = argparse.ArgumentParser(description='Ploutos Full Training Pipeline')
-    parser.add_argument('--config', type=str, default='config/training_config_v8.yaml')
+    parser.add_argument('--config', type=str, default='config/config.yaml')
     parser.add_argument('--recurrent', action='store_true', help='Use RecurrentPPO (LSTM)')
     parser.add_argument('--ensemble', type=int, default=1, help='Ensemble size')
     parser.add_argument('--auto-scale', action='store_true', help='Auto-detect hardware')
@@ -61,7 +61,7 @@ def main():
     logger.info("PHASE 1: WALK-FORWARD TRAINING")
     logger.info("=" * 70)
 
-    from training.train_walk_forward import run_walk_forward
+    from training.train import run_walk_forward
 
     results = run_walk_forward(
         config_path=args.config,

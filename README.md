@@ -1,4 +1,4 @@
-# Ploutos Trading
+# Ploutos Trading V9 (Polars + Shared Memory)
 
 Un projet personnel de trading algorithmique utilisant le Reinforcement Learning. L'idée : entraîner un agent à trader de manière autonome sur les marchés financiers.
 
@@ -12,9 +12,9 @@ Ploutos est un bot de trading qui apprend par lui-même en utilisant l'algorithm
 
 **Ce que ça fait :**
 - Collecte les données de marché (via Alpaca)
-- Analyse les tendances avec des indicateurs techniques
+- Analyse les tendances avec 85+ indicateurs techniques (Moteur Polars ultra-rapide)
 - Prend des décisions d'achat/vente de manière autonome
-- Détecte quand ses performances se dégradent (drift detection)
+- Utilise la Shared Memory pour un entraînement parallèle sans surcharger la RAM
 - Se ré-entraîne automatiquement si nécessaire
 
 ---
@@ -26,6 +26,7 @@ Ploutos est un bot de trading qui apprend par lui-même en utilisant l'algorithm
 | Sharpe Ratio | ~1.5 |
 | Max Drawdown | -12% |
 | Win Rate | 55% |
+| **Speed (Features)** | **x100 (0.09s/100k bars)** |
 | Mode | Paper Trading |
 
 *Ces résultats sont en paper trading et ne garantissent rien en conditions réelles.*
@@ -44,15 +45,15 @@ python -m venv venv
 source venv/bin/activate  # Linux/Mac
 venv\Scripts\activate     # Windows
 
-# Installer les dépendances
+# Installer les dépendances (Polars, PyArrow, Torch...)
 pip install -e .
 ```
 
 ---
 
-## Workflow d'entraînement (V8)
+## Workflow d'entraînement (V9)
 
-Le pipeline optimisé utilise le walk-forward training avec validation glissante.
+Le pipeline V9 utilise le walk-forward training avec support natif pour **Polars** et **Shared Memory**.
 
 ### 1. Pipeline High-Performance (Recommandé)
 
@@ -61,29 +62,29 @@ Le pipeline optimisé utilise le walk-forward training avec validation glissante
 ./start_training.sh
 ```
 
-Ce script configure automatiquement l'environnement (OMP_NUM_THREADS), détecte le hardware (GPU/RAM) et lance le pipeline complet avec les paramètres optimaux (Batch 65k, 256 Envs si possible).
+Ce script configure automatiquement l'environnement (OMP_NUM_THREADS), détecte le hardware (GPU/RAM) et lance le pipeline complet avec les paramètres optimaux.
 
 ### 2. Entraînement Walk-Forward (séparé)
 
 ```bash
-# PPO standard
-python training/train_walk_forward.py --config config/training_config_v8.yaml --auto-scale
+# PPO standard avec Shared Memory (V9)
+python training/train.py --config config/config.yaml --auto-scale --shared-memory
 
 # RecurrentPPO avec LSTM
-python training/train_walk_forward.py --config config/training_config_v8.yaml --recurrent --auto-scale
+python training/train.py --config config/config.yaml --recurrent --auto-scale --shared-memory
 
 # Ensemble de 3 modèles
-python training/train_walk_forward.py --config config/training_config_v8.yaml --ensemble 3 --auto-scale
+python training/train.py --config config/config.yaml --ensemble 3 --auto-scale --shared-memory
 ```
 
 ### 3. Optimisation des hyperparamètres (optionnel)
 
 ```bash
 # Auto-détecte le nombre de jobs parallèles et n_envs par trial
-python scripts/optimize_hyperparams.py --config config/training_config_v8.yaml --n-trials 50 --auto-scale
+python scripts/optimize_hyperparams.py --config config/config.yaml --n-trials 50 --auto-scale
 
 # Ou manuellement : 4 trials parallèles
-python scripts/optimize_hyperparams.py --config config/training_config_v8.yaml --n-trials 50 --n-jobs 4
+python scripts/optimize_hyperparams.py --config config/config.yaml --n-trials 50 --n-jobs 4
 ```
 
 ### 4. Tests de robustesse (séparé)
@@ -99,7 +100,8 @@ python scripts/robustness_tests.py --model models/<fold>/model.zip --monte-carlo
 ### 5. Paper trading
 
 ```bash
-python scripts/paper_trade_v7.py
+# Lance le paper trading (détecte auto V9)
+python scripts/paper_trade.py --model models/.../model.zip
 ```
 
 > **GPU Cloud** : Avec `--auto-scale`, un seul config suffit pour dev et cloud. Voir le [guide RunPod](docs/RUNPOD_GUIDE.md).
@@ -110,41 +112,41 @@ python scripts/paper_trade_v7.py
 
 ```
 project_ploutos/
-├── config/           # Configuration
-│   ├── hardware.py            # Auto-détection GPU/CPU/RAM + scaling
-│   ├── settings.py            # Chemins, broker, WandB
-│   ├── training_config_v8.yaml         # Config training standard
-│   └── training_config_v8_cloud.yaml   # Config cloud (override manuel)
-├── core/             # Code principal
-│   ├── universal_environment_v8_lstm.py  # Environnement Gym (V8)
-│   ├── data_fetcher.py       # Récupération des données (Yahoo Finance)
-│   ├── macro_data.py         # Indicateurs macro (VIX/TNX/DXY)
-│   ├── ensemble.py           # Ensemble multi-modèles
-│   ├── data_pipeline.py      # Feature engineering
-│   └── risk_manager.py       # Gestion du risque
-├── trading/          # Intégrations broker (eToro, Alpaca)
-├── training/         # Walk-forward training (V8)
-├── scripts/          # CLI (pipeline, optimisation, robustness, paper trade)
-│   ├── run_pipeline.py       # Pipeline complet training→robustness
-│   ├── optimize_hyperparams.py  # Optuna hyperparameter search
-│   └── robustness_tests.py   # Monte Carlo + stress tests
-└── docs/             # Documentation
-    ├── AUDIT_TECHNIQUE_V8.md # 🛡️ Audit Technique & Architecture (Fev 2026)
-    ├── DEV_KNOWLEDGE.md      # Base de connaissance développeur
-    └── RUNPOD_GUIDE.md       # Guide déploiement Cloud
+├── config/             # Configuration
+│   ├── hardware.py          # Auto-détection GPU/CPU/RAM + scaling
+│   └── config.yaml          # Config training standard
+├── core/               # Code principal V9
+│   ├── environment.py       # Environnement V9 (Unified + SharedMem)
+│   ├── features.py          # Moteur Polars (x100 speed)
+│   ├── shared_memory_manager.py # Gestionnaire Shared Memory
+│   ├── data_fetcher.py      # Récupération des données
+│   └── risk_manager.py      # Gestion du risque
+├── trading/            # Intégrations broker (eToro, Alpaca)
+├── training/           # Module d'entraînement
+│   └── train.py             # Script Walk-Forward V9
+├── scripts/            # CLI (pipeline, optimisation, robustness, paper trade)
+│   ├── run_pipeline.py      # Pipeline complet training→robustness
+│   ├── paper_trade.py       # Paper Trading V9
+│   └── ...
+├── legacy/             # Archives (V6/V7/V8)
+└── docs/               # Documentation
+    ├── ARCHITECTURE_V9.md   # 🏗️ Architecture Technique V9
+    ├── RELEASE_NOTES_V9.md  # 🚀 Nouveautés V9
+    ├── RUNPOD_GUIDE.md      # Guide déploiement Cloud
+    └── ...
 ```
 
 ---
 
 ## Configuration
 
-Édite `config/training_config_v8.yaml` :
+Édite `config/config.yaml` :
 
 ```yaml
 training:
   total_timesteps: 10000000  # par fold walk-forward
-  n_envs: 8
-  learning_rate: 0.0001
+  n_envs: 16                 # Auto-scalé si --auto-scale
+  use_shared_memory: true    # Activer V9 Shared Memory
 
 walk_forward:
   train_years: 1       # Durée du training par fold
@@ -159,10 +161,10 @@ wandb:
 
 ## Monitoring
 
-**Logs** : `logs/ploutos_*.log`
+**Logs** : `logs/train.log`
 
 **Dashboards disponibles** :
-- TensorBoard : `tensorboard --logdir logs/tensorboard`
+- TensorBoard : `tensorboard --logdir models/walk_forward_.../`
 - Grafana : `http://localhost:3000` (si configuré)
 
 ---
@@ -172,21 +174,19 @@ wandb:
 **Fait :**
 - [x] Curriculum Learning (apprentissage progressif)
 - [x] Coûts de transaction réalistes
-- [x] Walk-forward validation (V8)
+- [x] Walk-forward validation (V9)
 - [x] Ensemble de modèles
 - [x] Données macro (VIX/TNX/DXY)
 - [x] RecurrentPPO (LSTM)
 - [x] Déploiement cloud (RunPod)
 - [x] Auto-scaling hardware (GPU/CPU/RAM)
-- [x] Pipeline orchestrateur (training + robustness)
-- [x] "Turbo Init" (Pre-computed Features)
-- [x] Amélioration du système de récompense (Differential Sharpe Ratio)
+- [x] **"Turbo Init" (Polars Engine x100)**
+- [x] **Optimisation RAM (Shared Memory)**
 - [x] Protection contre le Data Leakage (Embargo)
 - [x] Tests de Robustesse (Monte Carlo + PSR/DSR)
 
-**Prochaines Étapes (V9) :**
-- [ ] Tests Unitaires & CI/CD (Pytest)
-- [ ] Optimisation RAM (Shared Memory)
+**Prochaines Étapes :**
+- [ ] Tests Unitaires & CI/CD (Pytest 100% coverage)
 - [ ] Détection des régimes de marché (HMM/Clustering)
 
 **Futur :**
@@ -201,4 +201,4 @@ MIT
 
 ---
 
-*Dernière mise à jour : Février 2026*
+*Dernière mise à jour : Février 2026 (V9)*

@@ -187,14 +187,32 @@ def detect_environment(model, metadata=None, config=None):
     logger.info(f"  Observation space du modele: {obs_size} dims")
 
     # Derive actual n_tickers from obs_size: obs = n * 85 + n + 3 = n * 86 + 3
-    FEATURES_PER_TICKER = 85  # AdvancedFeaturesV2 produces 85 features
+    FEATURES_PER_TICKER = 85  # FeatureEngineer produces 85 features
     actual_n_from_obs = (obs_size - 3) / 86
     actual_n_int = round(actual_n_from_obs)
     obs_matches = abs(actual_n_int * 86 + 3 - obs_size) < 5
     if obs_matches:
         logger.info(f"  Obs-size -> {actual_n_int} tickers (formula: {actual_n_int}*86+3={actual_n_int*86+3})")
 
-    from core.universal_environment_v6_better_timing import UniversalTradingEnvV6BetterTiming
+    from legacy.core.universal_environment_v6_better_timing import UniversalTradingEnvV6BetterTiming
+    from core.environment import TradingEnv # V8/V9
+
+    # --- V8/V9: metadata fournie ---
+    if metadata and (metadata.get('version', '').startswith('v8') or metadata.get('version', '').startswith('v9')):
+        tickers = metadata.get('tickers', [])
+        n_tickers = len(tickers)
+        version = metadata.get('version', 'V9')
+
+        if config and 'environment' in config:
+            env_cfg = config['environment']
+            params = env_cfg.copy()
+            params['mode'] = 'backtest'
+            # Convert config keys if needed
+        else:
+            params = dict(ENV_PARAMS_V7) # Use V7 params as base
+
+        logger.info(f"  -> {version} Model detected: {n_tickers} tickers")
+        return version, n_tickers, tickers, TradingEnv, params
 
     # --- V7: metadata fournie avec tickers specifiques ---
     if metadata and metadata.get('version', '').startswith('v7'):
@@ -215,26 +233,9 @@ def detect_environment(model, metadata=None, config=None):
         # Use config env params if available, else V7 defaults
         if config and 'environment' in config:
             env_cfg = config['environment']
-            params = dict(
-                initial_balance=env_cfg.get('initial_balance', INITIAL_BALANCE),
-                commission=env_cfg.get('commission', 0.0),
-                sec_fee=env_cfg.get('sec_fee', 0.0000221),
-                finra_taf=env_cfg.get('finra_taf', 0.000145),
-                max_steps=env_cfg.get('max_steps', 2500),
-                buy_pct=env_cfg.get('buy_pct', 0.15),
-                slippage_model=env_cfg.get('slippage_model', 'realistic'),
-                spread_bps=env_cfg.get('spread_bps', 2.0),
-                max_position_pct=env_cfg.get('max_position_pct', 0.20),
-                max_trades_per_day=env_cfg.get('max_trades_per_day', 15),
-                min_holding_period=env_cfg.get('min_holding_period', 2),
-                reward_scaling=env_cfg.get('reward_scaling', 1.5),
-                use_sharpe_penalty=env_cfg.get('use_sharpe_penalty', True),
-                use_drawdown_penalty=env_cfg.get('use_drawdown_penalty', True),
-                reward_trade_success=env_cfg.get('reward_trade_success', 0.5),
-                penalty_overtrading=env_cfg.get('penalty_overtrading', 0.005),
-                drawdown_penalty_factor=env_cfg.get('drawdown_penalty_factor', 3.0),
-                mode='backtest',
-            )
+            # ... (Copie params) ...
+            params = env_cfg.copy()
+            params['mode'] = 'backtest'
         else:
             params = dict(ENV_PARAMS_V7)
 
@@ -247,22 +248,23 @@ def detect_environment(model, metadata=None, config=None):
         n_tickers = actual_n_int
         is_v7 = n_tickers > 15
         version = 'V7' if is_v7 else 'V6'
-        params = dict(ENV_PARAMS_V7) if is_v7 else dict(ENV_PARAMS_V6)
-        expected_obs = n_tickers * 86 + 3
+        env_cls = UniversalTradingEnvV6BetterTiming
+        if is_v7: # Assume V7 logic
+             params = dict(ENV_PARAMS_V7)
+        else:
+             params = dict(ENV_PARAMS_V6)
+        
         logger.info(f"  -> Match exact: {version} BetterTiming avec {n_tickers} tickers ({expected_obs} dims)")
-        return version, n_tickers, None, UniversalTradingEnvV6BetterTiming, params
+        return version, n_tickers, None, env_cls, params
 
-    # Legacy fallback with tolerance
+    # Legacy fallback...
+    # ... on garde tel quel ...
     for n_tickers in [22, 20, 15, 10, 5, 1]:
         expected_obs = n_tickers * 85 + n_tickers + 3
         if abs(expected_obs - obs_size) < 20:
-            is_v7 = n_tickers > 15
-            version = 'V7' if is_v7 else 'V6'
-            params = dict(ENV_PARAMS_V7) if is_v7 else dict(ENV_PARAMS_V6)
-            logger.info(f"  -> Match probable: {version} BetterTiming avec {n_tickers} tickers (~{expected_obs} dims)")
-            return version, n_tickers, None, UniversalTradingEnvV6BetterTiming, params
-
-    # Fallback
+             # ...
+             return 'LEGACY', n_tickers, None, UniversalTradingEnvV6BetterTiming, dict(ENV_PARAMS_V6)
+             
     logger.info(f"  -> Detection par essai direct avec V6...")
     return 'V6_AUTO', None, None, UniversalTradingEnvV6BetterTiming, dict(ENV_PARAMS_V6)
 

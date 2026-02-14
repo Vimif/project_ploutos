@@ -9,7 +9,7 @@ Souvent +20% de performance gratuite par rapport à des valeurs manuelles.
 
 Usage:
     pip install optuna
-    python scripts/optimize_hyperparams.py --config config/training_config_v8.yaml --n-trials 50
+    python scripts/optimize_hyperparams.py --config config/config.yaml --n-trials 50
 """
 
 import sys
@@ -34,7 +34,7 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
 from stable_baselines3.common.monitor import Monitor
 
-from core.universal_environment_v8_lstm import UniversalTradingEnvV8LSTM
+from core.environment import TradingEnv
 from core.macro_data import MacroDataFetcher
 from core.data_fetcher import download_data
 from core.data_pipeline import DataSplitter
@@ -78,12 +78,13 @@ def create_objective(train_data, val_data, macro_data, base_config):
         env_kwargs['mode'] = 'train'
         env_kwargs['reward_scaling'] = reward_scaling
         env_kwargs['drawdown_penalty_factor'] = drawdown_penalty_factor
+        env_kwargs['features_precomputed'] = True  # Turbo Init (V9)
 
         n_envs = base_config.get('training', {}).get('n_envs', 8)
 
         def make_env():
             def _init():
-                return Monitor(UniversalTradingEnvV8LSTM(
+                return Monitor(TradingEnv(
                     data=train_data, macro_data=macro_data, **env_kwargs
                 ))
             return _init
@@ -138,8 +139,9 @@ def create_objective(train_data, val_data, macro_data, base_config):
         env_kwargs_eval['seed'] = 42
         env_kwargs_eval['reward_scaling'] = reward_scaling
         env_kwargs_eval['drawdown_penalty_factor'] = drawdown_penalty_factor
+        env_kwargs_eval['features_precomputed'] = True
 
-        eval_env = UniversalTradingEnvV8LSTM(
+        eval_env = TradingEnv(
             data=val_data, macro_data=macro_data, **env_kwargs_eval
         )
 
@@ -214,6 +216,14 @@ def optimize(
         interval=config['data'].get('interval', '1h'),
     )
 
+    # 🚀 Turbo Init: Pré-calcul des features (V9 Polars)
+    from core.features import FeatureEngineer
+    logger.info("🚀 Turbo Init: Pre-computing technical features for all tickers...")
+    fe = FeatureEngineer()
+    for ticker, df in data.items():
+        data[ticker] = fe.calculate_all_features(df)
+    logger.info("✅ Features computed.")
+
     # Split train/val (test_ratio minimal car on n'en a pas besoin ici)
     logger.info("Splitting data...")
     splits = DataSplitter.split(data, train_ratio=0.7, val_ratio=0.25, test_ratio=0.05)
@@ -275,7 +285,7 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser(description='Optuna Hyperparameter Optimization')
-    parser.add_argument('--config', type=str, default='config/training_config_v8.yaml')
+    parser.add_argument('--config', type=str, default='config/config.yaml')
     parser.add_argument('--n-trials', type=int, default=50)
     parser.add_argument('--n-jobs', type=int, default=1,
                         help='Parallel trials (ex: 4 trials x 8 envs au lieu de 1 x 32)')

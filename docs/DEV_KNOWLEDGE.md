@@ -87,9 +87,9 @@ Pour saturer la machine et accélérer l'entraînement :
 - **Résultat** : CPU à 100% pendant des minutes, risque de timeout ou crash.
 
 ### Solution : Calcul Unique & Partage
-- **Modification** : `training/train_walk_forward.py` calcule les features **une seule fois** au début (dans le processus principal).
+- **Modification** : `training/train.py` calcule les features **une seule fois** au début (dans le processus principal).
 - **Injection** : Les DataFrames enrichis sont passés aux environnements avec le flag `features_precomputed=True`.
-- **Environnement** : `UniversalTradingEnvV8LSTM` détecte le flag et **saute** le calcul interne.
+- **Environnement** : `TradingEnv` détecte le flag et **saute** le calcul interne.
 - **Gain** : Démarrage quasi-instantané des 256 environnements (juste copie mémoire).
 
 ---
@@ -98,7 +98,7 @@ Pour saturer la machine et accélérer l'entraînement :
 
 ### 🛡️ Embargo (Anti-Leak)
 - **Problème** : Les indicateurs techniques (ex: EMA 200, RSI 14) "regardent en arrière". Si le Test Set commence immédiatement après le Train Set, les premières 200 bougies de Test contiennent de l'information déjà vue par le Train (Data Leakage).
-- **Solution** : `training/train_walk_forward.py` impose un **Embargo** (gap) de 1 mois entre la fin du Train et le début du Test.
+- **Solution** : `training/train.py` impose un **Embargo** (gap) de 1 mois entre la fin du Train et le début du Test.
 - **Impact** : Performance Test légèrement moins bonne MAIS beaucoup plus réaliste.
 
 ### 📈 Differential Sharpe Ratio (DSR)

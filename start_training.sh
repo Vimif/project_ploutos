@@ -19,4 +19,4 @@ echo "   - Walking Forward on 5 years of history"
 echo "   - Ensemble of 10 models"
 
 # 3. Lancer le pipeline
-python3 scripts/run_pipeline.py --config config/training_config_v8.yaml --auto-scale --ensemble 10
+python3 scripts/run_pipeline.py --config config/config.yaml --auto-scale --ensemble 10

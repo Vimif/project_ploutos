@@ -56,7 +56,7 @@ echo "📝 Creating launch helper scripts..."
 cat <<EOT > run_ppo.sh
 #!/bin/bash
 echo "🚀 Launching PPO Walk-Forward..."
-nohup python3 training/train_walk_forward.py --config config/training_config_v8.yaml > logs/train_ppo_wfa.log 2>&1 &
+nohup python3 training/train.py --config config/config.yaml > logs/train_ppo_wfa.log 2>&1 &
 echo "✅ Started in background. Logs: tail -f logs/train_ppo_wfa.log"
 EOT
 chmod +x run_ppo.sh
@@ -65,7 +65,7 @@ chmod +x run_ppo.sh
 cat <<EOT > run_lstm.sh
 #!/bin/bash
 echo "🚀 Launching RecurrentPPO (LSTM) Walk-Forward..."
-nohup python3 training/train_walk_forward.py --config config/training_config_v8.yaml --recurrent > logs/train_lstm_wfa.log 2>&1 &
+nohup python3 training/train.py --config config/config.yaml --recurrent > logs/train_lstm_wfa.log 2>&1 &
 echo "✅ Started in background. Logs: tail -f logs/train_lstm_wfa.log"
 EOT
 chmod +x run_lstm.sh
@@ -74,7 +74,7 @@ chmod +x run_lstm.sh
 cat <<EOT > run_ensemble.sh
 #!/bin/bash
 echo "🚀 Launching Ensemble Walk-Forward (N=3)..."
-nohup python3 training/train_walk_forward.py --config config/training_config_v8.yaml --ensemble 3 > logs/train_ensemble.log 2>&1 &
+nohup python3 training/train.py --config config/config.yaml --ensemble 3 > logs/train_ensemble.log 2>&1 &
 echo "✅ Started in background. Logs: tail -f logs/train_ensemble.log"
 EOT
 chmod +x run_ensemble.sh
@@ -83,7 +83,7 @@ chmod +x run_ensemble.sh
 cat <<EOT > run_optuna.sh
 #!/bin/bash
 echo "🚀 Launching Optuna Hyperparameter Optimization..."
-nohup python3 scripts/optimize_hyperparams.py --config config/training_config_v8.yaml --n-trials 50 > logs/optuna.log 2>&1 &
+nohup python3 scripts/optimize_hyperparams.py --config config/config.yaml --n-trials 50 > logs/optuna.log 2>&1 &
 echo "✅ Started in background. Logs: tail -f logs/optuna.log"
 EOT
 chmod +x run_optuna.sh

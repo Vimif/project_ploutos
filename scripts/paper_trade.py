@@ -18,8 +18,8 @@ Fonctionnalites:
   - Comparaison avec performance OOS attendue
 
 Usage:
-  python scripts/paper_trade_v7.py --model models/v7_sp500/ploutos_v7.zip --mode simulate
-  python scripts/paper_trade_v7.py --model models/v7_sp500/ploutos_v7.zip --mode alpaca \\
+  python scripts/paper_trade.py --model models/v7_sp500/ploutos_v7.zip --mode simulate
+  python scripts/paper_trade.py --model models/v7_sp500/ploutos_v7.zip --mode alpaca \\
       --api-key YOUR_KEY --api-secret YOUR_SECRET
 """
 
@@ -366,10 +366,11 @@ def get_current_prices(data):
 
 def get_model_actions(model, data, tickers, env_class, env_params, model_obs_size, vecnorm_path=None):
     """Fait tourner le modele sur les donnees actuelles et retourne les actions."""
-    from core.universal_environment_v6_better_timing import UniversalTradingEnvV6BetterTiming
+
     from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
     try:
+        # Instanciation dynamique (V7 ou V9 selon detect_environment)
         env = env_class(data=data, **env_params)
 
         if env.observation_space.shape[0] != model_obs_size:

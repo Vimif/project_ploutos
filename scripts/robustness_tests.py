@@ -30,7 +30,7 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import VecNormalize, DummyVecEnv
 from stable_baselines3.common.monitor import Monitor
 
-from core.universal_environment_v8_lstm import UniversalTradingEnvV8LSTM
+from core.environment import TradingEnv
 from core.macro_data import MacroDataFetcher
 from core.data_fetcher import download_data
 from core.data_pipeline import DataSplitter
@@ -162,7 +162,7 @@ def run_backtest(model, data, macro_data, vecnorm_env=None, env_kwargs=None) -> 
     kwargs['mode'] = 'backtest'
     kwargs['seed'] = 42
 
-    env = UniversalTradingEnvV8LSTM(data=data, macro_data=macro_data, **kwargs)
+    env = TradingEnv(data=data, macro_data=macro_data, **kwargs)
     obs, _ = env.reset()
     done = False
     equity_curve = [env.initial_balance]
@@ -384,7 +384,7 @@ def main():
     parser = argparse.ArgumentParser(description='Robustness Tests (Monte Carlo + Stress Test)')
     parser.add_argument('--model', type=str, required=True, help='Path to model .zip')
     parser.add_argument('--vecnorm', type=str, default=None, help='Path to vecnormalize .pkl')
-    parser.add_argument('--config', type=str, default='config/training_config_v8.yaml')
+    parser.add_argument('--config', type=str, default='config/config.yaml')
     parser.add_argument('--monte-carlo', type=int, default=0, help='Number of MC simulations (0=skip)')
     parser.add_argument('--stress-test', action='store_true', help='Run crash stress test')
     parser.add_argument('--all', action='store_true', help='Run all tests')
@@ -442,7 +442,7 @@ def main():
     vecnorm_env = None
     if args.vecnorm and os.path.exists(args.vecnorm):
         dummy_env = DummyVecEnv([
-            lambda: Monitor(UniversalTradingEnvV8LSTM(
+            lambda: Monitor(TradingEnv(
                 data=test_data, macro_data=macro_data, **{**env_kwargs, 'mode': 'backtest'}
             ))
         ])

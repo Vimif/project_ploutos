@@ -1,4 +1,4 @@
-# config/training_config_v8.yaml
+# config/config.yaml
 # Configuration V8 - Macro Data + LSTM + Walk-Forward
 
 training:
@@ -12,6 +12,7 @@ training:
   gae_lambda: 0.98
   clip_range: 0.2
   ent_coef: 0.01
+  use_shared_memory: false # ⚡ V9 Feature: Réduit consommation RAM (Zero-Copy)
 
 environment:
   initial_balance: 100000

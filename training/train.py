@@ -1,6 +1,5 @@
-#!/usr/bin/env python3
-# training/train_walk_forward.py
-"""Walk-Forward Analysis - Gold Standard pour validation temporelle.
+# training/train.py
+"""Walk-Forward Analysis V9 - Gold Standard pour validation temporelle.
 
 Principe:
     Train 2010-2015 -> Test 2016
@@ -13,8 +12,8 @@ suivante (jamais vue). Le résultat est une courbe de performance
 réaliste qui simule le trading réel année après année.
 
 Usage:
-    python training/train_walk_forward.py --config config/training_config_v8.yaml
-    python training/train_walk_forward.py --config config/training_config_v8.yaml --ensemble 3
+    python training/train.py --config config/config.yaml
+    python training/train.py --config config/config.yaml --ensemble 3
 """
 
 import sys
@@ -40,15 +39,16 @@ from stable_baselines3.common.callbacks import (
 )
 from stable_baselines3.common.monitor import Monitor
 
-from core.universal_environment_v8_lstm import UniversalTradingEnvV8LSTM
+from core.environment import TradingEnv
 from core.macro_data import MacroDataFetcher
 from core.data_fetcher import download_data
 from core.utils import setup_logging
 from config.hardware import auto_scale_config, detect_hardware, compute_optimal_params
 from config.schema import validate_config
-from core.advanced_features_v2 import AdvancedFeaturesV2  # Turbo Init
+from core.features import FeatureEngineer  # Turbo Init
+from core.shared_memory_manager import SharedDataManager  # V9 Shared Memory
 
-logger = setup_logging(__name__, "train_walk_forward.log")
+logger = setup_logging(__name__, "train.log")
 
 # Essayer d'importer RecurrentPPO (optionnel)
 try:
@@ -153,7 +153,7 @@ def make_env(data, macro_data, config, mode="train", features_precomputed=False)
         env_kwargs = {k: v for k, v in config.get("environment", {}).items()}
         env_kwargs["mode"] = mode
         env_kwargs["features_precomputed"] = features_precomputed  # Turbo Init
-        env = UniversalTradingEnvV8LSTM(data=data, macro_data=macro_data, **env_kwargs)
+        env = TradingEnv(data=data, macro_data=macro_data, **env_kwargs)
         env = Monitor(env)
         return env
 
@@ -179,136 +179,156 @@ def train_single_fold(
     os.makedirs(fold_dir, exist_ok=True)
 
     n_envs = config.get("training", {}).get("n_envs", 4)
+    use_shared_memory = config.get("training", {}).get("use_shared_memory", False)
+    shm_manager = None
+    
+    # ⚡ V9 Shared Memory: Optimisation RAM
+    if use_shared_memory:
+        try:
+            logger.info(f"  ⚡ V9: Loading TRAIN data into Shared Memory for {n_envs} workers...")
+            shm_manager = SharedDataManager()
+            # On remplace le gros dict de DF par un petit dict de Metadata
+            train_data = shm_manager.put_data(train_data)
+        except Exception as e:
+            logger.error(f"Failed to init Shared Memory: {e}")
+            if shm_manager: shm_manager.cleanup()
+            raise e
 
-    # Environnements d'entraînement
-    if use_recurrent:
-        # RecurrentPPO nécessite DummyVecEnv (pas SubprocVecEnv)
-        envs = DummyVecEnv(
-            [
-                make_env(train_data, macro_data, config, mode="train", features_precomputed=True)
-                for _ in range(n_envs)
-            ]
-        )
-    else:
-        envs = SubprocVecEnv(
-            [
-                make_env(train_data, macro_data, config, mode="train", features_precomputed=True)
-                for _ in range(n_envs)
-            ]
-        )
+    try:
+        # Environnements d'entraînement
+        if use_recurrent:
+            # RecurrentPPO nécessite DummyVecEnv (pas SubprocVecEnv)
+            envs = DummyVecEnv(
+                [
+                    make_env(train_data, macro_data, config, mode="train", features_precomputed=True)
+                    for _ in range(n_envs)
+                ]
+            )
+        else:
+            envs = SubprocVecEnv(
+                [
+                    make_env(train_data, macro_data, config, mode="train", features_precomputed=True)
+                    for _ in range(n_envs)
+                ]
+            )
 
-    envs = VecNormalize(
-        envs,
-        norm_obs=True,
-        norm_reward=True,
-        clip_obs=10.0,
-        clip_reward=10.0,
-        gamma=config.get("training", {}).get("gamma", 0.99),
-    )
-
-    # Architecture réseau
-    net_arch = config.get("network", {}).get("net_arch", [512, 512, 256])
-    activation_name = config.get("network", {}).get("activation_fn", "tanh")
-    activation_fn = torch.nn.Tanh if activation_name == "tanh" else torch.nn.ReLU
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-
-    training_cfg = config.get("training", {})
-    timesteps = training_cfg.get("total_timesteps", 5_000_000)
-
-    # Créer le modèle
-    if use_recurrent and HAS_RECURRENT:
-        policy_kwargs = {
-            "net_arch": net_arch,
-            "activation_fn": activation_fn,
-            "lstm_hidden_size": config.get("network", {}).get("lstm_hidden_size", 256),
-            "n_lstm_layers": config.get("network", {}).get("n_lstm_layers", 1),
-        }
-        model = RecurrentPPO(
-            "MlpLstmPolicy",
+        envs = VecNormalize(
             envs,
-            learning_rate=training_cfg.get("learning_rate", 0.0003),
-            n_steps=training_cfg.get("n_steps", 2048),
-            batch_size=training_cfg.get("batch_size", 128),
-            n_epochs=training_cfg.get("n_epochs", 10),
-            gamma=training_cfg.get("gamma", 0.99),
-            gae_lambda=training_cfg.get("gae_lambda", 0.95),
-            clip_range=training_cfg.get("clip_range", 0.2),
-            ent_coef=training_cfg.get("ent_coef", 0.01),
-            vf_coef=training_cfg.get("vf_coef", 0.5),
-            max_grad_norm=training_cfg.get("max_grad_norm", 0.5),
-            policy_kwargs=policy_kwargs,
-            verbose=0,
-            device=device,
-            seed=seed,
-            tensorboard_log=os.path.join(fold_dir, "tb_logs"),
+            norm_obs=True,
+            norm_reward=True,
+            clip_obs=10.0,
+            clip_reward=10.0,
+            gamma=config.get("training", {}).get("gamma", 0.99),
         )
-        logger.info(f"  Fold {fold_idx}: RecurrentPPO (LSTM) on {device}")
-    else:
-        policy_kwargs = {
-            "net_arch": [{"pi": net_arch, "vf": net_arch}],
-            "activation_fn": activation_fn,
-        }
-        model = PPO(
-            "MlpPolicy",
-            envs,
-            learning_rate=training_cfg.get("learning_rate", 0.0003),
-            n_steps=training_cfg.get("n_steps", 2048),
-            batch_size=training_cfg.get("batch_size", 2048),
-            n_epochs=training_cfg.get("n_epochs", 10),
-            gamma=training_cfg.get("gamma", 0.99),
-            gae_lambda=training_cfg.get("gae_lambda", 0.95),
-            clip_range=training_cfg.get("clip_range", 0.2),
-            ent_coef=training_cfg.get("ent_coef", 0.01),
-            vf_coef=training_cfg.get("vf_coef", 0.5),
-            max_grad_norm=training_cfg.get("max_grad_norm", 0.5),
-            target_kl=training_cfg.get("target_kl", 0.02),
-            policy_kwargs=policy_kwargs,
-            verbose=0,
-            device=device,
-            seed=seed,
-            tensorboard_log=os.path.join(fold_dir, "tb_logs"),
+
+        # Architecture réseau
+        net_arch = config.get("network", {}).get("net_arch", [512, 512, 256])
+        activation_name = config.get("network", {}).get("activation_fn", "tanh")
+        activation_fn = torch.nn.Tanh if activation_name == "tanh" else torch.nn.ReLU
+
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        training_cfg = config.get("training", {})
+        timesteps = training_cfg.get("total_timesteps", 5_000_000)
+
+        # Créer le modèle
+        if use_recurrent and HAS_RECURRENT:
+            policy_kwargs = {
+                "net_arch": net_arch,
+                "activation_fn": activation_fn,
+                "lstm_hidden_size": config.get("network", {}).get("lstm_hidden_size", 256),
+                "n_lstm_layers": config.get("network", {}).get("n_lstm_layers", 1),
+            }
+            model = RecurrentPPO(
+                "MlpLstmPolicy",
+                envs,
+                learning_rate=training_cfg.get("learning_rate", 0.0003),
+                n_steps=training_cfg.get("n_steps", 2048),
+                batch_size=training_cfg.get("batch_size", 128),
+                n_epochs=training_cfg.get("n_epochs", 10),
+                gamma=training_cfg.get("gamma", 0.99),
+                gae_lambda=training_cfg.get("gae_lambda", 0.95),
+                clip_range=training_cfg.get("clip_range", 0.2),
+                ent_coef=training_cfg.get("ent_coef", 0.01),
+                vf_coef=training_cfg.get("vf_coef", 0.5),
+                max_grad_norm=training_cfg.get("max_grad_norm", 0.5),
+                policy_kwargs=policy_kwargs,
+                verbose=0,
+                device=device,
+                seed=seed,
+                tensorboard_log=os.path.join(fold_dir, "tb_logs"),
+            )
+            logger.info(f"  Fold {fold_idx}: RecurrentPPO (LSTM) on {device}")
+        else:
+            policy_kwargs = {
+                "net_arch": [{"pi": net_arch, "vf": net_arch}],
+                "activation_fn": activation_fn,
+            }
+            model = PPO(
+                "MlpPolicy",
+                envs,
+                learning_rate=training_cfg.get("learning_rate", 0.0003),
+                n_steps=training_cfg.get("n_steps", 2048),
+                batch_size=training_cfg.get("batch_size", 2048),
+                n_epochs=training_cfg.get("n_epochs", 10),
+                gamma=training_cfg.get("gamma", 0.99),
+                gae_lambda=training_cfg.get("gae_lambda", 0.95),
+                clip_range=training_cfg.get("clip_range", 0.2),
+                ent_coef=training_cfg.get("ent_coef", 0.01),
+                vf_coef=training_cfg.get("vf_coef", 0.5),
+                max_grad_norm=training_cfg.get("max_grad_norm", 0.5),
+                target_kl=training_cfg.get("target_kl", 0.02),
+                policy_kwargs=policy_kwargs,
+                verbose=0,
+                device=device,
+                seed=seed,
+                tensorboard_log=os.path.join(fold_dir, "tb_logs"),
+            )
+            logger.info(f"  Fold {fold_idx}: PPO standard on {device}")
+
+        # Callbacks
+        checkpoint_cb = CheckpointCallback(
+            save_freq=max(timesteps // 10, 10000),
+            save_path=os.path.join(fold_dir, "checkpoints"),
+            name_prefix=f"fold_{fold_idx:02d}",
         )
-        logger.info(f"  Fold {fold_idx}: PPO standard on {device}")
 
-    # Callbacks
-    checkpoint_cb = CheckpointCallback(
-        save_freq=max(timesteps // 10, 10000),
-        save_path=os.path.join(fold_dir, "checkpoints"),
-        name_prefix=f"fold_{fold_idx:02d}",
-    )
+        # Entraîner
+        logger.info(f"  Fold {fold_idx}: Training {timesteps:,} timesteps...")
+        model.learn(total_timesteps=timesteps, callback=[checkpoint_cb], progress_bar=True)
 
-    # Entraîner
-    logger.info(f"  Fold {fold_idx}: Training {timesteps:,} timesteps...")
-    model.learn(total_timesteps=timesteps, callback=[checkpoint_cb], progress_bar=True)
+        # Sauvegarder le modèle
+        model_path = os.path.join(fold_dir, "model")
+        model.save(model_path)
+        envs.save(os.path.join(fold_dir, "vecnormalize.pkl"))
 
-    # Sauvegarder le modèle
-    model_path = os.path.join(fold_dir, "model")
-    model.save(model_path)
-    envs.save(os.path.join(fold_dir, "vecnormalize.pkl"))
+        # Évaluer sur le test set (geler les stats de normalisation)
+        logger.info(f"  Fold {fold_idx}: Evaluating on test period...")
+        envs.training = False
+        envs.norm_reward = False
+        metrics = evaluate_on_test(
+            model, envs, test_data, macro_data, config, features_precomputed=True
+        )
 
-    # Évaluer sur le test set (geler les stats de normalisation)
-    logger.info(f"  Fold {fold_idx}: Evaluating on test period...")
-    envs.training = False
-    envs.norm_reward = False
-    metrics = evaluate_on_test(
-        model, envs, test_data, macro_data, config, features_precomputed=True
-    )
+        # Sauvegarder métriques
+        metrics_path = os.path.join(fold_dir, "metrics.json")
+        with open(metrics_path, "w") as f:
+            json.dump(metrics, f, indent=2)
 
-    # Sauvegarder métriques
-    metrics_path = os.path.join(fold_dir, "metrics.json")
-    with open(metrics_path, "w") as f:
-        json.dump(metrics, f, indent=2)
+        envs.close()
 
-    envs.close()
+        logger.info(
+            f"  Fold {fold_idx} results: "
+            f"Return={metrics['total_return']:.2%} | "
+            f"Sharpe={metrics['sharpe_ratio']:.2f} | "
+            f"MaxDD={metrics['max_drawdown']:.2%} | "
+            f"Trades={metrics['total_trades']}"
+        )
 
-    logger.info(
-        f"  Fold {fold_idx} results: "
-        f"Return={metrics['total_return']:.2%} | "
-        f"Sharpe={metrics['sharpe_ratio']:.2f} | "
-        f"MaxDD={metrics['max_drawdown']:.2%} | "
-        f"Trades={metrics['total_trades']}"
-    )
+    finally:
+        if shm_manager:
+            logger.info("  ⚡ V9: Cleaning up Shared Memory resources")
+            shm_manager.cleanup()
 
     return metrics
 
@@ -332,7 +352,7 @@ def evaluate_on_test(
     env_kwargs["seed"] = 42
     env_kwargs["features_precomputed"] = features_precomputed
 
-    test_env = UniversalTradingEnvV8LSTM(data=test_data, macro_data=macro_data, **env_kwargs)
+    test_env = TradingEnv(data=test_data, macro_data=macro_data, **env_kwargs)
 
     obs, info = test_env.reset()
     done = False
@@ -374,15 +394,20 @@ def run_walk_forward(
     use_recurrent: bool = False,
     n_ensemble: int = 1,
     auto_scale: bool = False,
+    use_shared_memory: bool = False,
 ):
     """Pipeline complet Walk-Forward Analysis."""
     logger.info("=" * 70)
-    logger.info("WALK-FORWARD ANALYSIS V8")
+    logger.info("WALK-FORWARD ANALYSIS V9")
     logger.info("=" * 70)
 
     config = load_config(config_path)
     if config is None:
         return
+
+    # Override config with CLI
+    if use_shared_memory:
+        config["training"]["use_shared_memory"] = True
 
     if auto_scale:
         hw = detect_hardware()
@@ -410,7 +435,7 @@ def run_walk_forward(
 
     # 1.5 TURBO INIT: Pré-calculer les features maintenant (1 seule fois)
     logger.info("🚀 Turbo Init: Pre-computing technical features for all tickers...")
-    feature_engineer = AdvancedFeaturesV2()
+    feature_engineer = FeatureEngineer()
 
     # Paralléliser si possible, mais sinon simple boucle
     # (TA-Lib release le GIL, donc Threading pourrait marcher, mais on reste simple)
@@ -568,14 +593,19 @@ def run_walk_forward(
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Walk-Forward Analysis V8")
-    parser.add_argument("--config", type=str, default="config/training_config_v8.yaml")
+    parser = argparse.ArgumentParser(description="Walk-Forward Analysis V9")
+    parser.add_argument("--config", type=str, default="config/config.yaml")
     parser.add_argument("--recurrent", action="store_true", help="Use RecurrentPPO (LSTM)")
     parser.add_argument("--ensemble", type=int, default=1, help="Ensemble size (1=single model)")
     parser.add_argument(
         "--auto-scale",
         action="store_true",
         help="Auto-detect hardware and scale n_envs/batch_size/n_steps",
+    )
+    parser.add_argument(
+        "--shared-memory",
+        action="store_true",
+        help="Use Shared Memory feature (V9) to reduce RAM usage",
     )
 
     args = parser.parse_args()
@@ -585,4 +615,5 @@ if __name__ == "__main__":
         use_recurrent=args.recurrent,
         n_ensemble=args.ensemble,
         auto_scale=args.auto_scale,
+        use_shared_memory=args.shared_memory,
     )

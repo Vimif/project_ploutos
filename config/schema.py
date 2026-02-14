@@ -5,7 +5,7 @@ Détecte les typos et valeurs aberrantes sans dépendance externe.
 
 Usage:
     from config.schema import validate_config
-    config = yaml.safe_load(open('config/training_config_v8.yaml'))
+    config = yaml.safe_load(open('config/config.yaml'))
     validate_config(config)  # Lève ValueError si invalide
 """
 

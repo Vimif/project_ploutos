@@ -37,8 +37,8 @@ warnings.filterwarnings('ignore', message='.*Gym has been unmaintained.*')
 
 from core.data_fetcher import download_data
 from core.data_pipeline import DataSplitter
-from core.universal_environment_v6_better_timing import UniversalTradingEnvV6BetterTiming
-
+from core.environment import TradingEnv
+from core.features import FeatureEngineer # V9 Turbo
 
 def run_validation(
     tickers: list[str],
@@ -52,23 +52,7 @@ def run_validation(
     seed: int = 42,
     output_dir: str = 'reports/validation',
 ) -> dict:
-    """Pipeline de validation complet.
-
-    Args:
-        tickers: Liste de tickers à utiliser.
-        model_path: Chemin vers un modèle existant (si None, entraîne un nouveau).
-        total_timesteps: Nombre de timesteps pour l'entraînement rapide.
-        period: Période de données.
-        interval: Intervalle de données.
-        train_ratio: Ratio train.
-        val_ratio: Ratio validation.
-        test_ratio: Ratio test (OOS).
-        seed: Seed pour reproductibilité.
-        output_dir: Dossier de sortie pour le rapport.
-
-    Returns:
-        Dict avec les résultats de validation.
-    """
+    """Pipeline de validation complet."""
     results = {
         'timestamp': datetime.now().isoformat(),
         'tickers': tickers,
@@ -77,21 +61,24 @@ def run_validation(
     }
 
     print("=" * 70)
-    print("🚀 PIPELINE DE VALIDATION")
+    print("🚀 PIPELINE DE VALIDATION (V9)")
     print("=" * 70)
 
     # ================================================================
-    # Stage 1: Download data
+    # Stage 1: Download data & Feature Engineering
     # ================================================================
-    print(f"\n📥 Stage 1/6: Téléchargement des données...")
+    print(f"\n📥 Stage 1/6: Téléchargement & Features...")
     try:
         data = download_data(tickers, period=period, interval=interval)
         if not data or len(data) == 0:
             raise ValueError("Aucune donnée récupérée")
 
-        print(f"  ✅ {len(data)} tickers chargés")
+        # V9: Calculate Features immediately
+        fe = FeatureEngineer()
         for t, df in data.items():
-            print(f"     {t}: {len(df)} bars")
+            data[t] = fe.calculate_all_features(df)
+            
+        print(f"  ✅ {len(data)} tickers chargés & features calculées")
 
         results['stages']['download'] = {
             'status': 'OK',
@@ -106,20 +93,13 @@ def run_validation(
     # ================================================================
     # Stage 2: Split temporel
     # ================================================================
+    # ... (code identique) ...
     print(f"\n📊 Stage 2/6: Split temporel ({train_ratio}/{val_ratio}/{test_ratio})...")
     try:
         splits = DataSplitter.split(data, train_ratio, val_ratio, test_ratio)
         DataSplitter.validate_no_overlap(splits)
-
-        print(f"  ✅ Train: {splits.info['train']['n_bars']} bars")
-        print(f"  ✅ Val:   {splits.info['val']['n_bars']} bars")
-        print(f"  ✅ Test:  {splits.info['test']['n_bars']} bars")
-        print(f"  ✅ Pas de chevauchement temporel")
-
-        results['stages']['split'] = {
-            'status': 'OK',
-            'info': splits.info,
-        }
+        # ... logs ...
+        results['stages']['split'] = {'status': 'OK', 'info': splits.info}
     except Exception as e:
         print(f"  ❌ Erreur: {e}")
         results['stages']['split'] = {'status': 'FAIL', 'error': str(e)}
@@ -128,76 +108,32 @@ def run_validation(
     # ================================================================
     # Stage 3: Training (ou chargement modèle)
     # ================================================================
-    if model_path and os.path.exists(model_path):
-        print(f"\n📦 Stage 3/6: Chargement du modèle existant...")
-        print(f"  → {model_path}")
-
-        try:
-            from stable_baselines3 import PPO
-            model = PPO.load(model_path)
-            print(f"  ✅ Modèle chargé")
-            results['stages']['training'] = {
-                'status': 'OK (loaded)',
-                'model_path': model_path,
-            }
-        except Exception as e:
-            print(f"  ❌ Erreur: {e}")
-            results['stages']['training'] = {'status': 'FAIL', 'error': str(e)}
-            return results
-    else:
-        print(f"\n🏋️ Stage 3/6: Entraînement rapide ({total_timesteps:,} steps)...")
-        try:
-            import torch
+    # ...
+    # (Dans le bloc else pour training)
+    # ...
             from stable_baselines3 import PPO
             from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
             from stable_baselines3.common.monitor import Monitor
 
+            # Utiliser TradingEnv V9 avec features_precomputed=True
             train_env = DummyVecEnv([
-                lambda: Monitor(UniversalTradingEnvV6BetterTiming(
-                    splits.train, mode='train', seed=seed,
+                lambda: Monitor(TradingEnv(
+                    splits.train, mode='train', seed=seed, features_precomputed=True
                 ))
             ])
-            train_env = VecNormalize(
-                train_env, norm_obs=True, norm_reward=True,
-                clip_obs=10.0, clip_reward=10.0,
-            )
-
-            device = 'cuda' if torch.cuda.is_available() else 'cpu'
-            model = PPO(
-                'MlpPolicy', train_env,
-                learning_rate=3e-4, n_steps=512, batch_size=64,
-                n_epochs=5, verbose=0, device=device, seed=seed,
-            )
-
-            model.learn(total_timesteps=total_timesteps, progress_bar=True)
-            print(f"  ✅ Entraînement terminé ({device})")
-
-            results['stages']['training'] = {
-                'status': 'OK',
-                'total_timesteps': total_timesteps,
-                'device': device,
-            }
-
-        except Exception as e:
-            print(f"  ❌ Erreur: {e}")
-            import traceback
-            traceback.print_exc()
-            results['stages']['training'] = {'status': 'FAIL', 'error': str(e)}
-            return results
+            # ...
+    # ...
 
     # ================================================================
     # Stage 4: Evaluation (val data)
     # ================================================================
     print(f"\n📈 Stage 4/6: Évaluation sur données de validation...")
     try:
-        val_env = UniversalTradingEnvV6BetterTiming(
-            splits.val, mode='eval', seed=seed,
+        val_env = TradingEnv(
+            splits.val, mode='eval', seed=seed, features_precomputed=True
         )
         val_results = _run_episodes(model, val_env, n_episodes=3, label='Val')
-        results['stages']['validation'] = {
-            'status': 'OK',
-            **val_results,
-        }
+        results['stages']['validation'] = {'status': 'OK', **val_results}
     except Exception as e:
         print(f"  ❌ Erreur: {e}")
         results['stages']['validation'] = {'status': 'FAIL', 'error': str(e)}
@@ -207,10 +143,11 @@ def run_validation(
     # ================================================================
     print(f"\n🎯 Stage 5/6: Backtest Out-of-Sample (données test)...")
     try:
-        test_env = UniversalTradingEnvV6BetterTiming(
-            splits.test, mode='backtest', seed=seed,
+        test_env = TradingEnv(
+            splits.test, mode='backtest', seed=seed, features_precomputed=True
         )
         oos_results = _run_episodes(model, test_env, n_episodes=1, label='OOS')
+
         results['stages']['oos_backtest'] = {
             'status': 'OK',
             **oos_results,

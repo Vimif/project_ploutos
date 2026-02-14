@@ -59,19 +59,33 @@ C'est ici que se joue 80% de la performance future.
 
 ## Phase 5 : Production (Le Reel)
 
-- [ ] **10. Paper Trading "Smart Check"**
-    - Script qui tourne 24/7 sur un VPS (serveur).
-    - Verifie les positions toutes les **5-15 minutes** (Stop Loss d'urgence).
-    - Prend des decisions de trend toutes les **1h** (Bougies closes).
+- [x] **10. Paper Trading "Smart Check"**
+    - Script `scripts/paper_trade.py` opérationnel avec kill switch et monitoring local.
 - [ ] **11. Monitoring Temps Reel**
     - Alertes Discord/Telegram a chaque trade.
     - Dashboard Grafana pour suivre le P&L et l'exposition.
 
 ---
 
-## Todo List Immediate (V7 -> V8)
+## Phase 6 : Industrialisation & Intelligence (Ploutos V9)
 
-1. [x] Coder `core/macro_data.py` pour recuperer VIX/TNX.
-2. [x] Creer l'environnement `UniversalTradingEnvV8_LSTM` (compatible memoire).
-3. [x] Mettre en place le script `train_walk_forward.py`.
-4. [x] Tester l'approche "Ensemble" sur le S&P 500 actuel.
+L'objectif de la V9 est de passer à l'échelle (Scale) et d'ajouter une couche d'intelligence de marché avancée.
+
+- [ ] **12. Architecture Scalable (Performance)**
+    - **Shared Memory (Zero-Copy)** : Optimisation critique pour réduire la RAM de 100Go à 5Go lors du training massif.
+    - **Polars Data Engine** : Remplacer Pandas par Polars pour un feature engineering 50x plus rapide.
+- [ ] **13. Intelligence de Marché (Alpha)**
+    - **Détection de Régime (HMM)** : Classifier le marché (Bull/Bear/Volatile) et adapter la stratégie.
+    - **Transformer Architecture** : Tester une architecture basée sur l'Attention (Decision Transformer).
+- [ ] **14. Qualité Logicielle (CI/CD)**
+    - **Tests Unitaires** : Couverture > 80% sur le Core.
+    - **Hydra Config** : Gestion modulaire des configurations.
+
+---
+
+## Todo List Immédiate (V8 -> V9)
+
+1. [ ] Mettre en place `pytest` et les premiers tests unitaires.
+2. [ ] Implémenter le `SharedMemoryLoader` pour réduire la consommation RAM.
+3. [ ] Migrer `hardware.py` vers Hydra ou une classe de config plus robuste.
+4. [ ] Refondre le `FeatureEngineer` avec Polars.
