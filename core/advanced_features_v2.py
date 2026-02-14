@@ -368,14 +368,24 @@ class AdvancedFeaturesV2:
         atr = tr.rolling(period, min_periods=1).mean()
         
         # Directional Movement
-        up_move = high - high.shift(1)
-        down_move = low.shift(1) - low
+        # Convertir en Series pour alignement
+        up_move = pd.Series(up_move, index=df.index).fillna(0)
+        down_move = pd.Series(down_move, index=df.index).fillna(0)
         
-        plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0)
-        minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0)
+        plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0.0)
+        minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0.0)
         
-        df['plus_di'] = 100 * pd.Series(plus_dm).rolling(period, min_periods=1).mean() / (atr + 1e-8)
-        df['minus_di'] = 100 * pd.Series(minus_dm).rolling(period, min_periods=1).mean() / (atr + 1e-8)
+        # Convertir en Series AVANT rolling pour éviter l'erreur
+        plus_dm_s = pd.Series(plus_dm, index=df.index)
+        minus_dm_s = pd.Series(minus_dm, index=df.index)
+        
+        # Calculer DI
+        # Utiliser div pour division sûre
+        df['plus_di'] = 100 * plus_dm_s.rolling(period, min_periods=1).mean()
+        df['plus_di'] = df['plus_di'].div(atr + 1e-8)
+        
+        df['minus_di'] = 100 * minus_dm_s.rolling(period, min_periods=1).mean()
+        df['minus_di'] = df['minus_di'].div(atr + 1e-8)
         
         # ADX
         dx = 100 * abs(df['plus_di'] - df['minus_di']) / (df['plus_di'] + df['minus_di'] + 1e-8)

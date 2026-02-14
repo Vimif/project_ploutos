@@ -50,33 +50,49 @@ pip install -e .
 
 ---
 
-## Comment l'utiliser
+## Workflow d'entraînement (V8)
 
-### Entraîner le modèle
+Le pipeline optimisé utilise le walk-forward training avec validation glissante.
 
-```bash
-# Entraînement standard
-python scripts/train_v4_optimal.py
-
-# Avec une config personnalisée
-python scripts/train_v4_optimal.py --config config/training_config_v6_better_timing.yaml
-```
-
-### Tester un modèle
+### 1. Entraînement Walk-Forward
 
 ```bash
-python scripts/validate.py models/mon_model.zip
+# PPO standard (recommandé pour commencer)
+python training/train_walk_forward.py --config config/training_config_v8.yaml
+
+# RecurrentPPO avec LSTM (capture les dépendances temporelles)
+python training/train_walk_forward.py --config config/training_config_v8.yaml --recurrent
+
+# Ensemble de 3 modèles (plus robuste, recommandé pour production)
+python training/train_walk_forward.py --config config/training_config_v8.yaml --ensemble 3
 ```
 
-### Lancer le monitoring en production
+### 2. Optimisation des hyperparamètres (optionnel)
 
 ```bash
-# Surveiller les performances
-python scripts/monitor_production.py --model models/mon_model.zip
-
-# Avec ré-entraînement automatique si dérive détectée
-python scripts/monitor_production.py --model models/mon_model.zip --auto-retrain
+python scripts/optimize_hyperparams.py --config config/training_config_v8.yaml --n-trials 50
 ```
+
+### 3. Tests de robustesse
+
+```bash
+# Tous les tests
+python scripts/robustness_tests.py --model models/v8/model.zip --all
+
+# Monte Carlo (1000 simulations)
+python scripts/robustness_tests.py --model models/v8/model.zip --monte-carlo 1000
+
+# Stress test (crash de -30%)
+python scripts/robustness_tests.py --model models/v8/model.zip --stress-test --crash-pct -0.30
+```
+
+### 4. Paper trading
+
+```bash
+python scripts/paper_trade_v7.py
+```
+
+> **GPU Cloud** : Pour un entraînement ~10x plus rapide, voir le [guide RunPod](docs/RUNPOD_GUIDE.md).
 
 ---
 
@@ -84,33 +100,39 @@ python scripts/monitor_production.py --model models/mon_model.zip --auto-retrain
 
 ```
 project_ploutos/
-├── config/           # Fichiers de configuration YAML
+├── config/           # Configuration (YAML V8 + dataclasses)
 ├── core/             # Code principal
-│   ├── data_fetcher.py       # Récupération des données
-│   ├── features.py           # Calcul des indicateurs
-│   ├── risk_manager.py       # Gestion du risque
-│   └── universal_environment_v6_better_timing.py  # Environnement Gym
-├── trading/          # Logique de trading live
-├── training/         # Scripts d'entraînement
-├── scripts/          # Points d'entrée CLI
-└── docs/             # Documentation détaillée
+│   ├── universal_environment_v8_lstm.py  # Environnement Gym (V8)
+│   ├── data_fetcher.py       # Récupération des données (Yahoo Finance)
+│   ├── macro_data.py         # Indicateurs macro (VIX/TNX/DXY)
+│   ├── ensemble.py           # Ensemble multi-modèles
+│   ├── data_pipeline.py      # Feature engineering
+│   └── risk_manager.py       # Gestion du risque
+├── trading/          # Intégrations broker (eToro, Alpaca)
+├── training/         # Walk-forward training (V8)
+├── scripts/          # CLI (backtest, optimisation, paper trade)
+└── docs/             # Documentation
 ```
 
 ---
 
 ## Configuration
 
-Édite `config/autonomous_config.yaml` :
+Édite `config/training_config_v8.yaml` :
 
 ```yaml
 training:
-  timesteps: 2000000
+  total_timesteps: 10000000  # par fold walk-forward
   n_envs: 8
-  device: "cuda"  # ou "cpu"
+  learning_rate: 0.0001
 
-monitoring:
-  sensitivity: "medium"  # low, medium, high
-  auto_retrain: false
+walk_forward:
+  train_years: 1       # Durée du training par fold
+  test_months: 6       # Durée du test
+  step_months: 6       # Pas entre chaque fold
+
+wandb:
+  enabled: false       # Activer pour le tracking
 ```
 
 ---
@@ -130,12 +152,14 @@ monitoring:
 **Fait :**
 - [x] Curriculum Learning (apprentissage progressif)
 - [x] Coûts de transaction réalistes
-- [x] Détection de drift du modèle
-- [x] Walk-forward validation
+- [x] Walk-forward validation (V8)
+- [x] Ensemble de modèles
+- [x] Données macro (VIX/TNX/DXY)
+- [x] RecurrentPPO (LSTM)
+- [x] Déploiement cloud (RunPod)
 
 **En cours :**
 - [ ] Détection des régimes de marché
-- [ ] Ensemble de modèles
 - [ ] Amélioration du système de récompense
 
 **Futur :**

@@ -53,6 +53,11 @@ ploutos-backtest = "scripts.backtest_v6:main"
 requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["core*", "training*", "trading*", "config*", "scripts*", "database*", "notifications*", "dashboard*"]
+exclude = ["data*", "logs*", "models*", "runs*", "tests*", ".git*", ".vscode*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]

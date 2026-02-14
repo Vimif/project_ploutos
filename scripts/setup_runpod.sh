@@ -34,10 +34,10 @@ fi
 
 # 4. Install Project Dependencies
 echo "📚 Installing Python dependencies..."
-# Core dependencies
-pip install -r requirements.txt
+# Force ignore installed packages to avoid distutils errors on RunPod images
+pip install -r requirements.txt --ignore-installed blinker
 # Training specific dependencies (stable-baselines3, torch, etc.)
-pip install -r requirements_training.txt
+pip install -r requirements_training.txt --ignore-installed blinker
 # Install package in editable mode
 pip install -e .
 
@@ -92,9 +92,10 @@ chmod +x run_optuna.sh
 echo "✅ Setup Complete!"
 echo ""
 echo "🔥 Ready to train! Use the helper scripts created:"
-echo "   ./run_ppo.sh       - Baseline PPO"
-echo "   ./run_lstm.sh      - Recurrent PPO (LSTM)"
-echo "   ./run_ensemble.sh  - Ensemble (3 models)"
-echo "   ./run_optuna.sh    - Hyperparameter Tuning"
+echo "   ./run_ppo.sh       - Baseline PPO (Single Model)"
+echo "   ./run_lstm.sh      - Recurrent PPO (LSTM Memory)"
+echo "   ./run_ensemble.sh  - Ensemble (3 Models Vote)"
+echo "   ./run_optuna.sh    - Hyperparameter Tuning (50 trials)"
 echo ""
-echo "👉 You can monitor training with: tail -f logs/<log_file>"
+echo "👉 You can monitor training with:"
+echo "   tail -f logs/<log_file>"
