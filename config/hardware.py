@@ -65,15 +65,19 @@ def compute_optimal_params(hw: dict, use_recurrent: bool = False) -> dict:
     if use_recurrent:
         n_envs = min(usable_cores, 32)
     else:
-        n_envs = min(usable_cores, 256)
+        # 256 c'est trop pour 116GB RAM. On limite à 128 max absolu.
+        n_envs = min(usable_cores, 128)
 
-    # Cap par RAM: ~400 MB par process env
-    max_envs_by_ram = max(int((ram_gb - 4) / 0.5), 4)
+    # Cap par RAM: On estime 1.2 GB par process (Data + Python overhead + Buffer)
+    # Avec 116GB -> ~90 envs max
+    ram_per_env = 1.2
+    max_envs_by_ram = max(int((ram_gb - 6) / ram_per_env), 4)
     n_envs = min(n_envs, max_envs_by_ram)
 
     # --- batch_size ---
     if vram_gb >= 20:
-        batch_size = 65536
+        # 65536 est très agressif en VRAM, descendons à 32768 pour la stabilité
+        batch_size = 32768
     elif vram_gb >= 10:
         batch_size = 16384
     elif vram_gb >= 6:
