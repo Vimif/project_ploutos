@@ -85,11 +85,7 @@ class FeatureEngineer:
         # Protect datetime column from fill_null(0) which would corrupt it
         # Optimization: use with_columns with exclude instead of drop/concat
         pdf = pdf.with_columns(
-            pl.all()
-            .exclude("__date_idx")
-            .fill_nan(0)
-            .fill_null(strategy="forward")
-            .fill_null(0)
+            pl.all().exclude("__date_idx").fill_nan(0).fill_null(strategy="forward").fill_null(0)
         )
 
         # Collect at the end
