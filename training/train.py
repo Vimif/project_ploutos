@@ -295,7 +295,16 @@ def train_single_fold(
 
         # Entraîner
         logger.info(f"  Fold {fold_idx}: Training {timesteps:,} timesteps...")
-        model.learn(total_timesteps=timesteps, callback=[checkpoint_cb], progress_bar=True)
+        try:
+            import tqdm  # noqa: F401
+            import rich  # noqa: F401
+
+            _progress_bar = True
+        except ImportError:
+            _progress_bar = False
+        model.learn(
+            total_timesteps=timesteps, callback=[checkpoint_cb], progress_bar=_progress_bar
+        )
 
         # Sauvegarder le modèle
         model_path = os.path.join(fold_dir, "model")
