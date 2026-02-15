@@ -21,32 +21,29 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import os
 import json
-import yaml
-import torch
+import os
+from datetime import datetime
+
 import numpy as np
 import pandas as pd
-from datetime import datetime
-from typing import Dict, List, Optional
-
+import torch
+import yaml
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv, VecNormalize
 from stable_baselines3.common.callbacks import (
     CheckpointCallback,
-    EvalCallback,
-    StopTrainingOnNoModelImprovement,
 )
 from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
 
-from core.environment import TradingEnv
-from core.macro_data import MacroDataFetcher
-from core.data_fetcher import download_data
-from core.utils import setup_logging
-from config.hardware import auto_scale_config, detect_hardware, compute_optimal_params
+from config.hardware import auto_scale_config, compute_optimal_params, detect_hardware
 from config.schema import validate_config
+from core.data_fetcher import download_data
+from core.environment import TradingEnv
 from core.features import FeatureEngineer  # Turbo Init
+from core.macro_data import MacroDataFetcher
 from core.shared_memory_manager import SharedDataManager  # V9 Shared Memory
+from core.utils import setup_logging
 
 logger = setup_logging(__name__, "train.log")
 
@@ -64,7 +61,7 @@ def load_config(config_path: str) -> dict:
     if not os.path.exists(config_path):
         logger.error(f"Config {config_path} non trouvé")
         return None
-    with open(config_path, "r") as f:
+    with open(config_path) as f:
         config = yaml.safe_load(f)
     warnings = validate_config(config)
     for w in warnings:
@@ -73,12 +70,12 @@ def load_config(config_path: str) -> dict:
 
 
 def generate_walk_forward_splits(
-    data: Dict[str, pd.DataFrame],
+    data: dict[str, pd.DataFrame],
     train_years: int = 5,
     test_months: int = 12,
     step_months: int = 12,
     embargo_months: int = 1,  # Anti-Leak Embargo (buffer pour les indicateurs)
-) -> List[Dict]:
+) -> list[dict]:
     """Génère les fenêtres walk-forward.
 
     Args:
@@ -161,9 +158,9 @@ def make_env(data, macro_data, config, mode="train", features_precomputed=False)
 
 
 def train_single_fold(
-    train_data: Dict[str, pd.DataFrame],
-    test_data: Dict[str, pd.DataFrame],
-    macro_data: Optional[pd.DataFrame],
+    train_data: dict[str, pd.DataFrame],
+    test_data: dict[str, pd.DataFrame],
+    macro_data: pd.DataFrame | None,
     config: dict,
     fold_idx: int,
     output_dir: str,
@@ -181,7 +178,7 @@ def train_single_fold(
     n_envs = config.get("training", {}).get("n_envs", 4)
     use_shared_memory = config.get("training", {}).get("use_shared_memory", False)
     shm_manager = None
-    
+
     # ⚡ V9 Shared Memory: Optimisation RAM
     if use_shared_memory:
         try:
@@ -191,7 +188,8 @@ def train_single_fold(
             train_data = shm_manager.put_data(train_data)
         except Exception as e:
             logger.error(f"Failed to init Shared Memory: {e}")
-            if shm_manager: shm_manager.cleanup()
+            if shm_manager:
+                shm_manager.cleanup()
             raise e
 
     try:
@@ -200,14 +198,18 @@ def train_single_fold(
             # RecurrentPPO nécessite DummyVecEnv (pas SubprocVecEnv)
             envs = DummyVecEnv(
                 [
-                    make_env(train_data, macro_data, config, mode="train", features_precomputed=True)
+                    make_env(
+                        train_data, macro_data, config, mode="train", features_precomputed=True
+                    )
                     for _ in range(n_envs)
                 ]
             )
         else:
             envs = SubprocVecEnv(
                 [
-                    make_env(train_data, macro_data, config, mode="train", features_precomputed=True)
+                    make_env(
+                        train_data, macro_data, config, mode="train", features_precomputed=True
+                    )
                     for _ in range(n_envs)
                 ]
             )
@@ -450,7 +452,7 @@ def run_walk_forward(
         )
     except Exception as e:
         logger.warning(f"Failed to fetch macro data (index issue?): {e}")
-        macro_data = pd.DataFrame() # Empty DF
+        macro_data = pd.DataFrame()  # Empty DF
 
     if macro_data.empty:
         logger.warning("No macro data available, proceeding without")
@@ -572,7 +574,7 @@ def run_walk_forward(
             f"Period: {m['test_period']}"
         )
 
-    logger.info(f"\nAGGREGATED:")
+    logger.info("\nAGGREGATED:")
     logger.info(f"  Avg Return:  {np.mean(returns):+.2%} (std: {np.std(returns):.2%})")
     logger.info(f"  Avg Sharpe:  {np.mean(sharpes):.2f} (std: {np.std(sharpes):.2f})")
     logger.info(f"  Avg MaxDD:   {np.mean(drawdowns):.2%}")
