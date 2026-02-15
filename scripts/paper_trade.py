@@ -23,8 +23,8 @@ Usage:
       --api-key YOUR_KEY --api-secret YOUR_SECRET
 """
 
-import sys
 import os
+import sys
 from pathlib import Path
 
 # Fix Windows UTF-8
@@ -37,13 +37,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import argparse
 import json
 import logging
-import time
 import signal
-import numpy as np
-import pandas as pd
+import time
 from datetime import datetime, timedelta
-from stable_baselines3 import PPO
+
+import numpy as np
 from dotenv import load_dotenv
+from stable_baselines3 import PPO
 
 load_dotenv()
 
@@ -437,22 +437,22 @@ def run_paper_trading(
     """Boucle principale de paper trading."""
 
     model_path = Path(model_path)
-    logger.info(f"\n{'='*60}")
-    logger.info(f"  PAPER TRADER V7")
-    logger.info(f"{'='*60}")
+    logger.info(f"\n{'=' * 60}")
+    logger.info("  PAPER TRADER V7")
+    logger.info(f"{'=' * 60}")
     logger.info(f"  Modele     : {model_path.name}")
     logger.info(f"  Mode       : {mode}")
     logger.info(f"  Balance    : ${initial_balance:,.0f}")
     logger.info(f"  Interval   : {interval_minutes} min")
     logger.info(f"  Max heures : {max_hours}")
-    logger.info(f"{'='*60}\n")
+    logger.info(f"{'=' * 60}\n")
 
     # Load model
     model = PPO.load(model_path)
     model_obs_size = model.observation_space.shape[0]
 
     # Load V7 metadata
-    from scripts.backtest_ultimate import load_v7_metadata, detect_environment
+    from scripts.backtest_ultimate import detect_environment, load_v7_metadata
 
     metadata, model_config, vecnorm_path = load_v7_metadata(model_path)
 
@@ -534,7 +534,6 @@ def run_paper_trading(
 
         # 4. Execute trades based on model actions
         # Actions: 0 = hold, 1 = buy, 2 = sell (for each ticker)
-        import numpy as np
 
         actions = np.array(actions).flatten()
         n_actions = len(actions)
@@ -580,9 +579,9 @@ def run_paper_trading(
             time.sleep(interval_minutes * 60)
 
     # Final report
-    logger.info(f"\n{'='*60}")
-    logger.info(f"  FIN DU PAPER TRADING")
-    logger.info(f"{'='*60}")
+    logger.info(f"\n{'=' * 60}")
+    logger.info("  FIN DU PAPER TRADING")
+    logger.info(f"{'=' * 60}")
 
     summary = journal.get_summary(initial_balance)
     logger.info(f"  Trades      : {summary['n_trades']}")
@@ -666,13 +665,13 @@ def main():
         "--max-drawdown",
         type=float,
         default=KILL_SWITCH_MAX_DRAWDOWN,
-        help=f"Kill switch drawdown max (defaut: {KILL_SWITCH_MAX_DRAWDOWN*100:.0f}%%)",
+        help=f"Kill switch drawdown max (defaut: {KILL_SWITCH_MAX_DRAWDOWN * 100:.0f}%%)",
     )
     parser.add_argument(
         "--max-daily-loss",
         type=float,
         default=KILL_SWITCH_MAX_DAILY_LOSS,
-        help=f"Kill switch perte journaliere max (defaut: {KILL_SWITCH_MAX_DAILY_LOSS*100:.0f}%%)",
+        help=f"Kill switch perte journaliere max (defaut: {KILL_SWITCH_MAX_DAILY_LOSS * 100:.0f}%%)",
     )
     args = parser.parse_args()
 

@@ -20,22 +20,22 @@ import warnings
 
 warnings.filterwarnings("ignore", message=".*Gym has been unmaintained.*")
 
-import os
-import yaml
 import json
-import torch
-import numpy as np
+import os
 from datetime import datetime
+
+import torch
+import yaml
+from core.universal_environment_v6_better_timing import UniversalTradingEnvV6BetterTiming
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
 from stable_baselines3.common.callbacks import (
     CheckpointCallback,
     EvalCallback,
     StopTrainingOnNoModelImprovement,
 )
 from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
 
-from core.universal_environment_v6_better_timing import UniversalTradingEnvV6BetterTiming
 from core.data_fetcher import download_data
 from core.data_pipeline import DataSplitter
 from core.sp500_scanner import SP500Scanner
@@ -54,7 +54,7 @@ def load_config(config_path: str) -> dict:
     if not os.path.exists(config_path):
         logger.error(f"Config {config_path} non trouve")
         return None
-    with open(config_path, "r", encoding="utf-8") as f:
+    with open(config_path, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
@@ -145,12 +145,12 @@ def train_v7_model(config_path: str, force_rescan: bool = False):
     tickers, scan_results = run_sector_scan(config, force_rescan)
     config["data"]["tickers"] = tickers
 
-    logger.info(f"\nTicker Selection:")
+    logger.info("\nTicker Selection:")
     logger.info(f"  Total: {len(tickers)}")
     logger.info(f"  Tickers: {', '.join(tickers)}")
 
     # 3. Telecharger donnees
-    logger.info(f"\nTelechargement des donnees...")
+    logger.info("\nTelechargement des donnees...")
     try:
         data = download_data(
             tickers=tickers,
@@ -237,7 +237,7 @@ def train_v7_model(config_path: str, force_rescan: bool = False):
         return
 
     # 5. Modele PPO
-    logger.info(f"\nCreation du modele PPO...")
+    logger.info("\nCreation du modele PPO...")
 
     policy_kwargs = {
         "net_arch": [
@@ -283,7 +283,7 @@ def train_v7_model(config_path: str, force_rescan: bool = False):
     logger.info(f"  Params: {sum(p.numel() for p in model.policy.parameters()):,}")
 
     # 6. Callbacks
-    logger.info(f"\nConfiguration des callbacks...")
+    logger.info("\nConfiguration des callbacks...")
 
     os.makedirs(config["checkpoint"]["save_path"], exist_ok=True)
     os.makedirs(config["eval"]["best_model_save_path"], exist_ok=True)
@@ -331,7 +331,7 @@ def train_v7_model(config_path: str, force_rescan: bool = False):
     logger.info("=" * 70)
     logger.info(f"Total timesteps: {config['training']['total_timesteps']:,}")
     logger.info(f"Tickers: {len(tickers)}")
-    logger.info(f"Duree estimee: ~10-14h sur RTX 3080")
+    logger.info("Duree estimee: ~10-14h sur RTX 3080")
     logger.info("=" * 70 + "\n")
 
     try:
@@ -396,7 +396,7 @@ def train_v7_model(config_path: str, force_rescan: bool = False):
     logger.info("=" * 70)
     logger.info(f"Modele: {final_model_path}")
     logger.info(f"Metadata: {metadata_path}")
-    logger.info(f"TensorBoard: tensorboard --logdir runs/v7_sp500/")
+    logger.info("TensorBoard: tensorboard --logdir runs/v7_sp500/")
     logger.info(f"\nBacktest: python scripts/backtest_v6.py --model {final_model_path}")
     logger.info(f"Paper: python scripts/run_trader_v6.py --model {final_model_path} --paper")
     logger.info("=" * 70)

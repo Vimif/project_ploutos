@@ -1,8 +1,9 @@
 """Tests unitaires pour FeatureEngineer."""
 
-import pytest
 import numpy as np
 import pandas as pd
+import pytest
+
 from core.features import FeatureEngineer
 
 # ============================================================================
@@ -137,7 +138,7 @@ class TestNoLookAhead:
             val_short = result_short[col].iloc[check_idx]
             val_long = result_long[col].iloc[check_idx]
             assert abs(val_short - val_long) < 1e-6, (
-                f"Look-ahead detected in '{col}': " f"short={val_short}, long={val_long}"
+                f"Look-ahead detected in '{col}': short={val_short}, long={val_long}"
             )
 
 

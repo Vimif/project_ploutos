@@ -8,11 +8,11 @@ Auteur: Ploutos AI Team
 Date: Dec 2025
 """
 
-import os
-import requests
-from datetime import datetime
-from typing import Optional, Dict, List
 import logging
+import os
+from datetime import datetime
+
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ class DiscordNotifier:
     Gestionnaire de notifications Discord
     """
 
-    def __init__(self, webhook_url: Optional[str] = None):
+    def __init__(self, webhook_url: str | None = None):
         """
         Args:
             webhook_url: URL du webhook Discord (ou depuis .env)
@@ -35,7 +35,7 @@ class DiscordNotifier:
         else:
             logger.warning("⚠️  Discord notifications désactivées (webhook manquant)")
 
-    def send_message(self, content: str = None, embed: Dict = None) -> bool:
+    def send_message(self, content: str = None, embed: dict = None) -> bool:
         """
         Envoyer message Discord
 
@@ -135,7 +135,7 @@ class DiscordNotifier:
 
     def notify_cycle_summary(
         self,
-        trades_count: Dict[str, int],
+        trades_count: dict[str, int],
         portfolio_value: float,
         cash: float,
         daily_pl: float = None,
@@ -218,7 +218,7 @@ class DiscordNotifier:
         return self.send_message(embed=embed)
 
     def notify_with_explanation(
-        self, symbol: str, action: str, quantity: float, price: float, explanation: Dict
+        self, symbol: str, action: str, quantity: float, price: float, explanation: dict
     ):
         """
         Notifier trade avec explication IA

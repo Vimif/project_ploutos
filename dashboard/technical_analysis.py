@@ -13,12 +13,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from dataclasses import asdict, dataclass
+
 import numpy as np
 import pandas as pd
 import yfinance as yf
-from typing import Dict, List, Tuple, Optional
-from datetime import datetime, timedelta
-from dataclasses import dataclass, asdict
 
 from core.utils import setup_logging
 
@@ -33,12 +32,12 @@ class TradingSignal:
     strength: int  # 0-100
     trend: str  # 'BULLISH', 'BEARISH', 'NEUTRAL'
     confidence: float  # 0.0-1.0
-    reasons: List[str]
-    entry_price: Optional[float] = None
-    stop_loss: Optional[float] = None
-    take_profit: Optional[float] = None
+    reasons: list[str]
+    entry_price: float | None = None
+    stop_loss: float | None = None
+    take_profit: float | None = None
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         """Convertir en dictionnaire pour JSON"""
         return asdict(self)
 
@@ -92,7 +91,7 @@ class TechnicalAnalyzer:
         """Exponential Moving Average (EMA) - Plus réactif que SMA"""
         return self.df["Close"].ewm(span=period, adjust=False).mean()
 
-    def calculate_macd(self) -> Tuple[pd.Series, pd.Series, pd.Series]:
+    def calculate_macd(self) -> tuple[pd.Series, pd.Series, pd.Series]:
         """
         MACD (Moving Average Convergence Divergence)
 
@@ -132,7 +131,7 @@ class TechnicalAnalyzer:
 
     def calculate_stochastic(
         self, k_period: int = 14, d_period: int = 3
-    ) -> Tuple[pd.Series, pd.Series]:
+    ) -> tuple[pd.Series, pd.Series]:
         """
         Stochastic Oscillator
 
@@ -151,7 +150,7 @@ class TechnicalAnalyzer:
 
     def calculate_bollinger_bands(
         self, period: int = 20, std_dev: float = 2.0
-    ) -> Tuple[pd.Series, pd.Series, pd.Series]:
+    ) -> tuple[pd.Series, pd.Series, pd.Series]:
         """
         Bollinger Bands
 
@@ -378,7 +377,7 @@ class TechnicalAnalyzer:
             take_profit=take_profit,
         )
 
-    def get_all_indicators(self) -> Dict:
+    def get_all_indicators(self) -> dict:
         """
         Obtenir tous les indicateurs techniques actuels
 

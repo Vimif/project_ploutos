@@ -21,32 +21,29 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import os
 import json
-import yaml
-import torch
+import os
+from datetime import datetime
+
 import numpy as np
 import pandas as pd
-from datetime import datetime
-from typing import Dict, List, Optional
-
+import torch
+import yaml
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv, VecNormalize
 from stable_baselines3.common.callbacks import (
     CheckpointCallback,
-    EvalCallback,
-    StopTrainingOnNoModelImprovement,
 )
 from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
 
-from core.environment import TradingEnv
-from core.macro_data import MacroDataFetcher
-from core.data_fetcher import download_data
-from core.utils import setup_logging
-from config.hardware import auto_scale_config, detect_hardware, compute_optimal_params
+from config.hardware import auto_scale_config, compute_optimal_params, detect_hardware
 from config.schema import validate_config
+from core.data_fetcher import download_data
+from core.environment import TradingEnv
 from core.features import FeatureEngineer  # Turbo Init
+from core.macro_data import MacroDataFetcher
 from core.shared_memory_manager import SharedDataManager  # V9 Shared Memory
+from core.utils import setup_logging
 
 logger = setup_logging(__name__, "train.log")
 
@@ -64,7 +61,7 @@ def load_config(config_path: str) -> dict:
     if not os.path.exists(config_path):
         logger.error(f"Config {config_path} non trouvé")
         return None
-    with open(config_path, "r") as f:
+    with open(config_path) as f:
         config = yaml.safe_load(f)
     warnings = validate_config(config)
     for w in warnings:
@@ -73,12 +70,12 @@ def load_config(config_path: str) -> dict:
 
 
 def generate_walk_forward_splits(
-    data: Dict[str, pd.DataFrame],
+    data: dict[str, pd.DataFrame],
     train_years: int = 5,
     test_months: int = 12,
     step_months: int = 12,
     embargo_months: int = 1,  # Anti-Leak Embargo (buffer pour les indicateurs)
-) -> List[Dict]:
+) -> list[dict]:
     """Génère les fenêtres walk-forward.
 
     Args:
@@ -161,9 +158,9 @@ def make_env(data, macro_data, config, mode="train", features_precomputed=False)
 
 
 def train_single_fold(
-    train_data: Dict[str, pd.DataFrame],
-    test_data: Dict[str, pd.DataFrame],
-    macro_data: Optional[pd.DataFrame],
+    train_data: dict[str, pd.DataFrame],
+    test_data: dict[str, pd.DataFrame],
+    macro_data: pd.DataFrame | None,
     config: dict,
     fold_idx: int,
     output_dir: str,
@@ -485,13 +482,13 @@ def run_walk_forward(
     all_metrics = []
 
     for fold_idx, split in enumerate(splits):
-        logger.info(f"\n{'='*50}")
+        logger.info(f"\n{'=' * 50}")
         logger.info(
             f"FOLD {fold_idx + 1}/{len(splits)}: "
             f"Train {split['train_start']}->{split['train_end']} | "
             f"Test {split['test_start']}->{split['test_end']}"
         )
-        logger.info(f"{'='*50}")
+        logger.info(f"{'=' * 50}")
 
         # Macro data pour ce fold (si disponible)
         fold_macro = macro_data
@@ -577,7 +574,7 @@ def run_walk_forward(
             f"Period: {m['test_period']}"
         )
 
-    logger.info(f"\nAGGREGATED:")
+    logger.info("\nAGGREGATED:")
     logger.info(f"  Avg Return:  {np.mean(returns):+.2%} (std: {np.std(returns):.2%})")
     logger.info(f"  Avg Sharpe:  {np.mean(sharpes):.2f} (std: {np.std(sharpes):.2f})")
     logger.info(f"  Avg MaxDD:   {np.mean(drawdowns):.2%}")

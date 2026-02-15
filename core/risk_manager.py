@@ -1,9 +1,10 @@
 # core/risk_manager.py
 """Gestionnaire de risque avancé pour le trading"""
 
+from datetime import datetime
+
 import numpy as np
-from datetime import datetime, timedelta
-from typing import List, Dict, Tuple, Optional
+
 from core.utils import setup_logging
 
 logger = setup_logging(__name__)
@@ -39,18 +40,18 @@ class RiskManager:
         self.daily_wins = 0
         self.circuit_breaker_triggered = False
 
-        logger.info(f"🛡️ Risk Manager initialisé")
-        logger.info(f"   Max risk/trade: {max_portfolio_risk*100:.1f}%")
-        logger.info(f"   Max daily loss: {max_daily_loss*100:.1f}%")
-        logger.info(f"   Max position: {max_position_size*100:.1f}%")
+        logger.info("🛡️ Risk Manager initialisé")
+        logger.info(f"   Max risk/trade: {max_portfolio_risk * 100:.1f}%")
+        logger.info(f"   Max daily loss: {max_daily_loss * 100:.1f}%")
+        logger.info(f"   Max position: {max_position_size * 100:.1f}%")
 
     def calculate_position_size(
         self,
         portfolio_value: float,
         entry_price: float,
         stop_loss_pct: float,
-        risk_pct: Optional[float] = None,
-    ) -> Tuple[int, float]:
+        risk_pct: float | None = None,
+    ) -> tuple[int, float]:
         """
         Calculer la taille optimale d'une position basée sur le risque
         Position Sizing = Risk Amount / Stop Loss Distance
@@ -87,13 +88,13 @@ class RiskManager:
             quantity = int(max_position_value / entry_price)
             position_value = quantity * entry_price
 
-            logger.info(f"⚠️  Position réduite à {self.max_position_size*100:.0f}% max")
+            logger.info(f"⚠️  Position réduite à {self.max_position_size * 100:.0f}% max")
 
         logger.info(
-            f"📊 Position sizing: {quantity} actions @ ${entry_price:.2f} = ${position_value:,.2f} ({position_value/portfolio_value*100:.1f}%)"
+            f"📊 Position sizing: {quantity} actions @ ${entry_price:.2f} = ${position_value:,.2f} ({position_value / portfolio_value * 100:.1f}%)"
         )
         logger.info(
-            f"   Risk: ${risk_amount:,.2f} ({risk_pct*100:.1f}%) | Stop: {stop_loss_pct*100:.0f}%"
+            f"   Risk: ${risk_amount:,.2f} ({risk_pct * 100:.1f}%) | Stop: {stop_loss_pct * 100:.0f}%"
         )
 
         return quantity, position_value
@@ -120,10 +121,10 @@ class RiskManager:
         if daily_pl_pct <= -self.max_daily_loss:
             if not self.circuit_breaker_triggered:
                 self.circuit_breaker_triggered = True
-                logger.error(f"🚨 CIRCUIT BREAKER ACTIVÉ!")
-                logger.error(f"   Perte quotidienne: ${daily_pl:,.2f} ({daily_pl_pct*100:.2f}%)")
-                logger.error(f"   Limite: {self.max_daily_loss*100:.0f}%")
-                logger.error(f"   🛑 TRADING SUSPENDU JUSQU'À DEMAIN")
+                logger.error("🚨 CIRCUIT BREAKER ACTIVÉ!")
+                logger.error(f"   Perte quotidienne: ${daily_pl:,.2f} ({daily_pl_pct * 100:.2f}%)")
+                logger.error(f"   Limite: {self.max_daily_loss * 100:.0f}%")
+                logger.error("   🛑 TRADING SUSPENDU JUSQU'À DEMAIN")
             return False
 
         return True
@@ -137,7 +138,7 @@ class RiskManager:
         self.circuit_breaker_triggered = False
         logger.info(f"🔄 Stats quotidiennes réinitialisées - Portfolio: ${portfolio_value:,.2f}")
 
-    def calculate_portfolio_exposure(self, positions: List[Dict], portfolio_value: float) -> float:
+    def calculate_portfolio_exposure(self, positions: list[dict], portfolio_value: float) -> float:
         """
         Calculer l'exposition totale du portfolio
 
@@ -149,8 +150,8 @@ class RiskManager:
         return exposure_pct
 
     def should_reduce_exposure(
-        self, positions: List[Dict], portfolio_value: float
-    ) -> Tuple[bool, str]:
+        self, positions: list[dict], portfolio_value: float
+    ) -> tuple[bool, str]:
         """
         Déterminer si on doit réduire l'exposition
 
@@ -161,7 +162,7 @@ class RiskManager:
 
         # Trop investi (>85%)
         if exposure_pct > 0.85:
-            return True, f"Exposition élevée: {exposure_pct*100:.1f}%"
+            return True, f"Exposition élevée: {exposure_pct * 100:.1f}%"
 
         # Trop de positions perdantes
         losing_positions = [p for p in positions if p["unrealized_plpc"] < -0.05]
@@ -200,12 +201,12 @@ class RiskManager:
         kelly_capped = max(0, min(half_kelly, self.max_portfolio_risk))
 
         logger.info(
-            f"📈 Kelly Criterion: {kelly_pct*100:.1f}% (Half: {half_kelly*100:.1f}%, Used: {kelly_capped*100:.1f}%)"
+            f"📈 Kelly Criterion: {kelly_pct * 100:.1f}% (Half: {half_kelly * 100:.1f}%, Used: {kelly_capped * 100:.1f}%)"
         )
 
         return kelly_capped
 
-    def calculate_sharpe_ratio(self, returns: List[float], risk_free_rate: float = 0.04) -> float:
+    def calculate_sharpe_ratio(self, returns: list[float], risk_free_rate: float = 0.04) -> float:
         """
         Calculer le Sharpe Ratio
         Sharpe = (Mean Return - Risk Free Rate) / Std Dev of Returns
@@ -235,7 +236,7 @@ class RiskManager:
 
         return sharpe
 
-    def calculate_max_drawdown(self, portfolio_values: List[float]) -> Tuple[float, float]:
+    def calculate_max_drawdown(self, portfolio_values: list[float]) -> tuple[float, float]:
         """
         Calculer le maximum drawdown
 
@@ -272,7 +273,7 @@ class RiskManager:
         portfolio_value: float,
         unrealized_plpc: float,
         days_held: int,
-    ) -> Dict:
+    ) -> dict:
         """
         Évaluer le risque d'une position existante
 
@@ -286,15 +287,15 @@ class RiskManager:
         position_pct = position_value / portfolio_value
         if position_pct > self.max_position_size:
             risk_score += 2
-            warnings.append(f"Position trop grande: {position_pct*100:.1f}%")
+            warnings.append(f"Position trop grande: {position_pct * 100:.1f}%")
 
         # 2. Perte non réalisée
         if unrealized_plpc < -0.10:  # -10%
             risk_score += 3
-            warnings.append(f"Perte importante: {unrealized_plpc*100:.1f}%")
+            warnings.append(f"Perte importante: {unrealized_plpc * 100:.1f}%")
         elif unrealized_plpc < -0.05:  # -5%
             risk_score += 1
-            warnings.append(f"Perte significative: {unrealized_plpc*100:.1f}%")
+            warnings.append(f"Perte significative: {unrealized_plpc * 100:.1f}%")
 
         # 3. Durée de détention
         if days_held > 30 and unrealized_plpc < 0:
@@ -324,8 +325,8 @@ class RiskManager:
         }
 
     def get_risk_report(
-        self, positions: List[Dict], portfolio_value: float, daily_returns: List[float] = None
-    ) -> Dict:
+        self, positions: list[dict], portfolio_value: float, daily_returns: list[float] = None
+    ) -> dict:
         """
         Générer un rapport de risque complet
 
@@ -414,13 +415,13 @@ class RiskManager:
             elif pl < 0:
                 self.daily_losses += 1
 
-    def print_risk_summary(self, report: Dict):
+    def print_risk_summary(self, report: dict):
         """Afficher un résumé du risque"""
         logger.info("\n" + "=" * 70)
         logger.info("🛡️ RISK MANAGEMENT REPORT")
         logger.info("=" * 70)
         logger.info(f"Portfolio: ${report['portfolio_value']:,.2f}")
-        logger.info(f"Exposition: {report['exposure_pct']*100:.1f}%")
+        logger.info(f"Exposition: {report['exposure_pct'] * 100:.1f}%")
         logger.info(
             f"Positions: {report['positions_count']} ({report['risky_positions_count']} à risque)"
         )
@@ -429,17 +430,17 @@ class RiskManager:
             logger.info(f"Sharpe Ratio: {report['sharpe_ratio']:.2f}")
 
         logger.info(
-            f"P&L quotidien: ${report['daily_pl']:+,.2f} ({report['daily_pl_pct']*100:+.2f}%)"
+            f"P&L quotidien: ${report['daily_pl']:+,.2f} ({report['daily_pl_pct'] * 100:+.2f}%)"
         )
         logger.info(
             f"Trades aujourd'hui: {report['daily_trades']} (W:{report['daily_wins']} L:{report['daily_losses']})"
         )
 
         if report["circuit_breaker"]:
-            logger.error(f"🚨 CIRCUIT BREAKER ACTIF - Trading suspendu")
+            logger.error("🚨 CIRCUIT BREAKER ACTIF - Trading suspendu")
 
         if report["risky_positions"]:
-            logger.warning(f"\n⚠️  POSITIONS À RISQUE:")
+            logger.warning("\n⚠️  POSITIONS À RISQUE:")
             for pos in report["risky_positions"]:
                 logger.warning(f"   {pos['symbol']}: {pos['risk_level']} - {pos['recommendation']}")
                 for warning in pos["warnings"]:

@@ -1,10 +1,11 @@
-import pytest
 import time
-import pandas as pd
+
 import numpy as np
+import pandas as pd
+
 from core.environment import TradingEnv
 from core.features import FeatureEngineer
-from core.shared_memory_manager import SharedDataManager, load_shared_data
+from core.shared_memory_manager import SharedDataManager
 
 
 def _get_mock_data(n=2000):
@@ -22,7 +23,6 @@ def _get_mock_data(n=2000):
 
 
 class TestV9Integration:
-
     def test_polars_features_speed(self):
         """Vérifie que Polars est rapide (<0.5s pour 2000 rows)."""
         fe = FeatureEngineer()

@@ -1,9 +1,11 @@
 # trading/broker_factory.py
 """Factory pour créer le bon client broker selon la configuration."""
 
-import os
 import logging
+import os
+
 from dotenv import load_dotenv
+
 from trading.broker_interface import BrokerInterface
 
 load_dotenv()
@@ -42,9 +44,7 @@ def create_broker(broker_name: str = None, paper_trading: bool = True) -> Broker
         return AlpacaClient(paper_trading=paper_trading)
 
     else:
-        raise ValueError(
-            f"Broker '{name}' non supporté. " f"Brokers disponibles: 'etoro', 'alpaca'"
-        )
+        raise ValueError(f"Broker '{name}' non supporté. Brokers disponibles: 'etoro', 'alpaca'")
 
 
 def get_available_brokers() -> list:

@@ -24,8 +24,8 @@ Usage:
   python scripts/backtest_ultimate.py --model ... --oos-only
 """
 
-import sys
 import os
+import sys
 from pathlib import Path
 
 # Fix Windows UTF-8
@@ -39,18 +39,20 @@ import argparse
 import json
 import logging
 import time
+from datetime import datetime, timedelta
+
 import numpy as np
 import pandas as pd
-from datetime import datetime, timedelta
 
 try:
     import yaml
 except ImportError:
     yaml = None
 
-from core.data_fetcher import UniversalDataFetcher
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+
+from core.data_fetcher import UniversalDataFetcher
 
 logging.basicConfig(
     level=logging.INFO,
@@ -160,7 +162,7 @@ def load_v7_metadata(model_path):
     config = None
 
     if metadata_path.exists():
-        with open(metadata_path, "r", encoding="utf-8") as f:
+        with open(metadata_path, encoding="utf-8") as f:
             metadata = json.load(f)
         logger.info(f"  Metadata V7 chargee: {metadata_path.name}")
         logger.info(f"    Version: {metadata.get('version', '?')}")
@@ -169,7 +171,7 @@ def load_v7_metadata(model_path):
         )
 
     if config_path.exists():
-        with open(config_path, "r", encoding="utf-8") as f:
+        with open(config_path, encoding="utf-8") as f:
             config = json.load(f)
         logger.info(f"  Config V7 chargee: {config_path.name}")
 
@@ -184,7 +186,7 @@ def load_yaml_config(config_path):
     """Charge une config YAML et extrait les params environnement."""
     if not os.path.exists(config_path):
         return None
-    with open(config_path, "r", encoding="utf-8") as f:
+    with open(config_path, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
@@ -204,17 +206,16 @@ def detect_environment(model, metadata=None, config=None):
     logger.info(f"  Observation space du modele: {obs_size} dims")
 
     # Derive actual n_tickers from obs_size: obs = n * 85 + n + 3 = n * 86 + 3
-    FEATURES_PER_TICKER = 85  # FeatureEngineer produces 85 features
     actual_n_from_obs = (obs_size - 3) / 86
     actual_n_int = round(actual_n_from_obs)
     obs_matches = abs(actual_n_int * 86 + 3 - obs_size) < 5
     if obs_matches:
         logger.info(
-            f"  Obs-size -> {actual_n_int} tickers (formula: {actual_n_int}*86+3={actual_n_int*86+3})"
+            f"  Obs-size -> {actual_n_int} tickers (formula: {actual_n_int}*86+3={actual_n_int * 86 + 3})"
         )
 
-    from legacy.core.universal_environment_v6_better_timing import UniversalTradingEnvV6BetterTiming
     from core.environment import TradingEnv  # V8/V9
+    from legacy.core.universal_environment_v6_better_timing import UniversalTradingEnvV6BetterTiming
 
     # --- V8/V9: metadata fournie ---
     if metadata and (
@@ -288,7 +289,7 @@ def detect_environment(model, metadata=None, config=None):
             # ...
             return "LEGACY", n_tickers, None, UniversalTradingEnvV6BetterTiming, dict(ENV_PARAMS_V6)
 
-    logger.info(f"  -> Detection par essai direct avec V6...")
+    logger.info("  -> Detection par essai direct avec V6...")
     return "V6_AUTO", None, None, UniversalTradingEnvV6BetterTiming, dict(ENV_PARAMS_V6)
 
 
@@ -327,7 +328,7 @@ def create_vec_env_normalized(env_class, data, env_params, vecnorm_path=None):
             clip_obs=10.0,
             training=False,
         )
-        logger.info(f"  VecNormalize cree (sans stats pre-calculees)")
+        logger.info("  VecNormalize cree (sans stats pre-calculees)")
 
     return vec_env
 
@@ -354,7 +355,7 @@ class TradeJournal:
         for i, ticker in enumerate(self.tickers):
             qty_before = portfolio_before.get(ticker, 0.0)
             qty_after = env.portfolio.get(ticker, 0.0)
-            action = actions[i] if i < len(actions) else 0
+            actions[i] if i < len(actions) else 0
 
             current_price = self._safe_price(env, ticker, step)
             if current_price <= 0:
@@ -592,7 +593,7 @@ def compute_portfolio_metrics(portfolio_history, initial_balance, annualize_fact
 def benchmark_buy_and_hold(data, initial_balance):
     amount_per = initial_balance / len(data)
     total_final = 0.0
-    for ticker, df in data.items():
+    for _ticker, df in data.items():
         if len(df) < 2:
             total_final += amount_per
             continue
@@ -631,9 +632,9 @@ def benchmark_random_agent(env_class, data, env_params, model_obs_size, n_assets
 def walk_forward_validation(
     engine, data_full, n_windows=6, window_days=30, shift_days=15, episodes_per_window=3
 ):
-    logger.info(f"\n{'='*60}")
+    logger.info(f"\n{'=' * 60}")
     logger.info(f"  WALK-FORWARD VALIDATION ({n_windows} fenetres x {window_days}j)")
-    logger.info(f"{'='*60}")
+    logger.info(f"{'=' * 60}")
 
     min_len = min(len(df) for df in data_full.values())
     bars_per_day = 7
@@ -658,12 +659,12 @@ def walk_forward_validation(
                 result = engine.run_episode(wdata, track_trades=False)
                 rets.append(result["total_return"])
             except Exception as e:
-                logger.warning(f"  Fenetre {w+1} ep {ep+1}: {e}")
+                logger.warning(f"  Fenetre {w + 1} ep {ep + 1}: {e}")
 
         if rets:
             avg = np.mean(rets)
             window_results.append(avg)
-            logger.info(f"  Fenetre {w+1}/{n_windows}: return={avg:+.2%}")
+            logger.info(f"  Fenetre {w + 1}/{n_windows}: return={avg:+.2%}")
 
     if not window_results:
         return {
@@ -691,9 +692,9 @@ def walk_forward_validation(
 def monte_carlo_test(
     env_class, data, env_params, model_obs_size, n_assets, real_return, n_perms=100
 ):
-    logger.info(f"\n{'='*60}")
+    logger.info(f"\n{'=' * 60}")
     logger.info(f"  MONTE CARLO PERMUTATION TEST ({n_perms} permutations)")
-    logger.info(f"{'='*60}")
+    logger.info(f"{'=' * 60}")
 
     ib = env_params.get("initial_balance", INITIAL_BALANCE)
     random_returns = []
@@ -709,7 +710,7 @@ def monte_carlo_test(
             fv = info.get("equity", info.get("portfolio_value", ib))
             random_returns.append((fv - ib) / ib)
             if (i + 1) % 25 == 0:
-                logger.info(f"  {i+1}/{n_perms}...")
+                logger.info(f"  {i + 1}/{n_perms}...")
         except Exception:
             pass
 
@@ -783,9 +784,9 @@ def _apply_gaps(data, n_gaps=5, gap_pct=0.03):
 
 
 def stress_test(engine, data, base_params):
-    logger.info(f"\n{'='*60}")
-    logger.info(f"  STRESS TEST")
-    logger.info(f"{'='*60}")
+    logger.info(f"\n{'=' * 60}")
+    logger.info("  STRESS TEST")
+    logger.info(f"{'=' * 60}")
 
     # --- Cost/spread scenarios ---
     cost_scenarios = [
@@ -824,7 +825,7 @@ def stress_test(engine, data, base_params):
             logger.info(f"  {name:15s}: ERREUR ({e})")
 
     # --- Market condition scenarios ---
-    logger.info(f"\n  Stress Scenarios Marche:")
+    logger.info("\n  Stress Scenarios Marche:")
     market_scenarios = [
         ("Crash -10%", lambda d: _apply_crash_to_data(d, -0.10)),
         ("Crash -20%", lambda d: _apply_crash_to_data(d, -0.20)),
@@ -952,9 +953,9 @@ def bootstrap_confidence_intervals(all_histories, initial_balance, n_bootstrap=1
     Returns:
         dict de {metric_name: {'mean': ..., 'ci_low': ..., 'ci_high': ..., 'std': ...}}
     """
-    logger.info(f"\n{'='*60}")
+    logger.info(f"\n{'=' * 60}")
     logger.info(f"  BOOTSTRAP CONFIDENCE INTERVALS ({n_bootstrap} resamples, {ci_level:.0%} CI)")
-    logger.info(f"{'='*60}")
+    logger.info(f"{'=' * 60}")
 
     if len(all_histories) < 2:
         logger.warning("  Pas assez d'episodes pour bootstrap (min 2)")
@@ -1049,9 +1050,9 @@ def market_regime_analysis(engine, data, metadata=None):
     Returns:
         dict with per-regime stats
     """
-    logger.info(f"\n{'='*60}")
-    logger.info(f"  MARKET REGIME ANALYSIS")
-    logger.info(f"{'='*60}")
+    logger.info(f"\n{'=' * 60}")
+    logger.info("  MARKET REGIME ANALYSIS")
+    logger.info(f"{'=' * 60}")
 
     regimes = detect_market_regime(data)
 
@@ -1178,18 +1179,18 @@ def print_full_report(
     regime_results=None,
 ):
     W = 70
-    print(f"\n{'='*W}")
-    print(f"  RAPPORT DE CERTIFICATION — BACKTEST ULTIMATE")
-    print(f"{'='*W}")
+    print(f"\n{'=' * W}")
+    print("  RAPPORT DE CERTIFICATION — BACKTEST ULTIMATE")
+    print(f"{'=' * W}")
     print(f"  Modele    : {model_path}")
     print(f"  Env       : {env_version}")
     print(f"  Date      : {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     print(f"  Duree     : {elapsed:.0f}s")
-    print(f"{'='*W}")
+    print(f"{'=' * W}")
 
     # OOS Validation (show prominently at top if issues)
     if oos_result:
-        print(f"\n  [OOS VALIDATION]")
+        print("\n  [OOS VALIDATION]")
         if oos_result.get("is_oos"):
             print(f"  {'Statut':<25s}: {'✅ OUT-OF-SAMPLE VALIDE':>30s}")
         else:
@@ -1202,7 +1203,7 @@ def print_full_report(
         for w in oos_result.get("warnings", []):
             print(f"  {w}")
 
-    print(f"\n  [PERFORMANCE]")
+    print("\n  [PERFORMANCE]")
     for label, key, fmt in [
         ("Return total", "total_return", "+.2%"),
         ("Sharpe Ratio", "sharpe_ratio", ".2f"),
@@ -1225,7 +1226,7 @@ def print_full_report(
         else:
             print(f"  {label:<25s}: {val_str:>12s}")
 
-    print(f"\n  [TRADE JOURNAL]")
+    print("\n  [TRADE JOURNAL]")
     print(f"  {'Trades completes':<25s}: {int(jm.get('total_completed_trades', 0)):>10d}")
     print(f"  {'Win Rate':<25s}: {jm.get('win_rate', 0):>10.1%}")
     print(f"  {'Profit Factor':<25s}: {jm.get('profit_factor', 0):>10.2f}")
@@ -1235,26 +1236,26 @@ def print_full_report(
     print(f"  {'Meilleur trade':<25s}: {jm.get('best_trade', 0):>+10.2%}")
     print(f"  {'Pire trade':<25s}: {jm.get('worst_trade', 0):>+10.2%}")
 
-    print(f"\n  [BENCHMARKS]")
+    print("\n  [BENCHMARKS]")
     bot = metrics["total_return"]
     for name, ret in benchmarks.items():
         diff = bot - ret
         m = "+" if diff > 0 else "-"
         print(f"  {'vs ' + name:<25s}: {ret:>+10.2%}  ({m}{abs(diff):.2%})")
 
-    print(f"\n  [WALK-FORWARD]")
+    print("\n  [WALK-FORWARD]")
     print(f"  {'Fenetres testees':<25s}: {wf.get('n_windows', 0):>10d}")
     print(f"  {'Return moyen':<25s}: {wf.get('mean_return', 0):>+10.2%}")
     print(f"  {'Ecart-type returns':<25s}: {wf.get('std_return', 0):>10.2%}")
     print(f"  {'% fenetres positives':<25s}: {wf.get('positive_pct', 0):>10.0%}")
 
-    print(f"\n  [MONTE CARLO]")
+    print("\n  [MONTE CARLO]")
     print(f"  {'p-value':<25s}: {mc.get('p_value', 1.0):>10.4f}")
     print(f"  {'Percentile':<25s}: {mc.get('percentile', 0):>10.0f}e")
     beats = "OUI" if mc.get("beats_random", False) else "NON"
     print(f"  {'Bat le hasard (p<0.05)':<25s}: {beats:>10s}")
 
-    print(f"\n  [STRESS TEST]")
+    print("\n  [STRESS TEST]")
     for name, ret in stress.items():
         if ret is not None:
             if name.startswith("Crash") or name.startswith("Range") or name.startswith("Gaps"):
@@ -1267,7 +1268,7 @@ def print_full_report(
 
     # Market regime analysis
     if regime_results and regime_results.get("per_regime"):
-        print(f"\n  [MARKET REGIME]")
+        print("\n  [MARKET REGIME]")
         for regime, stats in regime_results["per_regime"].items():
             emoji = {"BULL": "📈", "BEAR": "📉", "RANGE": "➡️"}.get(regime, "")
             print(
@@ -1275,9 +1276,9 @@ def print_full_report(
                 f"({stats['n_windows']} fenetres, {stats['positive_pct']:.0%} positif)"
             )
 
-    print(f"\n{'='*W}")
-    print(f"  CERTIFICATION — CRITERES PASS/FAIL")
-    print(f"{'='*W}")
+    print(f"\n{'=' * W}")
+    print("  CERTIFICATION — CRITERES PASS/FAIL")
+    print(f"{'=' * W}")
     for name, c in cert["checks"].items():
         icon = "PASS" if c["pass"] else "FAIL"
         val = c["value"]
@@ -1302,13 +1303,13 @@ def print_full_report(
     if oos_result and not oos_result.get("is_oos"):
         oos_penalty = "  ⚠️  ATTENTION: Resultats IN-SAMPLE — non fiables pour production!"
 
-    print(f"\n{'='*W}")
+    print(f"\n{'=' * W}")
     print(
         f"  VERDICT FINAL:  {cert['verdict']}  |  Score: {cert['score']}/100  |  {cert['n_pass']}/{cert['n_total']} criteres"
     )
     if oos_penalty:
         print(oos_penalty)
-    print(f"{'='*W}\n")
+    print(f"{'=' * W}\n")
 
 
 # ============================================================================
@@ -1434,9 +1435,9 @@ def main():
     n_assets = len(actual_tickers)
 
     # ── 2b. OOS VALIDATION ──
-    logger.info(f"\n{'='*60}")
-    logger.info(f"  OOS VALIDATION")
-    logger.info(f"{'='*60}")
+    logger.info(f"\n{'=' * 60}")
+    logger.info("  OOS VALIDATION")
+    logger.info(f"{'=' * 60}")
 
     # Get actual date range of backtest data
     all_bt_starts = []
@@ -1463,7 +1464,7 @@ def main():
                 sys.exit(1)
 
     # ── 3. VERIFY ENV COMPATIBILITY ──
-    logger.info(f"\nVerification compatibilite modele/environnement...")
+    logger.info("\nVerification compatibilite modele/environnement...")
     try:
         test_env = create_env_with_check(env_class, data, env_params, model_obs_size)
         logger.info(f"  MATCH! Env produit {model_obs_size} dims")
@@ -1474,14 +1475,14 @@ def main():
             f"  Ce modele n'est pas compatible avec l'environnement {env_version} disponible."
         )
         logger.error(
-            f"  Verifiez que le bon environnement est installe ou utilisez un modele V6/V7."
+            "  Verifiez que le bon environnement est installe ou utilisez un modele V6/V7."
         )
         sys.exit(1)
 
     # ── 4. MAIN BACKTEST ──
-    logger.info(f"\n{'='*60}")
+    logger.info(f"\n{'=' * 60}")
     logger.info(f"  BACKTEST PRINCIPAL ({args.episodes} episodes)")
-    logger.info(f"{'='*60}")
+    logger.info(f"{'=' * 60}")
 
     engine = BacktestEngine(model, actual_tickers, env_class, env_params, model_obs_size)
     all_histories = []
@@ -1494,7 +1495,7 @@ def main():
         if result["journal"]:
             all_journals.append(result["journal"])
         logger.info(
-            f"  Ep {ep+1}/{args.episodes}: return={result['total_return']:+.2%}, "
+            f"  Ep {ep + 1}/{args.episodes}: return={result['total_return']:+.2%}, "
             f"trades={result['total_trades']}, steps={result['steps']}"
         )
         if ep == 0:
@@ -1512,9 +1513,9 @@ def main():
     journal_metrics = agg_journal.get_metrics()
 
     # ── 5. BENCHMARKS ──
-    logger.info(f"\n{'='*60}")
-    logger.info(f"  BENCHMARKS")
-    logger.info(f"{'='*60}")
+    logger.info(f"\n{'=' * 60}")
+    logger.info("  BENCHMARKS")
+    logger.info(f"{'=' * 60}")
 
     bh = benchmark_buy_and_hold(data, INITIAL_BALANCE)
     logger.info(f"  Buy & Hold:    {bh:+.2%}")
@@ -1523,7 +1524,7 @@ def main():
         env_class, data, env_params, model_obs_size, n_assets, n_runs=(3 if args.quick else 5)
     )
     logger.info(f"  Random Agent:  {rnd:+.2%}")
-    logger.info(f"  Hold Cash:     +0.00%")
+    logger.info("  Hold Cash:     +0.00%")
 
     benchmarks = {"Buy & Hold": bh, "Random Agent": rnd, "Hold Cash": 0.0}
 
@@ -1538,7 +1539,7 @@ def main():
 
     # ── 7. MONTE CARLO ──
     if args.quick:
-        logger.info(f"\n  [SKIP] Monte Carlo (mode --quick)")
+        logger.info("\n  [SKIP] Monte Carlo (mode --quick)")
         mc = {"p_value": 0.0, "percentile": 100, "beats_random": True}
     else:
         mc = monte_carlo_test(
@@ -1550,7 +1551,7 @@ def main():
 
     # ── 9. BOOTSTRAP CONFIDENCE INTERVALS ──
     if args.quick:
-        logger.info(f"\n  [SKIP] Bootstrap CI (mode --quick)")
+        logger.info("\n  [SKIP] Bootstrap CI (mode --quick)")
         bootstrap_ci = {}
     else:
         bootstrap_ci = bootstrap_confidence_intervals(
@@ -1559,7 +1560,7 @@ def main():
 
     # ── 10. MARKET REGIME ANALYSIS ──
     if args.quick:
-        logger.info(f"\n  [SKIP] Market Regime (mode --quick)")
+        logger.info("\n  [SKIP] Market Regime (mode --quick)")
         regime_results = {}
     else:
         regime_results = market_regime_analysis(engine, data, metadata)
