@@ -71,7 +71,9 @@ class BrokerInterface(ABC):
         pass
 
     @abstractmethod
-    def place_market_order(self, symbol: str, qty: int, side: str = 'buy', reason: str = '') -> Optional[dict]:
+    def place_market_order(
+        self, symbol: str, qty: int, side: str = "buy", reason: str = ""
+    ) -> Optional[dict]:
         """
         Passer un ordre au marché.
 
@@ -87,7 +89,9 @@ class BrokerInterface(ABC):
         pass
 
     @abstractmethod
-    def place_limit_order(self, symbol: str, qty: int, limit_price: float, side: str = 'buy') -> Optional[dict]:
+    def place_limit_order(
+        self, symbol: str, qty: int, limit_price: float, side: str = "buy"
+    ) -> Optional[dict]:
         """
         Passer un ordre limite.
 
@@ -103,7 +107,7 @@ class BrokerInterface(ABC):
         pass
 
     @abstractmethod
-    def close_position(self, symbol: str, reason: str = '') -> bool:
+    def close_position(self, symbol: str, reason: str = "") -> bool:
         """
         Fermer complètement une position.
 
@@ -127,7 +131,7 @@ class BrokerInterface(ABC):
         pass
 
     @abstractmethod
-    def get_orders(self, status: str = 'open', limit: int = 50) -> list:
+    def get_orders(self, status: str = "open", limit: int = 50) -> list:
         """
         Obtenir les ordres.
 
@@ -165,11 +169,11 @@ class BrokerInterface(ABC):
             int: Nombre d'ordres annulés
         """
         try:
-            orders = self.get_orders(status='open')
+            orders = self.get_orders(status="open")
             cancelled = 0
             for order in orders:
-                if order.get('symbol') == symbol:
-                    if self.cancel_order(order['id']):
+                if order.get("symbol") == symbol:
+                    if self.cancel_order(order["id"]):
                         cancelled += 1
             return cancelled
         except Exception:

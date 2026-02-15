@@ -46,6 +46,10 @@ dev = [
     "black>=23.7.0",
     "ruff>=0.3.0",
     "mypy>=1.5.0",
+    "flask>=3.0.0",
+    "flask-cors>=4.0.0",
+    "flask-socketio>=5.0.0",
+    "gevent>=23.0.0",
 ]
 
 [project.scripts]

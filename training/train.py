@@ -181,7 +181,7 @@ def train_single_fold(
     n_envs = config.get("training", {}).get("n_envs", 4)
     use_shared_memory = config.get("training", {}).get("use_shared_memory", False)
     shm_manager = None
-    
+
     # ⚡ V9 Shared Memory: Optimisation RAM
     if use_shared_memory:
         try:
@@ -191,7 +191,8 @@ def train_single_fold(
             train_data = shm_manager.put_data(train_data)
         except Exception as e:
             logger.error(f"Failed to init Shared Memory: {e}")
-            if shm_manager: shm_manager.cleanup()
+            if shm_manager:
+                shm_manager.cleanup()
             raise e
 
     try:
@@ -200,14 +201,18 @@ def train_single_fold(
             # RecurrentPPO nécessite DummyVecEnv (pas SubprocVecEnv)
             envs = DummyVecEnv(
                 [
-                    make_env(train_data, macro_data, config, mode="train", features_precomputed=True)
+                    make_env(
+                        train_data, macro_data, config, mode="train", features_precomputed=True
+                    )
                     for _ in range(n_envs)
                 ]
             )
         else:
             envs = SubprocVecEnv(
                 [
-                    make_env(train_data, macro_data, config, mode="train", features_precomputed=True)
+                    make_env(
+                        train_data, macro_data, config, mode="train", features_precomputed=True
+                    )
                     for _ in range(n_envs)
                 ]
             )
@@ -450,7 +455,7 @@ def run_walk_forward(
         )
     except Exception as e:
         logger.warning(f"Failed to fetch macro data (index issue?): {e}")
-        macro_data = pd.DataFrame() # Empty DF
+        macro_data = pd.DataFrame()  # Empty DF
 
     if macro_data.empty:
         logger.warning("No macro data available, proceeding without")
