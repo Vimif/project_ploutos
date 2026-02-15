@@ -9,10 +9,10 @@ Date: Feb 2026
 """
 
 import warnings
+
 import numpy as np
 import pandas as pd
 import polars as pl
-from typing import Optional, Union
 
 warnings.filterwarnings("ignore")
 
@@ -27,13 +27,14 @@ class FeatureEngineer:
         self.features_calculated = []
 
     def calculate_all_features(
-        self, df: Union[pd.DataFrame, pl.DataFrame], return_pandas: bool = True
-    ) -> Union[pd.DataFrame, pl.DataFrame]:
+        self, df: pd.DataFrame | pl.DataFrame, return_pandas: bool = True
+    ) -> pd.DataFrame | pl.DataFrame:
         """
         Calcule TOUTES les features optimisées.
         Accepte Pandas ou Polars en entrée.
         """
         # Conversion entrée -> Polars
+        _original_index_name = None
         if isinstance(df, pd.DataFrame):
             # Polars n'a pas d'index. On sauvegarde le nom d'index pour le restaurer.
             _original_index_name = df.index.name
@@ -48,7 +49,8 @@ class FeatureEngineer:
         else:
             pdf = df
 
-        # Calculs chaînés (Lazy-like syntax but eager execution for now)
+        # --- OPTIMIZATION START: Use LazyFrame ---
+        pdf = pdf.lazy()
 
         # 1. Support/Resistance
         pdf = self._calculate_support_resistance(pdf)
@@ -68,7 +70,7 @@ class FeatureEngineer:
         # 6. Bollinger Patterns
         pdf = self._calculate_bollinger_patterns(pdf)
 
-        # 7. Entry Score Composite
+        # 7. Entry Score Composite (Optimized with sum_horizontal)
         pdf = self._calculate_entry_score(pdf)
 
         # 8. Momentum (amélioré)
@@ -81,16 +83,18 @@ class FeatureEngineer:
         pdf = self._calculate_volatility_regime(pdf)
 
         # Protect datetime column from fill_null(0) which would corrupt it
-        _date_col = None
-        if "__date_idx" in pdf.columns:
-            _date_col = pdf.select("__date_idx")
-            pdf = pdf.drop("__date_idx")
+        # Optimization: use with_columns with exclude instead of drop/concat
+        # Check if __date_idx exists in schema before excluding to avoid Error
+        schema_cols = pdf.collect_schema().names()
+        exclude_cols = [c for c in ["__date_idx"] if c in schema_cols]
 
-        # Cleanup: replace Inf/NaN with 0, forward-fill nulls, then fill remaining with 0
-        pdf = pdf.fill_nan(0).fill_null(strategy="forward").fill_null(0)
+        pdf = pdf.with_columns(
+            pl.all().exclude(exclude_cols).fill_nan(0).fill_null(strategy="forward").fill_null(0)
+        )
 
-        if _date_col is not None:
-            pdf = pl.concat([_date_col, pdf], how="horizontal")
+        # Collect at the end
+        pdf = pdf.collect()
+        # --- OPTIMIZATION END ---
 
         # Conversion sortie
         if return_pandas:
@@ -109,7 +113,7 @@ class FeatureEngineer:
 
         return pdf
 
-    def _calculate_support_resistance(self, df: pl.DataFrame) -> pl.DataFrame:
+    def _calculate_support_resistance(self, df: pl.LazyFrame) -> pl.LazyFrame:
         """✅ Support/Resistance DYNAMIQUES"""
         windows = [20, 50, 100]
 
@@ -151,7 +155,7 @@ class FeatureEngineer:
 
         return df.with_columns(ops3)
 
-    def _calculate_mean_reversion(self, df: pl.DataFrame) -> pl.DataFrame:
+    def _calculate_mean_reversion(self, df: pl.LazyFrame) -> pl.LazyFrame:
         """✅ MEAN REVERSION signals"""
         windows = [20, 50]
         ops = []
@@ -174,19 +178,6 @@ class FeatureEngineer:
             ops3.append((pl.col(f"zscore_{w}") < -1.5).cast(pl.Int32).alias(f"oversold_{w}"))
             ops3.append((pl.col(f"zscore_{w}") > 1.5).cast(pl.Int32).alias(f"overbought_{w}"))
 
-            # Reversion: shift(1) < shift(2) means rising zscore (if negative) - wait, check original logic
-            # Original: (shift(1) < shift(2)) & (current < -1.0)
-            # Logic seems to be: prev < prev_prev (falling?) OR rising?
-            # Original logic: df[f'zscore_{w}'].shift(1) < df[f'zscore_{w}'].shift(2)
-            # Means zscore[t-1] < zscore[t-2]. It was falling yesterday.
-            # And zscore current < -1.0.
-            # This logic seems to imply "still falling" or "lower than before".
-            # Re-reading original `features.py`:
-            # "Reversion signal: prix commence à revenir vers moyenne" -> Usually means turning UP.
-            # If shift(1) < shift(2), it means t-1 was LOWER than t-2. So it went DOWN.
-            # Maybe the logic was intended to be shift(1) > shift(2)? (Turning up)
-            # I will strictly replicate the CODE of features.py, even if logic seems odd, to maintain parity.
-
             reverting = (
                 (pl.col(f"zscore_{w}").shift(1) < pl.col(f"zscore_{w}").shift(2))
                 & (pl.col(f"zscore_{w}") < -1.0)
@@ -195,7 +186,7 @@ class FeatureEngineer:
 
         return df.with_columns(ops3)
 
-    def _calculate_volume_patterns(self, df: pl.DataFrame) -> pl.DataFrame:
+    def _calculate_volume_patterns(self, df: pl.LazyFrame) -> pl.LazyFrame:
         """✅ VOLUME confirmation"""
         ops = [
             pl.col("Volume").rolling_mean(window_size=20).alias("vol_ma_20"),
@@ -226,7 +217,7 @@ class FeatureEngineer:
 
         return df.with_columns([vol_bullish, vol_bearish])
 
-    def _calculate_price_action(self, df: pl.DataFrame) -> pl.DataFrame:
+    def _calculate_price_action(self, df: pl.LazyFrame) -> pl.LazyFrame:
         """✅ PRICE ACTION patterns"""
         body = (pl.col("Close") - pl.col("Open")).abs()
         body_pct = body / pl.col("Open")
@@ -295,7 +286,7 @@ class FeatureEngineer:
 
         return df.with_columns([hammer, shooting_star, doji, bullish_eng, bearish_eng])
 
-    def _calculate_divergences(self, df: pl.DataFrame) -> pl.DataFrame:
+    def _calculate_divergences(self, df: pl.LazyFrame) -> pl.LazyFrame:
         """✅ DIVERGENCES RSI/Prix"""
         # RSI Implementation
         period = 14
@@ -327,7 +318,7 @@ class FeatureEngineer:
 
         return df.with_columns([bull_div, bear_div])
 
-    def _calculate_bollinger_patterns(self, df: pl.DataFrame) -> pl.DataFrame:
+    def _calculate_bollinger_patterns(self, df: pl.LazyFrame) -> pl.LazyFrame:
         """✅ BOLLINGER BANDS patterns"""
         period = 20
         std_mult = 2
@@ -363,8 +354,8 @@ class FeatureEngineer:
 
         return df.with_columns(squeeze)
 
-    def _calculate_entry_score(self, df: pl.DataFrame) -> pl.DataFrame:
-        """✅ ENTRY SCORE composite"""
+    def _calculate_entry_score(self, df: pl.LazyFrame) -> pl.LazyFrame:
+        """✅ ENTRY SCORE composite - OPTIMIZED with sum_horizontal"""
         buy_signals = [
             "near_support_20",
             "near_support_50",
@@ -390,22 +381,23 @@ class FeatureEngineer:
             "touch_upper_bb",
         ]
 
-        # Sum signals (assuming columns exist)
-        # We need to filter only existing columns
-        cols = df.columns
+        # Use schema to check columns in LazyFrame
+        schema = df.collect_schema()
+        cols = schema.names()
+
         valid_buy_signals = [s for s in buy_signals if s in cols]
         valid_sell_signals = [s for s in sell_signals if s in cols]
 
-        buy_score = (
-            sum([pl.col(s).fill_null(0) for s in valid_buy_signals])
-            if valid_buy_signals
-            else pl.lit(0)
-        )
-        sell_score = (
-            sum([pl.col(s).fill_null(0) for s in valid_sell_signals])
-            if valid_sell_signals
-            else pl.lit(0)
-        )
+        # Optimization: Use sum_horizontal for performance
+        if valid_buy_signals:
+            buy_score = pl.sum_horizontal([pl.col(s).fill_null(0) for s in valid_buy_signals])
+        else:
+            buy_score = pl.lit(0)
+
+        if valid_sell_signals:
+            sell_score = pl.sum_horizontal([pl.col(s).fill_null(0) for s in valid_sell_signals])
+        else:
+            sell_score = pl.lit(0)
 
         ops = [buy_score.alias("buy_score"), sell_score.alias("sell_score")]
         df = df.with_columns(ops)
@@ -423,7 +415,7 @@ class FeatureEngineer:
 
         return df.with_columns(entry_signal)
 
-    def _calculate_enhanced_momentum(self, df: pl.DataFrame) -> pl.DataFrame:
+    def _calculate_enhanced_momentum(self, df: pl.LazyFrame) -> pl.LazyFrame:
         """✅ Momentum AMÉLIORÉ"""
         periods = [5, 10, 20]
         ops = []
@@ -453,7 +445,7 @@ class FeatureEngineer:
 
         return df.with_columns(ops3)
 
-    def _calculate_trend_strength(self, df: pl.DataFrame) -> pl.DataFrame:
+    def _calculate_trend_strength(self, df: pl.LazyFrame) -> pl.LazyFrame:
         """✅ Force du TREND (ADX)"""
         period = 14
 
@@ -508,7 +500,7 @@ class FeatureEngineer:
 
         return df.with_columns([strong, weak]).drop(["atr_temp", "plus_dm_raw", "minus_dm_raw"])
 
-    def _calculate_volatility_regime(self, df: pl.DataFrame) -> pl.DataFrame:
+    def _calculate_volatility_regime(self, df: pl.LazyFrame) -> pl.LazyFrame:
         """✅ Régime de VOLATILITÉ"""
         # Re-calc ATR properly if needed, but we can reuse logic
         period = 14

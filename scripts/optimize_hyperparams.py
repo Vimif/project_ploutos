@@ -14,15 +14,17 @@ Usage:
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import os
 import json
-import yaml
-import torch
+import os
+from datetime import datetime
+
 import numpy as np
 import pandas as pd
-from datetime import datetime
+import torch
+import yaml
 
 try:
     import optuna
@@ -31,21 +33,21 @@ except ImportError:
     sys.exit(1)
 
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
 from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
 
-from core.environment import TradingEnv
-from core.macro_data import MacroDataFetcher
+from config.hardware import compute_optimal_params, detect_hardware
 from core.data_fetcher import download_data
 from core.data_pipeline import DataSplitter
+from core.environment import TradingEnv
+from core.macro_data import MacroDataFetcher
 from core.utils import setup_logging
-from config.hardware import detect_hardware, compute_optimal_params
 
-logger = setup_logging(__name__, 'optimize_hyperparams.log')
+logger = setup_logging(__name__, "optimize_hyperparams.log")
 
 
 def load_config(config_path: str) -> dict:
-    with open(config_path, 'r') as f:
+    with open(config_path) as f:
         return yaml.safe_load(f)
 
 
@@ -54,39 +56,38 @@ def create_objective(train_data, val_data, macro_data, base_config):
 
     def objective(trial: optuna.Trial) -> float:
         # Hyperparamètres à optimiser
-        learning_rate = trial.suggest_float('learning_rate', 1e-5, 1e-3, log=True)
-        batch_size = trial.suggest_categorical('batch_size', [1024, 2048, 4096, 8192])
-        n_steps = trial.suggest_categorical('n_steps', [1024, 2048, 4096])
-        n_epochs = trial.suggest_int('n_epochs', 5, 30)
-        gamma = trial.suggest_float('gamma', 0.95, 0.999)
-        gae_lambda = trial.suggest_float('gae_lambda', 0.9, 0.99)
-        clip_range = trial.suggest_float('clip_range', 0.1, 0.3)
-        ent_coef = trial.suggest_float('ent_coef', 0.001, 0.2, log=True)
-        vf_coef = trial.suggest_float('vf_coef', 0.1, 0.9)
+        learning_rate = trial.suggest_float("learning_rate", 1e-5, 1e-3, log=True)
+        batch_size = trial.suggest_categorical("batch_size", [1024, 2048, 4096, 8192])
+        n_steps = trial.suggest_categorical("n_steps", [1024, 2048, 4096])
+        n_epochs = trial.suggest_int("n_epochs", 5, 30)
+        gamma = trial.suggest_float("gamma", 0.95, 0.999)
+        gae_lambda = trial.suggest_float("gae_lambda", 0.9, 0.99)
+        clip_range = trial.suggest_float("clip_range", 0.1, 0.3)
+        ent_coef = trial.suggest_float("ent_coef", 0.001, 0.2, log=True)
+        vf_coef = trial.suggest_float("vf_coef", 0.1, 0.9)
 
         # Architecture réseau
-        n_layers = trial.suggest_int('n_layers', 2, 4)
-        layer_size = trial.suggest_categorical('layer_size', [256, 512, 1024])
+        n_layers = trial.suggest_int("n_layers", 2, 4)
+        layer_size = trial.suggest_categorical("layer_size", [256, 512, 1024])
         net_arch = [layer_size] * n_layers
 
         # Environnement rewards
-        reward_scaling = trial.suggest_float('reward_scaling', 0.5, 3.0)
-        drawdown_penalty_factor = trial.suggest_float('drawdown_penalty_factor', 1.0, 5.0)
+        reward_scaling = trial.suggest_float("reward_scaling", 0.5, 3.0)
+        drawdown_penalty_factor = trial.suggest_float("drawdown_penalty_factor", 1.0, 5.0)
 
         # Créer environnement d'entraînement
-        env_kwargs = {k: v for k, v in base_config.get('environment', {}).items()}
-        env_kwargs['mode'] = 'train'
-        env_kwargs['reward_scaling'] = reward_scaling
-        env_kwargs['drawdown_penalty_factor'] = drawdown_penalty_factor
-        env_kwargs['features_precomputed'] = True  # Turbo Init (V9)
+        env_kwargs = {k: v for k, v in base_config.get("environment", {}).items()}
+        env_kwargs["mode"] = "train"
+        env_kwargs["reward_scaling"] = reward_scaling
+        env_kwargs["drawdown_penalty_factor"] = drawdown_penalty_factor
+        env_kwargs["features_precomputed"] = True  # Turbo Init (V9)
 
-        n_envs = base_config.get('training', {}).get('n_envs', 8)
+        n_envs = base_config.get("training", {}).get("n_envs", 8)
 
         def make_env():
             def _init():
-                return Monitor(TradingEnv(
-                    data=train_data, macro_data=macro_data, **env_kwargs
-                ))
+                return Monitor(TradingEnv(data=train_data, macro_data=macro_data, **env_kwargs))
+
             return _init
 
         if n_envs > 1:
@@ -95,20 +96,25 @@ def create_objective(train_data, val_data, macro_data, base_config):
             envs = DummyVecEnv([make_env()])
 
         envs = VecNormalize(
-            envs, norm_obs=True, norm_reward=True,
-            clip_obs=10.0, clip_reward=10.0, gamma=gamma,
+            envs,
+            norm_obs=True,
+            norm_reward=True,
+            clip_obs=10.0,
+            clip_reward=10.0,
+            gamma=gamma,
         )
 
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        device = "cuda" if torch.cuda.is_available() else "cpu"
         activation_fn = torch.nn.Tanh
 
         policy_kwargs = {
-            'net_arch': [{'pi': net_arch, 'vf': net_arch}],
-            'activation_fn': activation_fn,
+            "net_arch": [{"pi": net_arch, "vf": net_arch}],
+            "activation_fn": activation_fn,
         }
 
         model = PPO(
-            'MlpPolicy', envs,
+            "MlpPolicy",
+            envs,
             learning_rate=learning_rate,
             n_steps=n_steps,
             batch_size=batch_size,
@@ -120,30 +126,29 @@ def create_objective(train_data, val_data, macro_data, base_config):
             vf_coef=vf_coef,
             max_grad_norm=0.5,
             policy_kwargs=policy_kwargs,
-            verbose=0, device=device,
+            verbose=0,
+            device=device,
         )
 
         # Entraîner avec budget réduit (pour aller vite)
-        optim_timesteps = base_config.get('optuna', {}).get('timesteps_per_trial', 1_000_000)
+        optim_timesteps = base_config.get("optuna", {}).get("timesteps_per_trial", 1_000_000)
 
         try:
             model.learn(total_timesteps=optim_timesteps)
         except Exception as e:
             logger.warning(f"Trial {trial.number} échoué: {e}")
             envs.close()
-            return float('-inf')
+            return float("-inf")
 
         # Évaluer sur validation set
-        env_kwargs_eval = {k: v for k, v in base_config.get('environment', {}).items()}
-        env_kwargs_eval['mode'] = 'backtest'
-        env_kwargs_eval['seed'] = 42
-        env_kwargs_eval['reward_scaling'] = reward_scaling
-        env_kwargs_eval['drawdown_penalty_factor'] = drawdown_penalty_factor
-        env_kwargs_eval['features_precomputed'] = True
+        env_kwargs_eval = {k: v for k, v in base_config.get("environment", {}).items()}
+        env_kwargs_eval["mode"] = "backtest"
+        env_kwargs_eval["seed"] = 42
+        env_kwargs_eval["reward_scaling"] = reward_scaling
+        env_kwargs_eval["drawdown_penalty_factor"] = drawdown_penalty_factor
+        env_kwargs_eval["features_precomputed"] = True
 
-        eval_env = TradingEnv(
-            data=val_data, macro_data=macro_data, **env_kwargs_eval
-        )
+        eval_env = TradingEnv(data=val_data, macro_data=macro_data, **env_kwargs_eval)
 
         obs, _ = eval_env.reset()
         done = False
@@ -153,7 +158,7 @@ def create_objective(train_data, val_data, macro_data, base_config):
             obs_norm = envs.normalize_obs(obs.reshape(1, -1)).flatten()
             action, _ = model.predict(obs_norm, deterministic=True)
             obs, reward, done, truncated, info = eval_env.step(action)
-            equity_curve.append(info['equity'])
+            equity_curve.append(info["equity"])
 
         envs.close()
 
@@ -185,7 +190,9 @@ def create_objective(train_data, val_data, macro_data, base_config):
 
 
 def optimize(
-    config_path: str, n_trials: int = 50, n_jobs: int = 1,
+    config_path: str,
+    n_trials: int = 50,
+    n_jobs: int = 1,
     auto_scale: bool = False,
 ):
     """Lance l'optimisation Optuna."""
@@ -202,8 +209,7 @@ def optimize(
             n_jobs = params["optuna_n_jobs"]
         config.setdefault("training", {})["n_envs"] = params["optuna_n_envs_per_trial"]
         logger.info(
-            f"Auto-scale: {n_jobs} parallel jobs, "
-            f"{params['optuna_n_envs_per_trial']} envs/trial"
+            f"Auto-scale: {n_jobs} parallel jobs, {params['optuna_n_envs_per_trial']} envs/trial"
         )
 
     logger.info(f"  Trials: {n_trials} | Parallel jobs: {n_jobs}")
@@ -211,13 +217,14 @@ def optimize(
     # Télécharger données
     logger.info("Downloading data...")
     data = download_data(
-        tickers=config['data']['tickers'],
-        period=config['data'].get('period', '5y'),
-        interval=config['data'].get('interval', '1h'),
+        tickers=config["data"]["tickers"],
+        period=config["data"].get("period", "5y"),
+        interval=config["data"].get("interval", "1h"),
     )
 
     # 🚀 Turbo Init: Pré-calcul des features (V9 Polars)
     from core.features import FeatureEngineer
+
     logger.info("🚀 Turbo Init: Pre-computing technical features for all tickers...")
     fe = FeatureEngineer()
     for ticker, df in data.items():
@@ -237,18 +244,18 @@ def optimize(
     macro_data = macro_fetcher.fetch_all(
         start_date=str(ref_df.index[0].date()),
         end_date=str(ref_df.index[-1].date()),
-        interval=config['data'].get('interval', '1h'),
+        interval=config["data"].get("interval", "1h"),
     )
     if macro_data.empty:
         macro_data = None
 
     # Créer l'étude Optuna
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     study_name = f"ploutos_v8_{timestamp}"
 
     study = optuna.create_study(
         study_name=study_name,
-        direction='maximize',
+        direction="maximize",
         pruner=optuna.pruners.MedianPruner(n_startup_trials=5),
     )
 
@@ -262,7 +269,7 @@ def optimize(
     logger.info("OPTIMIZATION RESULTS")
     logger.info("=" * 70)
     logger.info(f"Best Score: {study.best_value:.4f}")
-    logger.info(f"Best Params:")
+    logger.info("Best Params:")
     for key, value in study.best_params.items():
         logger.info(f"  {key}: {value}")
 
@@ -270,32 +277,43 @@ def optimize(
     output_dir = f"models/optuna_{timestamp}"
     os.makedirs(output_dir, exist_ok=True)
 
-    with open(os.path.join(output_dir, 'best_params.json'), 'w') as f:
-        json.dump({
-            'best_score': study.best_value,
-            'best_params': study.best_params,
-            'n_trials': n_trials,
-        }, f, indent=2)
+    with open(os.path.join(output_dir, "best_params.json"), "w") as f:
+        json.dump(
+            {
+                "best_score": study.best_value,
+                "best_params": study.best_params,
+                "n_trials": n_trials,
+            },
+            f,
+            indent=2,
+        )
 
     logger.info(f"\nResults saved: {output_dir}/best_params.json")
     return study
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description='Optuna Hyperparameter Optimization')
-    parser.add_argument('--config', type=str, default='config/config.yaml')
-    parser.add_argument('--n-trials', type=int, default=50)
-    parser.add_argument('--n-jobs', type=int, default=1,
-                        help='Parallel trials (ex: 4 trials x 8 envs au lieu de 1 x 32)')
+    parser = argparse.ArgumentParser(description="Optuna Hyperparameter Optimization")
+    parser.add_argument("--config", type=str, default="config/config.yaml")
+    parser.add_argument("--n-trials", type=int, default=50)
     parser.add_argument(
-        '--auto-scale', action='store_true',
-        help='Auto-detect hardware and scale n_jobs/n_envs per trial',
+        "--n-jobs",
+        type=int,
+        default=1,
+        help="Parallel trials (ex: 4 trials x 8 envs au lieu de 1 x 32)",
+    )
+    parser.add_argument(
+        "--auto-scale",
+        action="store_true",
+        help="Auto-detect hardware and scale n_jobs/n_envs per trial",
     )
 
     args = parser.parse_args()
     optimize(
-        config_path=args.config, n_trials=args.n_trials,
-        n_jobs=args.n_jobs, auto_scale=args.auto_scale,
+        config_path=args.config,
+        n_trials=args.n_trials,
+        n_jobs=args.n_jobs,
+        auto_scale=args.auto_scale,
     )

@@ -35,11 +35,11 @@ def detect_hardware() -> dict:
             props = torch.cuda.get_device_properties(0)
             hw["gpu_available"] = True
             hw["gpu_name"] = props.name
-            if hasattr(props, 'total_memory'):
+            if hasattr(props, "total_memory"):
                 hw["gpu_vram_gb"] = round(props.total_memory / (1024**3), 1)
             else:
                 # Fallback for older torch versions or different attributes
-                hw["gpu_vram_gb"] = round(getattr(props, 'total_mem', 0) / (1024**3), 1)
+                hw["gpu_vram_gb"] = round(getattr(props, "total_mem", 0) / (1024**3), 1)
     except ImportError:
         pass
 
@@ -73,7 +73,7 @@ def compute_optimal_params(hw: dict, use_recurrent: bool = False) -> dict:
 
     # Cap par RAM: On estime 1.5 GB par process (Marge de sécurité augmentée)
     ram_per_env = 1.5
-    max_envs_by_ram = max(int((ram_gb - 10) / ram_per_env), 4) # Garder 10GB pour l'OS
+    max_envs_by_ram = max(int((ram_gb - 10) / ram_per_env), 4)  # Garder 10GB pour l'OS
     n_envs = min(n_envs, max_envs_by_ram)
 
     # --- batch_size ---
