@@ -21,8 +21,8 @@ for mod in [
 ]:
     sys.modules.setdefault(mod, MagicMock())
 
-import pytest
 import numpy as np
+import pytest
 
 import core.ensemble as ensemble_module
 from core.ensemble import EnsemblePredictor

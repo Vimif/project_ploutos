@@ -1,18 +1,17 @@
 import sys
 import unittest
-import numpy as np
-import pandas as pd
-import gymnasium as gym
 
 # Assurer que le path est correct
 from pathlib import Path
+
+import numpy as np
+import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 try:
     from core.environment import TradingEnv
-    from core.features import FeatureEngineer
-    from scripts.robustness_tests import calculate_psr, calculate_dsr
+    from scripts.robustness_tests import calculate_dsr, calculate_psr
 except ImportError as e:
     print(f"❌ IMPORT ERROR: {e}")
     sys.exit(1)

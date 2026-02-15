@@ -1,9 +1,11 @@
 # trading/broker_factory.py
 """Factory pour créer le bon client broker selon la configuration."""
 
-import os
 import logging
+import os
+
 from dotenv import load_dotenv
+
 from trading.broker_interface import BrokerInterface
 
 load_dotenv()

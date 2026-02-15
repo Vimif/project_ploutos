@@ -1,14 +1,15 @@
 # database/db.py
 """Gestionnaire de base de données PostgreSQL pour Ploutos"""
 
+import json
+import os
+from contextlib import contextmanager
+from datetime import date
+
 import psycopg2
 import psycopg2.extras
-import os
-import json
-from typing import List, Dict, Any, Optional
-from datetime import datetime, date
-from contextlib import contextmanager
 from dotenv import load_dotenv
+
 from core.utils import setup_logging
 
 load_dotenv()
@@ -129,7 +130,7 @@ def log_trade(
             cur = conn.cursor()
             cur.execute(
                 """
-                INSERT INTO trades (symbol, action, quantity, price, amount, reason, 
+                INSERT INTO trades (symbol, action, quantity, price, amount, reason,
                                   portfolio_value, order_id)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
@@ -145,7 +146,7 @@ def log_trade(
         return None
 
 
-def get_trade_history(days: int = 30, symbol: str = None) -> List[Dict]:
+def get_trade_history(days: int = 30, symbol: str = None) -> list[dict]:
     """Récupérer l'historique des trades"""
     try:
         with get_connection() as conn:
@@ -154,7 +155,7 @@ def get_trade_history(days: int = 30, symbol: str = None) -> List[Dict]:
             if symbol:
                 cur.execute(
                     """
-                    SELECT * FROM trades 
+                    SELECT * FROM trades
                     WHERE timestamp > NOW() - INTERVAL %s AND symbol = %s
                     ORDER BY timestamp DESC
                 """,
@@ -163,7 +164,7 @@ def get_trade_history(days: int = 30, symbol: str = None) -> List[Dict]:
             else:
                 cur.execute(
                     """
-                    SELECT * FROM trades 
+                    SELECT * FROM trades
                     WHERE timestamp > NOW() - INTERVAL %s
                     ORDER BY timestamp DESC
                 """,
@@ -216,14 +217,14 @@ def log_position(
         return None
 
 
-def get_position_history(symbol: str, days: int = 30) -> List[Dict]:
+def get_position_history(symbol: str, days: int = 30) -> list[dict]:
     """Historique d'une position"""
     try:
         with get_connection() as conn:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute(
                 """
-                SELECT * FROM positions 
+                SELECT * FROM positions
                 WHERE symbol = %s AND timestamp > NOW() - INTERVAL %s
                 ORDER BY timestamp DESC
             """,
@@ -236,7 +237,7 @@ def get_position_history(symbol: str, days: int = 30) -> List[Dict]:
         return []
 
 
-def log_all_positions(positions_list: List[Dict]):
+def log_all_positions(positions_list: list[dict]):
     """Logger plusieurs positions en batch"""
     try:
         with get_connection() as conn:
@@ -309,14 +310,14 @@ def save_daily_summary(
         logger.error(f"❌ Erreur save_daily_summary: {e}")
 
 
-def get_daily_summary(days: int = 30) -> List[Dict]:
+def get_daily_summary(days: int = 30) -> list[dict]:
     """Récupérer les résumés quotidiens"""
     try:
         with get_connection() as conn:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute(
                 """
-                SELECT * FROM daily_summary 
+                SELECT * FROM daily_summary
                 WHERE date > CURRENT_DATE - INTERVAL %s
                 ORDER BY date DESC
             """,
@@ -354,7 +355,7 @@ def log_prediction(
         return None
 
 
-def get_prediction_history(symbol: str = None, days: int = 7) -> List[Dict]:
+def get_prediction_history(symbol: str = None, days: int = 7) -> list[dict]:
     """Récupérer l'historique des prédictions"""
     try:
         with get_connection() as conn:
@@ -363,7 +364,7 @@ def get_prediction_history(symbol: str = None, days: int = 7) -> List[Dict]:
             if symbol:
                 cur.execute(
                     """
-                    SELECT * FROM predictions 
+                    SELECT * FROM predictions
                     WHERE symbol = %s AND timestamp > NOW() - INTERVAL %s
                     ORDER BY timestamp DESC
                 """,
@@ -372,7 +373,7 @@ def get_prediction_history(symbol: str = None, days: int = 7) -> List[Dict]:
             else:
                 cur.execute(
                     """
-                    SELECT * FROM predictions 
+                    SELECT * FROM predictions
                     WHERE timestamp > NOW() - INTERVAL %s
                     ORDER BY timestamp DESC
                 """,
@@ -388,14 +389,14 @@ def get_prediction_history(symbol: str = None, days: int = 7) -> List[Dict]:
 # ==================== ANALYTICS ====================
 
 
-def get_trade_statistics(days: int = 30) -> Dict:
+def get_trade_statistics(days: int = 30) -> dict:
     """Statistiques des trades"""
     try:
         with get_connection() as conn:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute(
                 """
-                SELECT 
+                SELECT
                     COUNT(*) as total_trades,
                     COUNT(CASE WHEN action = 'BUY' THEN 1 END) as buy_count,
                     COUNT(CASE WHEN action = 'SELL' THEN 1 END) as sell_count,
@@ -416,14 +417,14 @@ def get_trade_statistics(days: int = 30) -> Dict:
         return {}
 
 
-def get_top_symbols(days: int = 30, limit: int = 10) -> List[Dict]:
+def get_top_symbols(days: int = 30, limit: int = 10) -> list[dict]:
     """Top symboles tradés"""
     try:
         with get_connection() as conn:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute(
                 """
-                SELECT 
+                SELECT
                     symbol,
                     COUNT(*) as trade_count,
                     SUM(amount) as total_volume,
@@ -443,7 +444,7 @@ def get_top_symbols(days: int = 30, limit: int = 10) -> List[Dict]:
         return []
 
 
-def get_portfolio_evolution(days: int = 30) -> List[Dict]:
+def get_portfolio_evolution(days: int = 30) -> list[dict]:
     """Évolution du portfolio"""
     try:
         with get_connection() as conn:
@@ -464,7 +465,7 @@ def get_portfolio_evolution(days: int = 30) -> List[Dict]:
         return []
 
 
-def get_win_loss_ratio(days: int = 30) -> Dict:
+def get_win_loss_ratio(days: int = 30) -> dict:
     """Calculer le ratio gains/pertes"""
     try:
         with get_connection() as conn:
@@ -474,7 +475,7 @@ def get_win_loss_ratio(days: int = 30) -> Dict:
             cur.execute(
                 """
                 WITH trade_pairs AS (
-                    SELECT 
+                    SELECT
                         symbol,
                         action,
                         price,
@@ -485,7 +486,7 @@ def get_win_loss_ratio(days: int = 30) -> Dict:
                     FROM trades
                     WHERE timestamp > NOW() - INTERVAL %s
                 )
-                SELECT 
+                SELECT
                     COUNT(CASE WHEN action = 'SELL' AND price > prev_price THEN 1 END) as wins,
                     COUNT(CASE WHEN action = 'SELL' AND price <= prev_price THEN 1 END) as losses
                 FROM trade_pairs

@@ -1,9 +1,9 @@
 # config/settings.py
 """Configuration globale du projet Ploutos."""
 
-from pathlib import Path
 import os
 import socket
+from pathlib import Path
 
 # Détection de la machine (debug)
 HOSTNAME = socket.gethostname()
