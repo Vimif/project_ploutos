@@ -2,6 +2,7 @@ import time
 
 import numpy as np
 import pandas as pd
+import polars as pl
 
 from core.environment import TradingEnv
 from core.features import FeatureEngineer
@@ -57,3 +58,44 @@ class TestV9Integration:
 
         finally:
             mgr.cleanup()
+
+    def test_calculate_features_without_datetime_index(self):
+        # Create a DataFrame with integer index, no datetime
+        df = pd.DataFrame({
+            "Open": [10, 11, 12, 13, 14],
+            "High": [12, 13, 14, 15, 16],
+            "Low": [9, 10, 11, 12, 13],
+            "Close": [11, 12, 13, 14, 15],
+            "Volume": [100, 200, 300, 400, 500]
+        })
+
+        fe = FeatureEngineer()
+
+        # This should NOT crash
+        res = fe.calculate_all_features(df)
+
+        assert isinstance(res, pd.DataFrame)
+        assert len(res) == 5
+        assert "__date_idx" not in res.columns
+        # Check if some features are calculated
+        assert "rsi" in res.columns
+
+    def test_calculate_features_polars_input_no_date(self):
+        # Polars input without date column
+        df = pl.DataFrame({
+            "Open": [10, 11, 12, 13, 14],
+            "High": [12, 13, 14, 15, 16],
+            "Low": [9, 10, 11, 12, 13],
+            "Close": [11, 12, 13, 14, 15],
+            "Volume": [100, 200, 300, 400, 500]
+        })
+
+        fe = FeatureEngineer()
+
+        # This should NOT crash
+        res = fe.calculate_all_features(df, return_pandas=False)
+
+        assert isinstance(res, pl.DataFrame)
+        assert len(res) == 5
+        assert "__date_idx" not in res.columns
+        assert "rsi" in res.columns

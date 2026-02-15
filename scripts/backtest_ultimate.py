@@ -276,6 +276,7 @@ def detect_environment(model, metadata=None, config=None):
         else:
             params = dict(ENV_PARAMS_V6)
 
+        expected_obs = n_tickers * 86 + 3
         logger.info(
             f"  -> Match exact: {version} BetterTiming avec {n_tickers} tickers ({expected_obs} dims)"
         )
@@ -1442,7 +1443,7 @@ def main():
     # Get actual date range of backtest data
     all_bt_starts = []
     all_bt_ends = []
-    for ticker, df in data.items():
+    for _ticker, df in data.items():
         if len(df) > 0:
             all_bt_starts.append(df.index[0])
             all_bt_ends.append(df.index[-1])

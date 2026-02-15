@@ -1,5 +1,7 @@
 from unittest.mock import patch
+
 import pytest
+
 from trading.portfolio import Portfolio
 
 

@@ -84,8 +84,12 @@ class FeatureEngineer:
 
         # Protect datetime column from fill_null(0) which would corrupt it
         # Optimization: use with_columns with exclude instead of drop/concat
+        # Check if __date_idx exists in schema before excluding to avoid Error
+        schema_cols = pdf.collect_schema().names()
+        exclude_cols = [c for c in ["__date_idx"] if c in schema_cols]
+
         pdf = pdf.with_columns(
-            pl.all().exclude("__date_idx").fill_nan(0).fill_null(strategy="forward").fill_null(0)
+            pl.all().exclude(exclude_cols).fill_nan(0).fill_null(strategy="forward").fill_null(0)
         )
 
         # Collect at the end
