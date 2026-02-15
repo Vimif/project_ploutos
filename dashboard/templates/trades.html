@@ -101,8 +101,8 @@
     <!-- Filtres -->
     <div class="filters">
         <div class="filter-group">
-            <label>Période</label>
-            <select id="filter-days">
+            <label for="filter-days">Période</label>
+            <select id="filter-days" onkeydown="if(event.key === 'Enter') applyFilters()">
                 <option value="7">7 derniers jours</option>
                 <option value="14">14 derniers jours</option>
                 <option value="30" selected>30 derniers jours</option>
@@ -112,8 +112,8 @@
         </div>
         
         <div class="filter-group">
-            <label>Action</label>
-            <select id="filter-action">
+            <label for="filter-action">Action</label>
+            <select id="filter-action" onkeydown="if(event.key === 'Enter') applyFilters()">
                 <option value="">Toutes</option>
                 <option value="BUY">Achats</option>
                 <option value="SELL">Ventes</option>
@@ -121,12 +121,12 @@
         </div>
         
         <div class="filter-group">
-            <label>Symbole</label>
-            <input type="text" id="filter-symbol" placeholder="Ex: NVDA">
+            <label for="filter-symbol">Symbole</label>
+            <input type="text" id="filter-symbol" placeholder="Ex: NVDA" onkeydown="if(event.key === 'Enter') applyFilters()">
         </div>
         
         <div class="filter-group" style="justify-content: flex-end;">
-            <button class="btn" onclick="applyFilters()">Filtrer</button>
+            <button id="filter-btn" class="btn" onclick="applyFilters()">Filtrer</button>
         </div>
     </div>
     
@@ -162,7 +162,14 @@
     let currentPage = 1;
     let tradesData = [];
     
-    async function loadTrades() {
+    async function loadTrades(isManual = false) {
+        const btn = document.getElementById('filter-btn');
+        if (isManual && btn) {
+            btn.disabled = true;
+            const originalText = btn.textContent;
+            btn.textContent = 'Chargement...';
+        }
+
         try {
             const days = document.getElementById('filter-days').value;
             const action = document.getElementById('filter-action').value;
@@ -195,6 +202,11 @@
             console.error('Erreur loadTrades:', error);
             document.getElementById('trades-container').innerHTML = 
                 `<p style="color: #ef4444; text-align: center; padding: 20px;">❌ ${error.message}</p>`;
+        } finally {
+            if (isManual && btn) {
+                btn.disabled = false;
+                btn.textContent = 'Filtrer';
+            }
         }
     }
     
@@ -255,13 +267,13 @@
     }
     
     function applyFilters() {
-        loadTrades();
+        loadTrades(true);
     }
     
     // Chargement initial
     loadTrades();
     
     // Rafraîchir toutes les 30 secondes
-    setInterval(loadTrades, 30000);
+    setInterval(() => loadTrades(false), 30000);
 </script>
 {% endblock %}

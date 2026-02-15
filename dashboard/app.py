@@ -167,6 +167,16 @@ def index():
     """Page principale du dashboard"""
     return render_template('index.html')
 
+@app.route('/trades')
+def trades():
+    """Page trades"""
+    return render_template('trades.html')
+
+@app.route('/metrics')
+def metrics():
+    """Page métriques"""
+    return render_template('metrics.html')
+
 @app.route('/api/account')
 def get_account():
     """Obtenir les infos du compte"""
