@@ -4,7 +4,6 @@ Modèle Avancé de Coûts de Transaction
 Simule slippage, impact de marché, et latence
 """
 
-
 import numpy as np
 import pandas as pd
 
