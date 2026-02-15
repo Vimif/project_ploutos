@@ -18,5 +18,11 @@ echo "   - Threads per process forced to 1 to avoid resource exhaustion"
 echo "   - Walking Forward on 5 years of history"
 echo "   - Ensemble of 10 models"
 
-# 3. Lancer le pipeline (V9 Enabled: Shared Memory)
+# 3. Installer les dépendances (si pas déjà fait)
+if ! python3 -c "import pandas" 2>/dev/null; then
+    echo "📦 Installing dependencies..."
+    pip install -e ".[training]" --quiet
+fi
+
+# 4. Lancer le pipeline (V9 Enabled: Shared Memory)
 python3 scripts/run_pipeline.py --config config/config.yaml --auto-scale --ensemble 10 --shared-memory
