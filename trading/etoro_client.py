@@ -173,7 +173,7 @@ class EToroClient(BrokerInterface):
                 raise ConnectionError(f"Login eToro echoue (status: {status})")
 
         except requests.exceptions.RequestException as e:
-            raise ConnectionError(f"Impossible de se connecter a eToro: {e}")
+            raise ConnectionError(f"Impossible de se connecter a eToro: {e}") from e
 
     def _ensure_auth(self):
         """Re-login si le token a expiré."""

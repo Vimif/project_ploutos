@@ -178,6 +178,7 @@ class BrokerInterface(ABC):
         except Exception:
             return 0
 
+    @abstractmethod
     def log_current_positions(self):
         """Logger les positions actuelles (optionnel)."""
         pass
