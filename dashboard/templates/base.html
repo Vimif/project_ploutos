@@ -39,6 +39,43 @@
             font-size: 2em;
             margin-bottom: 10px;
         }
+
+        /* Header Top */
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(30, 41, 59, 0.5);
+            padding: 6px 12px;
+            border-radius: 20px;
+            border: 1px solid #334155;
+            font-size: 0.85em;
+            color: #94a3b8;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #94a3b8;
+            transition: all 0.3s ease;
+        }
+
+        .status-dot.active {
+            background-color: #10b981;
+            box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+        }
+
+        .status-dot.error {
+            background-color: #ef4444;
+            box-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
+        }
         
         /* Skip Link */
         .skip-link {
@@ -195,7 +232,13 @@
     <a href="#main-content" class="skip-link">Aller au contenu principal</a>
     <header>
         <div class="container">
-            <h1>📊 Ploutos Dashboard</h1>
+            <div class="header-top">
+                <h1>📊 Ploutos Dashboard</h1>
+                <div id="system-status" class="status-indicator" role="status" aria-label="Statut du système: Inconnu">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Initialisation...</span>
+                </div>
+            </div>
             <nav aria-label="Menu principal">
                 <ul>
                     <li><a href="/" {% if request.path == '/' %}class="active" aria-current="page"{% endif %}>Accueil</a></li>
@@ -233,6 +276,28 @@
         function formatDate(dateString) {
             const date = new Date(dateString);
             return date.toLocaleString('fr-FR');
+        }
+
+        // System Status Update
+        function updateSystemStatus(status) {
+            const statusEl = document.getElementById('system-status');
+            if (!statusEl) return;
+
+            const dot = statusEl.querySelector('.status-dot');
+            const text = statusEl.querySelector('.status-text');
+
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('fr-FR');
+
+            if (status === 'connected') {
+                dot.className = 'status-dot active';
+                text.textContent = 'Live • ' + timeStr;
+                statusEl.setAttribute('aria-label', 'Statut du système: Connecté, mis à jour à ' + timeStr);
+            } else {
+                dot.className = 'status-dot error';
+                text.textContent = 'Déconnecté';
+                statusEl.setAttribute('aria-label', 'Statut du système: Déconnecté');
+            }
         }
     </script>
     

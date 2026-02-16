@@ -250,8 +250,10 @@
             // Charger évolution
             loadEvolution(days);
             
+            if (typeof updateSystemStatus === 'function') updateSystemStatus('connected');
         } catch (error) {
             console.error('Erreur loadMetrics:', error);
+            if (typeof updateSystemStatus === 'function') updateSystemStatus('disconnected');
         }
     }
     

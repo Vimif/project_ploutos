@@ -101,7 +101,7 @@
     <!-- Filtres -->
     <div class="filters">
         <div class="filter-group">
-            <label>Période</label>
+            <label for="filter-days">Période</label>
             <select id="filter-days">
                 <option value="7">7 derniers jours</option>
                 <option value="14">14 derniers jours</option>
@@ -112,7 +112,7 @@
         </div>
         
         <div class="filter-group">
-            <label>Action</label>
+            <label for="filter-action">Action</label>
             <select id="filter-action">
                 <option value="">Toutes</option>
                 <option value="BUY">Achats</option>
@@ -121,7 +121,7 @@
         </div>
         
         <div class="filter-group">
-            <label>Symbole</label>
+            <label for="filter-symbol">Symbole</label>
             <input type="text" id="filter-symbol" placeholder="Ex: NVDA">
         </div>
         
@@ -191,10 +191,12 @@
             // Afficher les trades
             displayTrades(tradesData);
             
+            if (typeof updateSystemStatus === 'function') updateSystemStatus('connected');
         } catch (error) {
             console.error('Erreur loadTrades:', error);
             document.getElementById('trades-container').innerHTML = 
                 `<p style="color: #ef4444; text-align: center; padding: 20px;">❌ ${error.message}</p>`;
+            if (typeof updateSystemStatus === 'function') updateSystemStatus('disconnected');
         }
     }
     
