@@ -17,13 +17,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import os
 import json
-import yaml
-import torch
+import os
+from datetime import datetime
+
 import numpy as np
 import pandas as pd
-from datetime import datetime
+import torch
+import yaml
 
 try:
     import optuna
@@ -32,21 +33,21 @@ except ImportError:
     sys.exit(1)
 
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
 from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
 
-from core.environment import TradingEnv
-from core.macro_data import MacroDataFetcher
+from config.hardware import compute_optimal_params, detect_hardware
 from core.data_fetcher import download_data
 from core.data_pipeline import DataSplitter
+from core.environment import TradingEnv
+from core.macro_data import MacroDataFetcher
 from core.utils import setup_logging
-from config.hardware import detect_hardware, compute_optimal_params
 
 logger = setup_logging(__name__, "optimize_hyperparams.log")
 
 
 def load_config(config_path: str) -> dict:
-    with open(config_path, "r") as f:
+    with open(config_path) as f:
         return yaml.safe_load(f)
 
 
@@ -269,7 +270,7 @@ def optimize(
     logger.info("OPTIMIZATION RESULTS")
     logger.info("=" * 70)
     logger.info(f"Best Score: {study.best_value:.4f}")
-    logger.info(f"Best Params:")
+    logger.info("Best Params:")
     for key, value in study.best_params.items():
         logger.info(f"  {key}: {value}")
 

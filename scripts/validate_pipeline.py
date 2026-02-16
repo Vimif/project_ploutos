@@ -27,19 +27,20 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import os
-import json
-import warnings
-import argparse
-import numpy as np
-from datetime import datetime
+import argparse  # noqa: E402
+import json  # noqa: E402
+import os  # noqa: E402
+import warnings  # noqa: E402
+from datetime import datetime  # noqa: E402
+
+import numpy as np  # noqa: E402
 
 warnings.filterwarnings("ignore", message=".*Gym has been unmaintained.*")
 
-from core.data_fetcher import download_data
-from core.data_pipeline import DataSplitter
-from core.environment import TradingEnv
-from core.features import FeatureEngineer  # V9 Turbo
+from core.data_fetcher import download_data  # noqa: E402
+from core.data_pipeline import DataSplitter  # noqa: E402
+from core.environment import TradingEnv  # noqa: E402
+from core.features import FeatureEngineer  # V9 Turbo  # noqa: E402
 
 
 def run_validation(
@@ -69,7 +70,7 @@ def run_validation(
     # ================================================================
     # Stage 1: Download data & Feature Engineering
     # ================================================================
-    print(f"\n📥 Stage 1/6: Téléchargement & Features...")
+    print("\n📥 Stage 1/6: Téléchargement & Features...")
     try:
         data = download_data(tickers, period=period, interval=interval)
         if not data or len(data) == 0:
@@ -110,11 +111,11 @@ def run_validation(
     # ================================================================
     # Stage 3: Training (ou chargement modèle)
     # ================================================================
-    print(f"\n🧠 Stage 3/6: Modèle (Load vs Train)...")
+    print("\n🧠 Stage 3/6: Modèle (Load vs Train)...")
 
-    from stable_baselines3 import PPO
-    from stable_baselines3.common.vec_env import DummyVecEnv
-    from stable_baselines3.common.monitor import Monitor
+    from stable_baselines3 import PPO  # noqa: E402
+    from stable_baselines3.common.monitor import Monitor  # noqa: E402
+    from stable_baselines3.common.vec_env import DummyVecEnv  # noqa: E402
 
     if model_path:
         print(f"  📂 Chargement du modèle depuis: {model_path}")
@@ -164,7 +165,7 @@ def run_validation(
     # ================================================================
     # Stage 4: Evaluation (val data)
     # ================================================================
-    print(f"\n📈 Stage 4/6: Évaluation sur données de validation...")
+    print("\n📈 Stage 4/6: Évaluation sur données de validation...")
     try:
         val_env = TradingEnv(splits.val, mode="eval", seed=seed, features_precomputed=True)
         val_results = _run_episodes(model, val_env, n_episodes=3, label="Val")
@@ -176,7 +177,7 @@ def run_validation(
     # ================================================================
     # Stage 5: Backtest OOS (test data)
     # ================================================================
-    print(f"\n🎯 Stage 5/6: Backtest Out-of-Sample (données test)...")
+    print("\n🎯 Stage 5/6: Backtest Out-of-Sample (données test)...")
     try:
         test_env = TradingEnv(splits.test, mode="backtest", seed=seed, features_precomputed=True)
         oos_results = _run_episodes(model, test_env, n_episodes=1, label="OOS")
@@ -192,7 +193,7 @@ def run_validation(
     # ================================================================
     # Stage 6: Certification
     # ================================================================
-    print(f"\n🏆 Stage 6/6: Certification...")
+    print("\n🏆 Stage 6/6: Certification...")
     cert = _certify(results)
     results["stages"]["certification"] = cert
 

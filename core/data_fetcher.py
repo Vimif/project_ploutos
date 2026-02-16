@@ -3,20 +3,20 @@ Data Fetcher Multi-Sources avec Fallback Automatique
 Priorise Alpaca → yfinance → Polygon.io
 """
 
-import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
-import os
-import warnings
+import os  # noqa: E402
+import warnings  # noqa: E402
+from datetime import datetime, timedelta  # noqa: E402
+
+import pandas as pd  # noqa: E402
 
 warnings.filterwarnings("ignore")
 
 # ✅ AJOUT : Charger .env
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv()
 
-from core.utils import setup_logging
+from core.utils import setup_logging  # noqa: E402
 
 logger = setup_logging(__name__)
 
@@ -45,10 +45,11 @@ class UniversalDataFetcher:
     def _init_alpaca(self):
         """Initialise Alpaca avec la nouvelle API alpaca-py"""
         try:
-            from alpaca.data.historical import StockHistoricalDataClient
-            from alpaca.data.requests import StockBarsRequest
-            from alpaca.data.timeframe import TimeFrame
-            from datetime import datetime, timedelta
+            from datetime import datetime, timedelta  # noqa: E402
+
+            from alpaca.data.historical import StockHistoricalDataClient  # noqa: E402
+            from alpaca.data.requests import StockBarsRequest  # noqa: E402
+            from alpaca.data.timeframe import TimeFrame  # noqa: E402
 
             # ✅ FIX : Nom correct des variables
             api_key = os.getenv("ALPACA_API_KEY")
@@ -89,7 +90,7 @@ class UniversalDataFetcher:
     def _init_polygon(self):
         """Initialise Polygon.io (optionnel, payant mais excellent)"""
         try:
-            from polygon import RESTClient
+            from polygon import RESTClient  # noqa: E402
 
             api_key = os.getenv("POLYGON_API_KEY")
 
@@ -175,9 +176,10 @@ class UniversalDataFetcher:
 
     def _fetch_alpaca(self, ticker, start_date, end_date, interval):
         """Récupère depuis Alpaca (nouvelle API alpaca-py)"""
-        from alpaca.data.requests import StockBarsRequest
-        from alpaca.data.timeframe import TimeFrame
-        from datetime import datetime
+        from datetime import datetime  # noqa: E402
+
+        from alpaca.data.requests import StockBarsRequest  # noqa: E402
+        from alpaca.data.timeframe import TimeFrame  # noqa: E402
 
         # Mapping interval
         timeframe_map = {
@@ -223,7 +225,7 @@ class UniversalDataFetcher:
 
     def _fetch_yfinance(self, ticker, start_date, end_date, interval):
         """Récupère depuis yfinance (fallback universel)"""
-        import yfinance as yf
+        import yfinance as yf  # noqa: E402
 
         # ✅ FIX : Gérer la limite 730 jours pour les intervalles horaires
         if interval in ["1h", "30m", "15m", "5m", "1m"]:
@@ -388,7 +390,7 @@ class UniversalDataFetcher:
         Returns:
             dict: {ticker: DataFrame}
         """
-        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from concurrent.futures import ThreadPoolExecutor, as_completed  # noqa: E402
 
         logger.info(f"📦 Bulk fetch : {len(tickers)} tickers")
 
@@ -452,7 +454,7 @@ class UniversalDataFetcher:
             return None
 
         try:
-            from core.data_loader import load_market_data
+            from core.data_loader import load_market_data  # noqa: E402
 
             df = load_market_data(path)
             logger.info(f"💾 {ticker} chargé depuis cache")
@@ -476,19 +478,23 @@ def download_data(tickers, period="2y", interval="1h", max_workers=3, dataset_pa
     Returns:
         dict: {ticker: DataFrame} ou DataFrame si ticker unique
     """
-    import os
-    import glob
-    import pandas as pd
-    from datetime import datetime, timedelta
-    from core.data_fetcher import UniversalDataFetcher, logger  # Réutiliser logger existant
+    import glob  # noqa: E402
+    import os  # noqa: E402
+    from datetime import datetime, timedelta  # noqa: E402
+
+    import pandas as pd  # noqa: E402
+
+    from core.data_fetcher import (  # Réutiliser logger existant  # noqa: E402
+        UniversalDataFetcher,
+        logger,
+    )
 
     # 1. Chargement LOCAL (Priorité absolue si dataset_path fourni)
-    import glob
 
     if dataset_path:
         print(f"DEBUG DATASET_PATH: {dataset_path} (Exists: {os.path.exists(dataset_path)})")
     if dataset_path and os.path.exists(dataset_path):
-        import glob
+        import glob  # noqa: E402
 
         logger.info(f"📂 Loading data from local dataset: {dataset_path}")
         results = {}

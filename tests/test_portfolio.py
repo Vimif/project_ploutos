@@ -5,10 +5,11 @@ from unittest.mock import MagicMock
 mock_torch = MagicMock()
 sys.modules["torch"] = mock_torch
 
-import pytest
-from unittest.mock import patch
-from pathlib import Path
-from trading.portfolio import Portfolio
+from unittest.mock import patch  # noqa: E402
+
+import pytest  # noqa: E402
+
+from trading.portfolio import Portfolio  # noqa: E402
 
 
 @pytest.fixture
@@ -110,9 +111,9 @@ def test_save_state(mock_trades_dir, portfolio, tmp_path):
     saved_file = tmp_path / "test_portfolio.json"
     assert saved_file.exists()
 
-    import json
+    import json  # noqa: E402
 
-    with open(saved_file, "r") as f:
+    with open(saved_file) as f:
         data = json.load(f)
 
     assert data["initial_capital"] == 100000
@@ -125,7 +126,7 @@ def test_load_state(mock_trades_dir, portfolio, tmp_path):
     test_file = tmp_path / "test_portfolio.json"
     mock_trades_dir.__truediv__.return_value = test_file
 
-    import json
+    import json  # noqa: E402
 
     state = {
         "initial_capital": 50000,

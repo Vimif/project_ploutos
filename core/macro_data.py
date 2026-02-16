@@ -7,21 +7,22 @@ Ces indicateurs fournissent le contexte de marché :
 - DXY (DX-Y.NYB) : Dollar Index → impact matières premières
 
 Usage:
-    from core.macro_data import MacroDataFetcher
+    from core.macro_data import MacroDataFetcher  # noqa: E402
 
     macro = MacroDataFetcher()
     macro_data = macro.fetch_all(start_date='2023-01-01')
     # Returns: pd.DataFrame with columns [vix, tnx, dxy, vix_ma20, ...]
 """
 
-import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
-import warnings
+import warnings  # noqa: E402
+from datetime import datetime, timedelta  # noqa: E402
+
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
 
 warnings.filterwarnings("ignore")
 
-from core.utils import setup_logging
+from core.utils import setup_logging  # noqa: E402
 
 logger = setup_logging(__name__)
 
@@ -52,7 +53,7 @@ class MacroDataFetcher:
         Returns:
             DataFrame avec colonnes macro (vix, tnx, dxy + dérivées).
         """
-        import yfinance as yf
+        import yfinance as yf  # noqa: E402
 
         if end_date is None:
             end_dt = datetime.now()
