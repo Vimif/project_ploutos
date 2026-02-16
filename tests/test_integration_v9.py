@@ -23,6 +23,9 @@ class TestV9Integration:
         fe = FeatureEngineer()
         df = _get_mock_data(2000)
         
+        # Warmup to avoid import/JIT overhead in first run
+        fe.calculate_all_features(df)
+
         t0 = time.time()
         res = fe.calculate_all_features(df)
         dt = time.time() - t0
