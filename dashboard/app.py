@@ -162,10 +162,24 @@ def get_top_symbols_from_trades(trades, limit=10):
     
     return top_symbols[:limit]
 
+@app.context_processor
+def inject_now():
+    return {'now': datetime.now().year}
+
 @app.route('/')
 def index():
     """Page principale du dashboard"""
     return render_template('index.html')
+
+@app.route('/trades')
+def trades():
+    """Page des trades"""
+    return render_template('trades.html')
+
+@app.route('/metrics')
+def metrics():
+    """Page des métriques"""
+    return render_template('metrics.html')
 
 @app.route('/api/account')
 def get_account():

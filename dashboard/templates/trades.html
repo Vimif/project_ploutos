@@ -101,8 +101,8 @@
     <!-- Filtres -->
     <div class="filters">
         <div class="filter-group">
-            <label>Période</label>
-            <select id="filter-days">
+            <label for="filter-days">Période</label>
+            <select id="filter-days" onkeydown="if(event.key === 'Enter') applyFilters()">
                 <option value="7">7 derniers jours</option>
                 <option value="14">14 derniers jours</option>
                 <option value="30" selected>30 derniers jours</option>
@@ -112,8 +112,8 @@
         </div>
         
         <div class="filter-group">
-            <label>Action</label>
-            <select id="filter-action">
+            <label for="filter-action">Action</label>
+            <select id="filter-action" onkeydown="if(event.key === 'Enter') applyFilters()">
                 <option value="">Toutes</option>
                 <option value="BUY">Achats</option>
                 <option value="SELL">Ventes</option>
@@ -121,12 +121,12 @@
         </div>
         
         <div class="filter-group">
-            <label>Symbole</label>
-            <input type="text" id="filter-symbol" placeholder="Ex: NVDA">
+            <label for="filter-symbol">Symbole</label>
+            <input type="text" id="filter-symbol" placeholder="Ex: NVDA" onkeydown="if(event.key === 'Enter') applyFilters()">
         </div>
         
         <div class="filter-group" style="justify-content: flex-end;">
-            <button class="btn" onclick="applyFilters()">Filtrer</button>
+            <button id="filter-btn" class="btn" onclick="applyFilters()">Filtrer</button>
         </div>
     </div>
     
@@ -254,8 +254,20 @@
         document.getElementById('trades-container').innerHTML = html;
     }
     
-    function applyFilters() {
-        loadTrades();
+    async function applyFilters() {
+        const btn = document.getElementById('filter-btn');
+        if (btn.disabled) return;
+
+        const originalText = btn.innerText;
+
+        try {
+            btn.innerText = 'Chargement...';
+            btn.disabled = true;
+            await loadTrades();
+        } finally {
+            btn.innerText = originalText;
+            btn.disabled = false;
+        }
     }
     
     // Chargement initial
