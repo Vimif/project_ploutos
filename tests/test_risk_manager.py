@@ -3,14 +3,13 @@ import numpy as np
 from datetime import datetime, timedelta
 from core.risk_manager import RiskManager
 
+
 @pytest.fixture
 def risk_manager():
     return RiskManager(
-        max_portfolio_risk=0.02,
-        max_daily_loss=0.03,
-        max_position_size=0.05,
-        max_correlation=0.7
+        max_portfolio_risk=0.02, max_daily_loss=0.03, max_position_size=0.05, max_correlation=0.7
     )
+
 
 class TestRiskManager:
     def test_initialization(self, risk_manager):
@@ -59,7 +58,7 @@ class TestRiskManager:
 
         # Loss 3% -> 97k (Limit hit if <= -0.03)
         # 97000 - 100000 = -3000 = -3%
-        assert not risk_manager.check_daily_loss_limit(96999) # slightly more than 3%
+        assert not risk_manager.check_daily_loss_limit(96999)  # slightly more than 3%
         assert risk_manager.circuit_breaker_triggered
 
         # If the value goes back up, the circuit breaker remains triggered
@@ -91,7 +90,7 @@ class TestRiskManager:
         # Let's adjust the test to match the implementation.
 
         assert risk_manager.check_daily_loss_limit(100000)
-        assert risk_manager.circuit_breaker_triggered # Flag remains True though
+        assert risk_manager.circuit_breaker_triggered  # Flag remains True though
 
     def test_reset_daily_stats(self, risk_manager):
         risk_manager.daily_start_value = 100000
@@ -105,32 +104,29 @@ class TestRiskManager:
         assert not risk_manager.circuit_breaker_triggered
 
     def test_calculate_portfolio_exposure(self, risk_manager):
-        positions = [
-            {'market_value': 10000},
-            {'market_value': 20000}
-        ]
+        positions = [{"market_value": 10000}, {"market_value": 20000}]
         exposure = risk_manager.calculate_portfolio_exposure(positions, 100000)
-        assert exposure == 0.3 # 30%
+        assert exposure == 0.3  # 30%
 
     def test_should_reduce_exposure(self, risk_manager):
         # Case 1: High exposure
-        positions_high = [{'market_value': 90000, 'unrealized_plpc': 0.0}]
+        positions_high = [{"market_value": 90000, "unrealized_plpc": 0.0}]
         should_reduce, reason = risk_manager.should_reduce_exposure(positions_high, 100000)
         assert should_reduce
         assert "Exposition élevée" in reason
 
         # Case 2: Many losing positions
         positions_losing = [
-            {'market_value': 1000, 'unrealized_plpc': -0.06}, # Losing > 5%
-            {'market_value': 1000, 'unrealized_plpc': -0.06}, # Losing > 5%
-            {'market_value': 1000, 'unrealized_plpc': 0.10},
-        ] # 2/3 losing
+            {"market_value": 1000, "unrealized_plpc": -0.06},  # Losing > 5%
+            {"market_value": 1000, "unrealized_plpc": -0.06},  # Losing > 5%
+            {"market_value": 1000, "unrealized_plpc": 0.10},
+        ]  # 2/3 losing
         should_reduce, reason = risk_manager.should_reduce_exposure(positions_losing, 100000)
         assert should_reduce
         assert "positions en perte" in reason
 
         # Case 3: OK
-        positions_ok = [{'market_value': 10000, 'unrealized_plpc': 0.0}]
+        positions_ok = [{"market_value": 10000, "unrealized_plpc": 0.0}]
         should_reduce, reason = risk_manager.should_reduce_exposure(positions_ok, 100000)
         assert not should_reduce
 
@@ -145,7 +141,7 @@ class TestRiskManager:
 
         # Losing strategy
         kelly = risk_manager.calculate_kelly_criterion(0.1, 0.01, 0.01)
-        assert kelly == 0.0 # Should not trade
+        assert kelly == 0.0  # Should not trade
 
     def test_calculate_sharpe_ratio(self, risk_manager):
         returns = [0.01, 0.02, -0.01, 0.005]
@@ -159,55 +155,55 @@ class TestRiskManager:
         values = [100, 110, 105, 100, 120]
         # Peak 110 -> 100 (Drawdown -10 / 110 = -9.09%)
         pct, amount = risk_manager.calculate_max_drawdown(values)
-        assert amount == 10 # 110 - 100
+        assert amount == 10  # 110 - 100
         np.testing.assert_almost_equal(pct, -0.090909, decimal=4)
 
     def test_assess_position_risk(self, risk_manager):
         # Safe position
-        risk = risk_manager.assess_position_risk('AAPL', 1000, 100000, 0.01, 5)
-        assert risk['risk_level'] == 'FAIBLE'
-        assert risk['recommendation'] == 'OK'
+        risk = risk_manager.assess_position_risk("AAPL", 1000, 100000, 0.01, 5)
+        assert risk["risk_level"] == "FAIBLE"
+        assert risk["recommendation"] == "OK"
 
         # Risky position (Too large)
-        risk = risk_manager.assess_position_risk('AAPL', 10000, 100000, 0.01, 5)
+        risk = risk_manager.assess_position_risk("AAPL", 10000, 100000, 0.01, 5)
         # 10% size > 5% limit -> +2 score
-        assert risk['risk_score'] >= 2
-        assert risk['risk_level'] in ['ÉLEVÉ', 'CRITIQUE']
+        assert risk["risk_score"] >= 2
+        assert risk["risk_level"] in ["ÉLEVÉ", "CRITIQUE"]
 
         # Risky position (Big loss)
-        risk = risk_manager.assess_position_risk('AAPL', 1000, 100000, -0.15, 5)
+        risk = risk_manager.assess_position_risk("AAPL", 1000, 100000, -0.15, 5)
         # -15% < -10% -> +3 score
-        assert risk['risk_score'] >= 3
+        assert risk["risk_score"] >= 3
 
         # Stale loser
-        risk = risk_manager.assess_position_risk('AAPL', 1000, 100000, -0.01, 40)
+        risk = risk_manager.assess_position_risk("AAPL", 1000, 100000, -0.01, 40)
         # > 30 days and < 0 -> +1 score
-        assert risk['risk_score'] >= 1
+        assert risk["risk_score"] >= 1
 
     def test_get_risk_report(self, risk_manager):
         risk_manager.daily_start_value = 100000
         positions = [
             {
-                'symbol': 'AAPL',
-                'market_value': 5000,
-                'unrealized_plpc': 0.01,
-                'purchase_date': (datetime.now() - timedelta(days=5)).isoformat()
+                "symbol": "AAPL",
+                "market_value": 5000,
+                "unrealized_plpc": 0.01,
+                "purchase_date": (datetime.now() - timedelta(days=5)).isoformat(),
             }
         ]
         report = risk_manager.get_risk_report(positions, 100000, [0.01, -0.01])
 
-        assert report['portfolio_value'] == 100000
-        assert report['positions_count'] == 1
-        assert not report['circuit_breaker']
+        assert report["portfolio_value"] == 100000
+        assert report["positions_count"] == 1
+        assert not report["circuit_breaker"]
 
     def test_log_trade(self, risk_manager):
-        risk_manager.log_trade('AAPL', 'BUY')
+        risk_manager.log_trade("AAPL", "BUY")
         assert risk_manager.daily_trades == 1
 
-        risk_manager.log_trade('AAPL', 'SELL', pl=100)
+        risk_manager.log_trade("AAPL", "SELL", pl=100)
         assert risk_manager.daily_trades == 2
         assert risk_manager.daily_wins == 1
 
-        risk_manager.log_trade('AAPL', 'SELL', pl=-50)
+        risk_manager.log_trade("AAPL", "SELL", pl=-50)
         assert risk_manager.daily_trades == 3
         assert risk_manager.daily_losses == 1
