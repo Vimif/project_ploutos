@@ -108,9 +108,21 @@ def run_validation(
     # ================================================================
     # Stage 3: Training (ou chargement modèle)
     # ================================================================
-    # ...
-    # (Dans le bloc else pour training)
-    # ...
+    print(f"\n🧠 Stage 3/6: Modèle ({'Load' if model_path else 'Train'})...")
+
+    model = None
+    if model_path:
+        try:
+            from stable_baselines3 import PPO
+            model = PPO.load(model_path)
+            print(f"  ✅ Modèle chargé: {model_path}")
+            results['stages']['model'] = {'status': 'OK', 'source': 'loaded'}
+        except Exception as e:
+            print(f"  ❌ Erreur chargement: {e}")
+            results['stages']['model'] = {'status': 'FAIL', 'error': str(e)}
+            return results
+    else:
+        try:
             from stable_baselines3 import PPO
             from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
             from stable_baselines3.common.monitor import Monitor
@@ -121,8 +133,15 @@ def run_validation(
                     splits.train, mode='train', seed=seed, features_precomputed=True
                 ))
             ])
-            # ...
-    # ...
+
+            model = PPO('MlpPolicy', train_env, verbose=0, seed=seed)
+            model.learn(total_timesteps=total_timesteps)
+            print(f"  ✅ Modèle entraîné ({total_timesteps} steps)")
+            results['stages']['model'] = {'status': 'OK', 'source': 'trained'}
+        except Exception as e:
+            print(f"  ❌ Erreur entraînement: {e}")
+            results['stages']['model'] = {'status': 'FAIL', 'error': str(e)}
+            return results
 
     # ================================================================
     # Stage 4: Evaluation (val data)
