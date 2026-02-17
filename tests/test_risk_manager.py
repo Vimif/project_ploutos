@@ -93,13 +93,23 @@ class TestRiskManager:
 
     def test_get_risk_report(self, risk_manager):
         positions = [
-            {"symbol": "A", "market_value": 10000.0, "unrealized_plpc": 0.05, "purchase_date": "2023-01-01"},
-            {"symbol": "B", "market_value": 25000.0, "unrealized_plpc": -0.15, "created_at": "2023-01-01"}
+            {
+                "symbol": "A",
+                "market_value": 10000.0,
+                "unrealized_plpc": 0.05,
+                "purchase_date": "2023-01-01",
+            },
+            {
+                "symbol": "B",
+                "market_value": 25000.0,
+                "unrealized_plpc": -0.15,
+                "created_at": "2023-01-01",
+            },
         ]
         report = risk_manager.get_risk_report(positions, 100000.0, daily_returns=[0.01, -0.01])
         assert report["portfolio_value"] == 100000.0
         assert report["positions_count"] == 2
-        assert len(report["risky_positions"]) >= 1 # B is too big and losing
+        assert len(report["risky_positions"]) >= 1  # B is too big and losing
 
     def test_print_risk_summary(self, risk_manager):
         report = {
@@ -115,8 +125,13 @@ class TestRiskManager:
             "daily_losses": 1,
             "circuit_breaker": False,
             "risky_positions": [
-                {"symbol": "B", "risk_level": "HIGH", "recommendation": "SELL", "warnings": ["Too big"]}
-            ]
+                {
+                    "symbol": "B",
+                    "risk_level": "HIGH",
+                    "recommendation": "SELL",
+                    "warnings": ["Too big"],
+                }
+            ],
         }
         # Just check it runs without error
         risk_manager.print_risk_summary(report)
