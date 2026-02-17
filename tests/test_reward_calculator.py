@@ -24,7 +24,7 @@ class TestBasicReward:
         assert reward == 0.0
 
     def test_reward_not_nan(self, calc):
-        for i in range(50):
+        for _ in range(50):
             equity = 100000 + np.random.randn() * 100
             reward = calc.calculate(100000, equity, max(100000, equity), 0)
             assert not np.isnan(reward)

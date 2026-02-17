@@ -295,7 +295,7 @@ def monte_carlo_test(
     # Agrégation des rendements de tous les MC pour un PSR global "Meta"
     # On prend le rendement moyen par pas de temps sur toutes les sims
     # C'est une approximation pour voir si la stratégie "en moyenne" a un PSR élevé.
-    all_returns_flat = np.array(returns)  # Rendements totaux des épisodes
+    # all_returns_flat = np.array(returns)  # Rendements totaux des épisodes
 
     # Calcul PSR sur la distribution des Scénarios (Est-ce que >95% des scénarios battent 0 ?)
     # On utilise simplement le taux de perte pour ça, mais le PSR ajoute la nuance de la variance.

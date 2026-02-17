@@ -169,7 +169,7 @@ def train_v7_model(config_path: str, force_rescan: bool = False):
         # Extract training data date range for OOS enforcement
         all_starts = []
         all_ends = []
-        for ticker, df in data.items():
+        for _ticker, df in data.items():
             if len(df) > 0:
                 all_starts.append(str(df.index[0]))
                 all_ends.append(str(df.index[-1]))

@@ -1,8 +1,5 @@
 """Tests du pipeline de données avec split temporel."""
 
-import sys
-from unittest.mock import MagicMock
-
 import numpy as np
 import pandas as pd
 import pytest

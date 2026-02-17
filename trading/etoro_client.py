@@ -376,10 +376,10 @@ class EToroClient(BrokerInterface):
                     current_rate = float(
                         trade.get("CurrentRate", 0) or trade.get("currentRate", open_rate)
                     )
-                    leverage = float(trade.get("Leverage", 1) or trade.get("leverage", 1))
-                    is_buy = (
-                        trade.get("IsBuy", True) if "IsBuy" in trade else trade.get("isBuy", True)
-                    )
+                    # leverage = float(trade.get("Leverage", 1) or trade.get("leverage", 1))
+                    # is_buy = (
+                    #     trade.get("IsBuy", True) if "IsBuy" in trade else trade.get("isBuy", True)
+                    # )
 
                     # eToro utilise Amount (en $), pas qty d'actions directement
                     if open_rate > 0:

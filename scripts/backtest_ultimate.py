@@ -206,7 +206,7 @@ def detect_environment(model, metadata=None, config=None):
     logger.info(f"  Observation space du modele: {obs_size} dims")
 
     # Derive actual n_tickers from obs_size: obs = n * 85 + n + 3 = n * 86 + 3
-    FEATURES_PER_TICKER = 85  # FeatureEngineer produces 85 features
+    # FEATURES_PER_TICKER = 85  # FeatureEngineer produces 85 features
     actual_n_from_obs = (obs_size - 3) / 86
     actual_n_int = round(actual_n_from_obs)
     obs_matches = abs(actual_n_int * 86 + 3 - obs_size) < 5
@@ -278,7 +278,7 @@ def detect_environment(model, metadata=None, config=None):
             params = dict(ENV_PARAMS_V6)
 
         logger.info(
-            f"  -> Match exact: {version} BetterTiming avec {n_tickers} tickers ({expected_obs} dims)"
+            f"  -> Match exact: {version} BetterTiming avec {n_tickers} tickers ({obs_size} dims)"
         )
         return version, n_tickers, None, env_cls, params
 
@@ -356,7 +356,7 @@ class TradeJournal:
         for i, ticker in enumerate(self.tickers):
             qty_before = portfolio_before.get(ticker, 0.0)
             qty_after = env.portfolio.get(ticker, 0.0)
-            action = actions[i] if i < len(actions) else 0
+            # action = actions[i] if i < len(actions) else 0
 
             current_price = self._safe_price(env, ticker, step)
             if current_price <= 0:
@@ -594,7 +594,7 @@ def compute_portfolio_metrics(portfolio_history, initial_balance, annualize_fact
 def benchmark_buy_and_hold(data, initial_balance):
     amount_per = initial_balance / len(data)
     total_final = 0.0
-    for ticker, df in data.items():
+    for _ticker, df in data.items():
         if len(df) < 2:
             total_final += amount_per
             continue
@@ -1443,7 +1443,7 @@ def main():
     # Get actual date range of backtest data
     all_bt_starts = []
     all_bt_ends = []
-    for ticker, df in data.items():
+    for _ticker, df in data.items():
         if len(df) > 0:
             all_bt_starts.append(df.index[0])
             all_bt_ends.append(df.index[-1])
