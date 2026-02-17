@@ -16,11 +16,11 @@ Améliorations Étage 1 (refactoring):
 - Reproductibilité via seed en mode backtest
 """
 
+from collections import deque
+
 import gymnasium as gym
 import numpy as np
 import pandas as pd
-from typing import Dict, Optional
-from collections import deque
 
 from core.features import FeatureEngineer
 from core.transaction_costs import AdvancedTransactionModel
@@ -42,7 +42,7 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
 
     def __init__(
         self,
-        data: Dict[str, pd.DataFrame],
+        data: dict[str, pd.DataFrame],
         initial_balance: float = 100000.0,
         commission: float = 0.0,
         sec_fee: float = 0.0000221,
@@ -63,7 +63,7 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
         drawdown_penalty_factor: float = 3.0,
         # ===== Nouveaux paramètres Étage 1 =====
         mode: str = "train",
-        seed: Optional[int] = None,
+        seed: int | None = None,
         # Rewards configurables (ex-magic numbers)
         reward_buy_executed: float = 0.1,
         reward_overtrading: float = -0.02,
@@ -169,7 +169,7 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
 
     def _prepare_features_v2(self):
         """Préparer Features V2 optimisées."""
-        print(f"  🚀 Calcul Features V2 (optimisées pour timing)...")
+        print("  🚀 Calcul Features V2 (optimisées pour timing)...")
 
         self.processed_data = {}
         self.feature_engineer = FeatureEngineer()
@@ -185,7 +185,7 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
         ]
 
         print(f"  ✅ {len(self.feature_columns)} features calculées par ticker")
-        print(f"      Include: entry_score, support/resistance, divergences, etc.")
+        print("      Include: entry_score, support/resistance, divergences, etc.")
 
         # ⚡ OPTIMISATION: Convertir en numpy arrays pour accès rapide
         self.feature_arrays = {}
@@ -461,7 +461,7 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
             return float(volumes[-1])
         return float(volumes[self.current_step])
 
-    def _get_recent_prices(self, ticker: str) -> Optional[pd.Series]:
+    def _get_recent_prices(self, ticker: str) -> pd.Series | None:
         """Retourne les 20 derniers prix pour le calcul de volatilité."""
         prices = self.close_prices[ticker]
         start = max(0, self.current_step - 20)
