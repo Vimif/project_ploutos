@@ -7,7 +7,8 @@ import secrets
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from flask import Flask, render_template, jsonify, request
+from functools import wraps
+from flask import Flask, render_template, jsonify, request, Response
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 import traceback
@@ -25,6 +26,35 @@ app = Flask(__name__)
 # SECURE: Use environment variable or generate random key
 app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(24))
 CORS(app)
+
+# AUTHENTIFICATION
+DASHBOARD_USERNAME = os.environ.get('DASHBOARD_USERNAME', 'admin')
+DASHBOARD_PASSWORD = os.environ.get('DASHBOARD_PASSWORD')
+
+if not DASHBOARD_PASSWORD:
+    DASHBOARD_PASSWORD = secrets.token_urlsafe(16)
+    logger.warning(f"⚠️  DASHBOARD_PASSWORD not set. Generated password: {DASHBOARD_PASSWORD}")
+
+def check_auth(username, password):
+    """Vérifie le nom d'utilisateur et le mot de passe."""
+    return secrets.compare_digest(username, DASHBOARD_USERNAME) and \
+           secrets.compare_digest(password, DASHBOARD_PASSWORD)
+
+def authenticate():
+    """Envoie une réponse 401 qui active l'authentification basic."""
+    return Response(
+    'Connexion requise pour accéder à cette page.\n'
+    'Veuillez vous connecter avec les identifiants appropriés.', 401,
+    {'WWW-Authenticate': 'Basic realm="Login Required"'})
+
+def requires_auth(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.authorization
+        if not auth or not check_auth(auth.username, auth.password):
+            return authenticate()
+        return f(*args, **kwargs)
+    return decorated
 
 # SocketIO avec gevent
 socketio = SocketIO(
@@ -163,11 +193,13 @@ def get_top_symbols_from_trades(trades, limit=10):
     return top_symbols[:limit]
 
 @app.route('/')
+@requires_auth
 def index():
     """Page principale du dashboard"""
     return render_template('index.html')
 
 @app.route('/api/account')
+@requires_auth
 def get_account():
     """Obtenir les infos du compte"""
     try:
@@ -192,6 +224,7 @@ def get_account():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/positions')
+@requires_auth
 def get_positions():
     """Obtenir toutes les positions"""
     try:
@@ -217,6 +250,7 @@ def get_positions():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/orders')
+@requires_auth
 def get_orders():
     """Obtenir les ordres récents"""
     try:
@@ -241,6 +275,7 @@ def get_orders():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/performance')
+@requires_auth
 def get_performance():
     """Calculer les performances"""
     try:
@@ -274,6 +309,7 @@ def get_performance():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/close_position/<symbol>', methods=['POST'])
+@requires_auth
 def close_position(symbol):
     """Fermer une position manuellement"""
     try:
@@ -295,6 +331,7 @@ def close_position(symbol):
 # ========== ROUTES LECTURE JSON (REMPLACEMENT BDD) ==========
 
 @app.route('/api/db/trades')
+@requires_auth
 def api_db_trades():
     """Historique trades depuis JSON"""
     try:
@@ -318,6 +355,7 @@ def api_db_trades():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/db/statistics')
+@requires_auth
 def api_db_statistics():
     """Statistiques depuis JSON"""
     try:
@@ -348,6 +386,7 @@ def api_db_statistics():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/db/evolution')
+@requires_auth
 def api_db_evolution():
     """Évolution portfolio depuis JSON"""
     try:
@@ -385,6 +424,7 @@ def api_db_evolution():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/db/summary')
+@requires_auth
 def api_db_summary():
     """Résumés quotidiens depuis JSON"""
     try:
