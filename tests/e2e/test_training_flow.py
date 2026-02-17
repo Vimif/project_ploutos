@@ -1,10 +1,12 @@
-import pytest
-import pandas as pd
-import numpy as np
-import yaml
 import shutil
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import numpy as np
+import pandas as pd
+import pytest
+import yaml
+
 from training.train import run_walk_forward
 
 # Setup paths
@@ -55,7 +57,7 @@ def setup_config():
         shutil.rmtree(OUTPUT_DIR)
 
 
-import os
+import os  # noqa: E402
 
 
 @patch("training.train.download_data")
