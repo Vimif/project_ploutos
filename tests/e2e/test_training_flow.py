@@ -62,8 +62,17 @@ import os
 
 @patch("training.train.download_data")
 @patch("training.train.MacroDataFetcher")
-def test_full_pipeline_execution(mock_macro_cls, mock_download, setup_config):
+@patch("training.train.PPO")
+def test_full_pipeline_execution(
+    mock_ppo, mock_macro_cls, mock_download, setup_config
+):
     """Lance un training complet avec Mock Data."""
+
+    # Setup Mock PPO
+    mock_ppo_instance = mock_ppo.return_value
+    mock_ppo_instance.learn.return_value = mock_ppo_instance
+    mock_ppo_instance.predict.return_value = (np.array([0]), None)
+    mock_ppo_instance.save.return_value = None
 
     # 1. Mock Market Data
     dates = pd.date_range("2020-01-01", "2022-01-01", freq="h")
