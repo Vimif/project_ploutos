@@ -67,9 +67,7 @@ class TestPenalties:
             calc.calculate(100000, 100100, 100100, 0)
         r_no_dd = calc.calculate(100000, 80000, 100000, 0)
 
-        calc2 = RewardCalculator(
-            use_drawdown_penalty=True, drawdown_penalty_factor=10.0
-        )
+        calc2 = RewardCalculator(use_drawdown_penalty=True, drawdown_penalty_factor=10.0)
         for _ in range(5):
             calc2.calculate(100000, 100100, 100100, 0)
         r_dd = calc2.calculate(100000, 80000, 100000, 0)
