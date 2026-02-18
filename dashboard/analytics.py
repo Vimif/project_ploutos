@@ -6,11 +6,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Tuple, Optional
-from datetime import datetime, timedelta
-from collections import defaultdict
 
 from core.utils import setup_logging
 
@@ -20,7 +18,7 @@ logger = setup_logging(__name__, "analytics.log")
 class PortfolioAnalytics:
     """Calculateur de métriques financières avancées"""
 
-    def __init__(self, trades: List[Dict], daily_summaries: List[Dict] = None):
+    def __init__(self, trades: list[dict], daily_summaries: list[dict] = None):
         """
         Initialiser l'analyseur
 
@@ -120,7 +118,7 @@ class PortfolioAnalytics:
 
         return float(sortino) if not np.isnan(sortino) else 0.0
 
-    def max_drawdown(self) -> Tuple[float, str, str]:
+    def max_drawdown(self) -> tuple[float, str, str]:
         """
         Calculer le drawdown maximum
 
@@ -182,7 +180,7 @@ class PortfolioAnalytics:
 
         return float(calmar) if not np.isnan(calmar) else 0.0
 
-    def win_rate(self) -> Dict[str, float]:
+    def win_rate(self) -> dict[str, float]:
         """
         Calculer le win rate (paires BUY->SELL rentables)
 
@@ -222,7 +220,7 @@ class PortfolioAnalytics:
 
         return {"wins": wins, "losses": losses, "total": total, "win_rate": win_rate}
 
-    def avg_win_loss(self) -> Dict[str, float]:
+    def avg_win_loss(self) -> dict[str, float]:
         """
         Calculer le gain moyen vs perte moyenne
 
@@ -273,7 +271,7 @@ class PortfolioAnalytics:
             "profit_factor": float(profit_factor),
         }
 
-    def trades_by_symbol(self) -> Dict[str, Dict]:
+    def trades_by_symbol(self) -> dict[str, dict]:
         """
         Statistiques par symbole
 
@@ -303,7 +301,7 @@ class PortfolioAnalytics:
 
         return stats_by_symbol
 
-    def get_all_metrics(self) -> Dict:
+    def get_all_metrics(self) -> dict:
         """
         Calculer toutes les métriques en une seule fois
 
@@ -356,7 +354,7 @@ class PortfolioAnalytics:
 
 def calculate_benchmark_comparison(
     portfolio_returns: pd.Series, benchmark_returns: pd.Series
-) -> Dict:
+) -> dict:
     """
     Comparer le portfolio à un benchmark (ex: SPY)
 

@@ -1,14 +1,14 @@
 import os
 import sys
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import patch, MagicMock
-from flask import Flask
 
 # Add project root to sys.path
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__) + "/.."))
 
 # Import the app
-from dashboard.app import app, init_alpaca
+from dashboard.app import app
 
 
 @pytest.fixture
