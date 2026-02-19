@@ -1,4 +1,3 @@
-
 import pytest
 
 from core.risk_manager import RiskManager
