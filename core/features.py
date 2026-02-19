@@ -9,10 +9,10 @@ Date: Feb 2026
 """
 
 import warnings
+
 import numpy as np
 import pandas as pd
 import polars as pl
-from typing import Optional, Union
 
 warnings.filterwarnings("ignore")
 
@@ -27,28 +27,40 @@ class FeatureEngineer:
         self.features_calculated = []
 
     def calculate_all_features(
-        self, df: Union[pd.DataFrame, pl.DataFrame], return_pandas: bool = True
-    ) -> Union[pd.DataFrame, pl.DataFrame]:
+        self, df: pd.DataFrame | pl.DataFrame, return_pandas: bool = True
+    ) -> pd.DataFrame | pl.DataFrame:
         """
         Calcule TOUTES les features optimisées.
         Accepte Pandas ou Polars en entrée.
         """
         # Conversion entrée -> Polars
+        has_date_idx = False
+        _original_index_name = None
+
         if isinstance(df, pd.DataFrame):
             # Polars n'a pas d'index. On sauvegarde le nom d'index pour le restaurer.
             _original_index_name = df.index.name
             if isinstance(df.index, pd.DatetimeIndex):
-                pdf = pl.from_pandas(df.reset_index())
+                # Use Lazy execution immediately
+                pdf = pl.from_pandas(df.reset_index()).lazy()
                 # Normalize index column name to '__date_idx' for reliable round-trip
                 idx_col = _original_index_name if _original_index_name else "index"
-                if idx_col in pdf.columns:
-                    pdf = pdf.rename({idx_col: "__date_idx"})
+                # We know the column exists because we just reset_index
+                pdf = pdf.rename({idx_col: "__date_idx"})
+                has_date_idx = True
             else:
-                pdf = pl.from_pandas(df)
+                pdf = pl.from_pandas(df).lazy()
         else:
-            pdf = df
+            if isinstance(df, pl.DataFrame):
+                pdf = df.lazy()
+            else:
+                pdf = df
 
-        # Calculs chaînés (Lazy-like syntax but eager execution for now)
+            # Check for __date_idx if input is Polars
+            if "__date_idx" in pdf.collect_schema().names():
+                has_date_idx = True
+
+        # Calculs chaînés (Lazy execution)
 
         # 1. Support/Resistance
         pdf = self._calculate_support_resistance(pdf)
@@ -82,7 +94,7 @@ class FeatureEngineer:
 
         # Protect datetime column from fill_null(0) which would corrupt it
         _date_col = None
-        if "__date_idx" in pdf.columns:
+        if has_date_idx:
             _date_col = pdf.select("__date_idx")
             pdf = pdf.drop("__date_idx")
 
@@ -91,6 +103,9 @@ class FeatureEngineer:
 
         if _date_col is not None:
             pdf = pl.concat([_date_col, pdf], how="horizontal")
+
+        # Execute the optimized plan
+        pdf = pdf.collect()
 
         # Conversion sortie
         if return_pandas:
@@ -390,28 +405,17 @@ class FeatureEngineer:
             "touch_upper_bb",
         ]
 
-        # Sum signals (assuming columns exist)
-        # We need to filter only existing columns
-        cols = df.columns
-        valid_buy_signals = [s for s in buy_signals if s in cols]
-        valid_sell_signals = [s for s in sell_signals if s in cols]
+        # Optimize: Assume all signals exist to avoid schema checks in lazy mode
+        # If a signal is missing, it means the pipeline is broken anyway.
 
-        buy_score = (
-            sum([pl.col(s).fill_null(0) for s in valid_buy_signals])
-            if valid_buy_signals
-            else pl.lit(0)
-        )
-        sell_score = (
-            sum([pl.col(s).fill_null(0) for s in valid_sell_signals])
-            if valid_sell_signals
-            else pl.lit(0)
-        )
+        buy_score = sum([pl.col(s).fill_null(0) for s in buy_signals])
+        sell_score = sum([pl.col(s).fill_null(0) for s in sell_signals])
 
         ops = [buy_score.alias("buy_score"), sell_score.alias("sell_score")]
         df = df.with_columns(ops)
 
-        max_buy = len(valid_buy_signals)
-        max_sell = len(valid_sell_signals)
+        max_buy = len(buy_signals)
+        max_sell = len(sell_signals)
 
         buy_norm = (pl.col("buy_score") / max_buy) if max_buy > 0 else pl.lit(0)
         sell_norm = (pl.col("sell_score") / max_sell) if max_sell > 0 else pl.lit(0)
