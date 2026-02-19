@@ -1,8 +1,9 @@
+import base64
 import os
 import sys
-import base64
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 # Mock dependencies before importing the app
 # This prevents errors if dependencies are missing and avoids side effects
@@ -18,7 +19,7 @@ os.environ["FLASK_SECRET_KEY"] = "testsecret"
 # Import the app after mocking
 # We need to make sure the app uses the mocked modules
 with patch.dict(sys.modules, {"trading.alpaca_client": MagicMock()}):
-    from dashboard.app import app, init_alpaca
+    from dashboard.app import app
 
 
 @pytest.fixture
