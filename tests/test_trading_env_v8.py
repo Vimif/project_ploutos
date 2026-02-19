@@ -188,8 +188,8 @@ class TestSlippage:
         env_train.reset()
         env_back.reset()
 
-        ticker = env_train.tickers[0]
-        price = 150.0
+        # ticker = env_train.tickers[0]
+        # price = 150.0
 
         # Both modes should use the transaction model (not simple random)
         assert env_train.transaction_model is not None
@@ -199,7 +199,7 @@ class TestSlippage:
         env = TradingEnv(market_data, mode="train", seed=42, slippage_model="none")
         env.reset()
         ticker = env.tickers[0]
-        price = 150.0
+        # price = 150.0
         assert env._apply_slippage_buy(ticker, price) == price
         assert env._apply_slippage_sell(ticker, price) == price
 
