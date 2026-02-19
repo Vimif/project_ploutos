@@ -63,7 +63,9 @@ import os
 
 @patch('training.train.download_data')
 @patch('training.train.MacroDataFetcher')
-def test_full_pipeline_execution(mock_macro_cls, mock_download, setup_config):
+@patch('training.train.PPO')
+@patch('training.train.RecurrentPPO')
+def test_full_pipeline_execution(mock_recurrent_ppo, mock_ppo, mock_macro_cls, mock_download, setup_config):
     """Lance un training complet avec Mock Data."""
     
     # 1. Mock Market Data
@@ -82,6 +84,17 @@ def test_full_pipeline_execution(mock_macro_cls, mock_download, setup_config):
     mock_macro_instance = mock_macro_cls.return_value
     mock_macro_instance.fetch_all.return_value = pd.DataFrame() # Empty macro
     
+    # 3. Configure Mock Models
+    # PPO instance
+    mock_ppo_instance = mock_ppo.return_value
+    mock_ppo_instance.learn.return_value = mock_ppo_instance
+    mock_ppo_instance.predict.return_value = (np.array([0]), None) # (action, state)
+
+    # RecurrentPPO instance
+    mock_recurrent_instance = mock_recurrent_ppo.return_value
+    mock_recurrent_instance.learn.return_value = mock_recurrent_instance
+    mock_recurrent_instance.predict.return_value = (np.array([0]), None)
+
     print("\n--- STARTING E2E TRAINING (MOCKED) ---")
     
     # Run Training
