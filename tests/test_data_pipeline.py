@@ -1,15 +1,14 @@
 """Tests du pipeline de données avec split temporel."""
 
-import sys
-from unittest.mock import MagicMock
 
-# Mock torch pour éviter l'import GPU
-sys.modules.setdefault("torch", MagicMock())
-
-import pytest
+# Removed global sys.modules patching for torch
+# DataSplitter doesn't seem to depend on torch, so maybe it's not needed at all?
+# If it is, use patch.dict in a fixture if possible, but avoiding module pollution.
 import numpy as np
 import pandas as pd
-from core.data_pipeline import DataSplitter, DataSplit
+import pytest
+
+from core.data_pipeline import DataSplitter
 
 # ============================================================================
 # Fixtures

@@ -1,18 +1,26 @@
-import sys
-from unittest.mock import MagicMock
-
-# Mock missing dependencies before importing Portfolio
-mock_torch = MagicMock()
-sys.modules["torch"] = mock_torch
+from unittest.mock import patch
 
 import pytest
-from unittest.mock import patch
-from pathlib import Path
-from trading.portfolio import Portfolio
 
+# Use patch.dict to mock sys.modules locally if needed, or rely on import logic
+# If Portfolio imports something that imports torch, we need to mock it if torch is missing
+# But since we installed torch in the previous step (for E2E tests), we might not need to mock it anymore?
+# The logs showed "Installing ... torch-2.10.0".
+# However, if we want to run tests in isolation or speed up, mocking is fine, but NOT globally.
 
 @pytest.fixture
 def portfolio():
+    # We can mock torch here if we want to test Portfolio in isolation without torch
+    # But Portfolio primarily uses core.utils, settings, etc.
+    # If we need to mock imports, we should do it before importing Portfolio
+    # BUT we can't un-import easily.
+    # Given torch is installed, let's remove the global mock.
+
+    # Check if we need to mock torch. Portfolio uses 'core.utils' which imports 'torch'.
+    # If torch is installed, no issue. If not, core.utils handles it.
+
+    # We'll just import Portfolio normally.
+    from trading.portfolio import Portfolio
     return Portfolio(initial_capital=100000)
 
 
@@ -112,7 +120,7 @@ def test_save_state(mock_trades_dir, portfolio, tmp_path):
 
     import json
 
-    with open(saved_file, "r") as f:
+    with open(saved_file) as f:
         data = json.load(f)
 
     assert data["initial_capital"] == 100000
