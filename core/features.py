@@ -396,16 +396,8 @@ class FeatureEngineer:
         valid_buy_signals = [s for s in buy_signals if s in cols]
         valid_sell_signals = [s for s in sell_signals if s in cols]
 
-        buy_score = (
-            pl.sum_horizontal(valid_buy_signals)
-            if valid_buy_signals
-            else pl.lit(0)
-        )
-        sell_score = (
-            pl.sum_horizontal(valid_sell_signals)
-            if valid_sell_signals
-            else pl.lit(0)
-        )
+        buy_score = pl.sum_horizontal(valid_buy_signals) if valid_buy_signals else pl.lit(0)
+        sell_score = pl.sum_horizontal(valid_sell_signals) if valid_sell_signals else pl.lit(0)
 
         ops = [buy_score.alias("buy_score"), sell_score.alias("sell_score")]
         df = df.with_columns(ops)
