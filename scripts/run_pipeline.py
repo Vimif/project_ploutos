@@ -20,8 +20,8 @@ import argparse
 import glob
 import time
 
-from core.utils import setup_logging
 from config.hardware import detect_hardware
+from core.utils import setup_logging
 
 logger = setup_logging(__name__, "pipeline.log")
 
@@ -101,22 +101,23 @@ def main():
             logger.warning("No model.zip found in folds, skipping robustness")
             return
 
+        import json
+        import os
+
+        import yaml
+
+        from config.hardware import compute_optimal_params
+        from core.data_fetcher import download_data
+        from core.data_pipeline import DataSplitter
+        from core.macro_data import MacroDataFetcher
         from scripts.robustness_tests import (
             load_model,
             monte_carlo_test,
             stress_test_crash,
         )
-        from config.hardware import compute_optimal_params
-        from core.data_fetcher import download_data
-        from core.data_pipeline import DataSplitter
-        from core.macro_data import MacroDataFetcher
-        import yaml
-        import json
-        import os
-        from datetime import datetime
 
         # Charger config et données
-        with open(args.config, "r") as f:
+        with open(args.config) as f:
             config = yaml.safe_load(f)
 
         env_kwargs = {k: v for k, v in config.get("environment", {}).items()}
