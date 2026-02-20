@@ -20,22 +20,23 @@ import warnings
 
 warnings.filterwarnings("ignore", message=".*Gym has been unmaintained.*")
 
-import os
-import yaml
 import json
-import torch
-import numpy as np
+import os
 from datetime import datetime
+
+import numpy as np
+import torch
+import yaml
+from core.universal_environment_v6_better_timing import UniversalTradingEnvV6BetterTiming
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
 from stable_baselines3.common.callbacks import (
     CheckpointCallback,
     EvalCallback,
     StopTrainingOnNoModelImprovement,
 )
 from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
 
-from core.universal_environment_v6_better_timing import UniversalTradingEnvV6BetterTiming
 from core.data_fetcher import download_data
 from core.data_pipeline import DataSplitter
 from core.sp500_scanner import SP500Scanner
@@ -54,7 +55,7 @@ def load_config(config_path: str) -> dict:
     if not os.path.exists(config_path):
         logger.error(f"Config {config_path} non trouve")
         return None
-    with open(config_path, "r", encoding="utf-8") as f:
+    with open(config_path, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 

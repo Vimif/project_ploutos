@@ -27,12 +27,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import os
-import json
-import warnings
 import argparse
-import numpy as np
+import json
+import os
+import warnings
 from datetime import datetime
+
+import numpy as np
 
 warnings.filterwarnings("ignore", message=".*Gym has been unmaintained.*")
 
@@ -128,8 +129,8 @@ def run_validation(
                 return results
         else:
             from stable_baselines3 import PPO
-            from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
             from stable_baselines3.common.monitor import Monitor
+            from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
             # Utiliser TradingEnv V9 avec features_precomputed=True
             train_env = DummyVecEnv(

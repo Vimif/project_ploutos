@@ -1,7 +1,8 @@
 """Tests for EnvConfig dataclass and from_flat_dict."""
 
 import pytest
-from core.env_config import EnvConfig, TransactionConfig, RewardConfig, TradingConfig
+
+from core.env_config import EnvConfig, RewardConfig, TradingConfig, TransactionConfig
 
 
 class TestDefaults:

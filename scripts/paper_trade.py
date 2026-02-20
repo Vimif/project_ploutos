@@ -23,8 +23,8 @@ Usage:
       --api-key YOUR_KEY --api-secret YOUR_SECRET
 """
 
-import sys
 import os
+import sys
 from pathlib import Path
 
 # Fix Windows UTF-8
@@ -37,13 +37,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import argparse
 import json
 import logging
-import time
 import signal
+import time
+from datetime import datetime, timedelta
+
 import numpy as np
 import pandas as pd
-from datetime import datetime, timedelta
-from stable_baselines3 import PPO
 from dotenv import load_dotenv
+from stable_baselines3 import PPO
 
 load_dotenv()
 
@@ -452,7 +453,7 @@ def run_paper_trading(
     model_obs_size = model.observation_space.shape[0]
 
     # Load V7 metadata
-    from scripts.backtest_ultimate import load_v7_metadata, detect_environment
+    from scripts.backtest_ultimate import detect_environment, load_v7_metadata
 
     metadata, model_config, vecnorm_path = load_v7_metadata(model_path)
 

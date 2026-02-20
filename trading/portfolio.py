@@ -1,10 +1,11 @@
 # trading/portfolio.py
 """Gestion du portefeuille de trading"""
 
-from datetime import datetime
-from typing import Dict, List
 import json
+from datetime import datetime
 from pathlib import Path
+from typing import Dict, List
+
 from config.settings import TRADES_DIR
 from core.utils import setup_logging
 
@@ -21,7 +22,7 @@ class Portfolio:
         self.trades_history = []
         self.portfolio_value_history = []
 
-    def get_total_value(self, current_prices: Dict[str, float]) -> float:
+    def get_total_value(self, current_prices: dict[str, float]) -> float:
         """Calculer la valeur totale du portefeuille"""
         positions_value = sum(
             pos["shares"] * current_prices.get(ticker, pos["entry_price"])
@@ -104,7 +105,7 @@ class Portfolio:
         """Obtenir la position sur un ticker"""
         return self.positions.get(ticker)
 
-    def get_summary(self, current_prices: Dict[str, float] = None):
+    def get_summary(self, current_prices: dict[str, float] = None):
         """Résumé du portefeuille"""
         current_prices = current_prices or {}
 
@@ -150,7 +151,7 @@ class Portfolio:
             logger.error(f"❌ Fichier introuvable: {filepath}")
             return False
 
-        with open(filepath, "r") as f:
+        with open(filepath) as f:
             state = json.load(f)
 
         self.initial_capital = state["initial_capital"]

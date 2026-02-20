@@ -4,9 +4,9 @@
 Vérifie pourquoi le GPU n'est pas détecté
 """
 
-import sys
-import subprocess
 import os
+import subprocess
+import sys
 
 print("\n" + "=" * 70)
 print("🔍 DIAGNOSTIC GPU CUDA")

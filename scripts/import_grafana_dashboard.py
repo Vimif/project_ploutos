@@ -7,8 +7,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import json
-import requests
 import time
+
+import requests
 
 
 def wait_for_grafana(max_attempts=30):

@@ -1,9 +1,11 @@
 # core/risk_manager.py
 """Gestionnaire de risque avancé pour le trading"""
 
-import numpy as np
 from datetime import datetime, timedelta
-from typing import List, Dict, Tuple, Optional
+from typing import Dict, List, Optional, Tuple
+
+import numpy as np
+
 from core.utils import setup_logging
 
 logger = setup_logging(__name__)
@@ -49,8 +51,8 @@ class RiskManager:
         portfolio_value: float,
         entry_price: float,
         stop_loss_pct: float,
-        risk_pct: Optional[float] = None,
-    ) -> Tuple[int, float]:
+        risk_pct: float | None = None,
+    ) -> tuple[int, float]:
         """
         Calculer la taille optimale d'une position basée sur le risque
         Position Sizing = Risk Amount / Stop Loss Distance
@@ -108,6 +110,9 @@ class RiskManager:
         Returns:
             True si trading autorisé, False si circuit breaker activé
         """
+        if self.circuit_breaker_triggered:
+            return False
+
         if self.daily_start_value is None:
             self.daily_start_value = current_value
             return True
@@ -137,7 +142,7 @@ class RiskManager:
         self.circuit_breaker_triggered = False
         logger.info(f"🔄 Stats quotidiennes réinitialisées - Portfolio: ${portfolio_value:,.2f}")
 
-    def calculate_portfolio_exposure(self, positions: List[Dict], portfolio_value: float) -> float:
+    def calculate_portfolio_exposure(self, positions: list[dict], portfolio_value: float) -> float:
         """
         Calculer l'exposition totale du portfolio
 
@@ -149,8 +154,8 @@ class RiskManager:
         return exposure_pct
 
     def should_reduce_exposure(
-        self, positions: List[Dict], portfolio_value: float
-    ) -> Tuple[bool, str]:
+        self, positions: list[dict], portfolio_value: float
+    ) -> tuple[bool, str]:
         """
         Déterminer si on doit réduire l'exposition
 
@@ -205,7 +210,7 @@ class RiskManager:
 
         return kelly_capped
 
-    def calculate_sharpe_ratio(self, returns: List[float], risk_free_rate: float = 0.04) -> float:
+    def calculate_sharpe_ratio(self, returns: list[float], risk_free_rate: float = 0.04) -> float:
         """
         Calculer le Sharpe Ratio
         Sharpe = (Mean Return - Risk Free Rate) / Std Dev of Returns
@@ -235,7 +240,7 @@ class RiskManager:
 
         return sharpe
 
-    def calculate_max_drawdown(self, portfolio_values: List[float]) -> Tuple[float, float]:
+    def calculate_max_drawdown(self, portfolio_values: list[float]) -> tuple[float, float]:
         """
         Calculer le maximum drawdown
 
@@ -272,7 +277,7 @@ class RiskManager:
         portfolio_value: float,
         unrealized_plpc: float,
         days_held: int,
-    ) -> Dict:
+    ) -> dict:
         """
         Évaluer le risque d'une position existante
 
@@ -324,8 +329,8 @@ class RiskManager:
         }
 
     def get_risk_report(
-        self, positions: List[Dict], portfolio_value: float, daily_returns: List[float] = None
-    ) -> Dict:
+        self, positions: list[dict], portfolio_value: float, daily_returns: list[float] = None
+    ) -> dict:
         """
         Générer un rapport de risque complet
 
@@ -414,7 +419,7 @@ class RiskManager:
             elif pl < 0:
                 self.daily_losses += 1
 
-    def print_risk_summary(self, report: Dict):
+    def print_risk_summary(self, report: dict):
         """Afficher un résumé du risque"""
         logger.info("\n" + "=" * 70)
         logger.info("🛡️ RISK MANAGEMENT REPORT")

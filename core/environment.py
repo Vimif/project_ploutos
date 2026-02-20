@@ -12,11 +12,12 @@ Architecture:
 - State management optimisé.
 """
 
+from collections import deque
+from typing import Dict, Optional
+
 import gymnasium as gym
 import numpy as np
 import pandas as pd
-from typing import Dict, Optional
-from collections import deque
 
 from core.constants import (
     BANKRUPTCY_THRESHOLD,
@@ -56,8 +57,8 @@ class TradingEnv(gym.Env):
 
     def __init__(
         self,
-        data: Dict[str, pd.DataFrame],
-        macro_data: Optional[pd.DataFrame] = None,
+        data: dict[str, pd.DataFrame],
+        macro_data: pd.DataFrame | None = None,
         initial_balance: float = 100000.0,
         commission: float = 0.0,
         sec_fee: float = 0.0000221,
@@ -77,7 +78,7 @@ class TradingEnv(gym.Env):
         penalty_overtrading: float = 0.005,
         drawdown_penalty_factor: float = 3.0,
         mode: str = "train",
-        seed: Optional[int] = None,
+        seed: int | None = None,
         reward_buy_executed: float = 0.1,
         reward_overtrading: float = -0.02,
         reward_invalid_trade: float = -0.01,
@@ -218,10 +219,10 @@ class TradingEnv(gym.Env):
     def from_config(
         cls,
         config: EnvConfig,
-        data: Dict[str, pd.DataFrame],
-        macro_data: Optional[pd.DataFrame] = None,
+        data: dict[str, pd.DataFrame],
+        macro_data: pd.DataFrame | None = None,
         mode: str = "train",
-        seed: Optional[int] = None,
+        seed: int | None = None,
     ) -> "TradingEnv":
         """Create a TradingEnv from a structured EnvConfig dataclass."""
         tx = config.transaction
@@ -265,7 +266,7 @@ class TradingEnv(gym.Env):
             seed=seed,
         )
 
-    def _prepare_features(self, macro_data: Optional[pd.DataFrame]):
+    def _prepare_features(self, macro_data: pd.DataFrame | None):
         """Préparer Features V2 + macro."""
         self.processed_data = {}
         self.feature_engineer = FeatureEngineer()
@@ -548,7 +549,7 @@ class TradingEnv(gym.Env):
             return float(volumes[-1])
         return float(volumes[self.current_step])
 
-    def _get_recent_prices(self, ticker: str) -> Optional[pd.Series]:
+    def _get_recent_prices(self, ticker: str) -> pd.Series | None:
         prices = self.close_prices[ticker]
         start = max(0, self.current_step - 20)
         end = min(self.current_step + 1, len(prices))

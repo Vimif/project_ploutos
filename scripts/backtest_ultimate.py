@@ -24,8 +24,8 @@ Usage:
   python scripts/backtest_ultimate.py --model ... --oos-only
 """
 
-import sys
 import os
+import sys
 from pathlib import Path
 
 # Fix Windows UTF-8
@@ -39,18 +39,20 @@ import argparse
 import json
 import logging
 import time
+from datetime import datetime, timedelta
+
 import numpy as np
 import pandas as pd
-from datetime import datetime, timedelta
 
 try:
     import yaml
 except ImportError:
     yaml = None
 
-from core.data_fetcher import UniversalDataFetcher
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+
+from core.data_fetcher import UniversalDataFetcher
 
 logging.basicConfig(
     level=logging.INFO,
@@ -160,7 +162,7 @@ def load_v7_metadata(model_path):
     config = None
 
     if metadata_path.exists():
-        with open(metadata_path, "r", encoding="utf-8") as f:
+        with open(metadata_path, encoding="utf-8") as f:
             metadata = json.load(f)
         logger.info(f"  Metadata V7 chargee: {metadata_path.name}")
         logger.info(f"    Version: {metadata.get('version', '?')}")
@@ -169,7 +171,7 @@ def load_v7_metadata(model_path):
         )
 
     if config_path.exists():
-        with open(config_path, "r", encoding="utf-8") as f:
+        with open(config_path, encoding="utf-8") as f:
             config = json.load(f)
         logger.info(f"  Config V7 chargee: {config_path.name}")
 
@@ -184,7 +186,7 @@ def load_yaml_config(config_path):
     """Charge une config YAML et extrait les params environnement."""
     if not os.path.exists(config_path):
         return None
-    with open(config_path, "r", encoding="utf-8") as f:
+    with open(config_path, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
@@ -213,8 +215,8 @@ def detect_environment(model, metadata=None, config=None):
             f"  Obs-size -> {actual_n_int} tickers (formula: {actual_n_int}*86+3={actual_n_int*86+3})"
         )
 
-    from legacy.core.universal_environment_v6_better_timing import UniversalTradingEnvV6BetterTiming
     from core.environment import TradingEnv  # V8/V9
+    from legacy.core.universal_environment_v6_better_timing import UniversalTradingEnvV6BetterTiming
 
     # --- V8/V9: metadata fournie ---
     if metadata and (
