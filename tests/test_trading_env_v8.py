@@ -1,6 +1,5 @@
 """Tests unitaires pour TradingEnv."""
 
-
 import numpy as np
 import pytest
 

@@ -1,6 +1,5 @@
 """Tests du pipeline de données avec split temporel."""
 
-
 # Removed global sys.modules patching for torch
 # DataSplitter doesn't seem to depend on torch, so maybe it's not needed at all?
 # If it is, use patch.dict in a fixture if possible, but avoiding module pollution.

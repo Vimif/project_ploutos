@@ -8,6 +8,7 @@ import pytest
 # The logs showed "Installing ... torch-2.10.0".
 # However, if we want to run tests in isolation or speed up, mocking is fine, but NOT globally.
 
+
 @pytest.fixture
 def portfolio():
     # We can mock torch here if we want to test Portfolio in isolation without torch
@@ -21,6 +22,7 @@ def portfolio():
 
     # We'll just import Portfolio normally.
     from trading.portfolio import Portfolio
+
     return Portfolio(initial_capital=100000)
 
 
