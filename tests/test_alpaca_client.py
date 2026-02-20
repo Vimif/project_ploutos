@@ -2,11 +2,18 @@ import unittest
 from unittest.mock import MagicMock, patch
 from trading.alpaca_client import AlpacaClient
 
+
 class TestAlpacaClient(unittest.TestCase):
-    @patch('alpaca.trading.client.TradingClient')
-    @patch('alpaca.data.historical.StockHistoricalDataClient')
+    @patch("alpaca.trading.client.TradingClient")
+    @patch("alpaca.data.historical.StockHistoricalDataClient")
     def setUp(self, mock_data_client, mock_trading_client):
-        self.client = AlpacaClient(paper_trading=True)
+        # Mock environment variables to bypass the check in __init__
+        with patch.dict(
+            "os.environ",
+            {"ALPACA_PAPER_API_KEY": "dummy_key", "ALPACA_PAPER_SECRET_KEY": "dummy_secret"},
+        ):
+            self.client = AlpacaClient(paper_trading=True)
+
         self.client.trading_client = mock_trading_client.return_value
         self.client.data_client = mock_data_client.return_value
 
@@ -71,7 +78,7 @@ class TestAlpacaClient(unittest.TestCase):
         self.client.trading_client.submit_order.return_value = mock_order
         self.client.trading_client.get_order_by_id.return_value = mock_order
 
-        with patch('time.sleep', return_value=None):  # Skip sleep
+        with patch("time.sleep", return_value=None):  # Skip sleep
             order = self.client.place_market_order("AAPL", 10, "buy")
 
         self.assertEqual(order["id"], "order_1")
@@ -89,5 +96,6 @@ class TestAlpacaClient(unittest.TestCase):
         result = self.client.close_position("AAPL")
         self.assertTrue(result)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

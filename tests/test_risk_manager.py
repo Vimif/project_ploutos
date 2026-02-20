@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 from core.risk_manager import RiskManager
 
+
 class TestRiskManager(unittest.TestCase):
     def setUp(self):
         # Pass parameters directly instead of config dict
@@ -12,7 +13,7 @@ class TestRiskManager(unittest.TestCase):
             max_portfolio_risk=0.02,
             max_daily_loss=0.03,
             max_position_size=0.05,
-            max_correlation=0.7
+            max_correlation=0.7,
         )
 
     def test_initialization(self):
@@ -52,7 +53,7 @@ class TestRiskManager(unittest.TestCase):
         self.assertTrue(self.risk_manager.circuit_breaker_triggered)
 
         # Verify subsequent calls return False
-        allowed = self.risk_manager.check_daily_loss_limit(105000) # Recovery
+        allowed = self.risk_manager.check_daily_loss_limit(105000)  # Recovery
         self.assertFalse(allowed)
 
     def test_reset_daily_stats(self):
@@ -64,5 +65,6 @@ class TestRiskManager(unittest.TestCase):
         self.assertFalse(self.risk_manager.circuit_breaker_triggered)
         self.assertEqual(self.risk_manager.daily_start_value, 100000)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()
