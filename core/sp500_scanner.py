@@ -19,20 +19,20 @@ class SP500Scanner:
     """Scanne le S&P 500 et selectionne les top performers par secteur GICS."""
 
     GICS_SECTORS = [
-        'Information Technology',
-        'Health Care',
-        'Financials',
-        'Consumer Discretionary',
-        'Communication Services',
-        'Industrials',
-        'Consumer Staples',
-        'Energy',
-        'Utilities',
-        'Real Estate',
-        'Materials',
+        "Information Technology",
+        "Health Care",
+        "Financials",
+        "Consumer Discretionary",
+        "Communication Services",
+        "Industrials",
+        "Consumer Staples",
+        "Energy",
+        "Utilities",
+        "Real Estate",
+        "Materials",
     ]
 
-    def __init__(self, cache_dir: str = 'data/sp500_cache', lookback_days: int = 252):
+    def __init__(self, cache_dir: str = "data/sp500_cache", lookback_days: int = 252):
         self.cache_dir = Path(cache_dir)
         self.lookback_days = lookback_days
         self.risk_free_rate = 0.04
@@ -47,17 +47,17 @@ class SP500Scanner:
         import requests
         from io import StringIO
 
-        url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
+        url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-                          '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
         resp = requests.get(url, headers=headers, timeout=30)
         resp.raise_for_status()
         tables = pd.read_html(StringIO(resp.text))
-        df = tables[0][['Symbol', 'Security', 'GICS Sector', 'GICS Sub-Industry']]
+        df = tables[0][["Symbol", "Security", "GICS Sector", "GICS Sub-Industry"]]
         # Nettoyer les symboles (BRK.B -> BRK-B pour yfinance)
-        df['Symbol'] = df['Symbol'].str.replace('.', '-', regex=False)
+        df["Symbol"] = df["Symbol"].str.replace(".", "-", regex=False)
         return df
 
     # ------------------------------------------------------------------
@@ -71,15 +71,15 @@ class SP500Scanner:
         try:
             df = self.fetcher.fetch(
                 ticker,
-                start_date=start_date.strftime('%Y-%m-%d'),
-                end_date=end_date.strftime('%Y-%m-%d'),
-                interval='1d',
+                start_date=start_date.strftime("%Y-%m-%d"),
+                end_date=end_date.strftime("%Y-%m-%d"),
+                interval="1d",
             )
 
             if df is None or len(df) < int(self.lookback_days * 0.7):
                 return np.nan
 
-            returns = df['Close'].pct_change().dropna().tail(self.lookback_days)
+            returns = df["Close"].pct_change().dropna().tail(self.lookback_days)
             if len(returns) < 50:
                 return np.nan
 
@@ -111,21 +111,21 @@ class SP500Scanner:
         Returns:
             Dictionnaire avec les resultats du scan.
         """
-        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stdout.reconfigure(encoding="utf-8")
 
         print("Fetching S&P 500 constituents...")
         constituents = self.fetch_sp500_list()
         print(f"Found {len(constituents)} stocks")
 
-        groups = constituents.groupby('GICS Sector')
+        groups = constituents.groupby("GICS Sector")
 
         results: Dict[str, Any] = {
-            'scan_date': datetime.now().strftime('%Y-%m-%d'),
-            'lookback_days': self.lookback_days,
-            'stocks_per_sector': stocks_per_sector,
-            'sectors': {},
-            'sharpe_ratios': {},
-            'total_stocks': 0,
+            "scan_date": datetime.now().strftime("%Y-%m-%d"),
+            "lookback_days": self.lookback_days,
+            "stocks_per_sector": stocks_per_sector,
+            "sectors": {},
+            "sharpe_ratios": {},
+            "total_stocks": 0,
         }
 
         for sector_name in self.GICS_SECTORS:
@@ -134,7 +134,7 @@ class SP500Scanner:
                 continue
 
             group = groups.get_group(sector_name)
-            tickers = group['Symbol'].tolist()
+            tickers = group["Symbol"].tolist()
             print(f"\nScanning {sector_name} ({len(tickers)} stocks)...")
 
             sharpe_scores: List[tuple] = []
@@ -149,14 +149,14 @@ class SP500Scanner:
                         sharpe = np.nan
                     if not np.isnan(sharpe):
                         sharpe_scores.append((ticker, round(sharpe, 4)))
-                        results['sharpe_ratios'][ticker] = round(sharpe, 4)
+                        results["sharpe_ratios"][ticker] = round(sharpe, 4)
 
             sharpe_scores.sort(key=lambda x: x[1], reverse=True)
             top = [t for t, _ in sharpe_scores[:stocks_per_sector]]
 
             if top:
-                results['sectors'][sector_name] = top
-                results['total_stocks'] += len(top)
+                results["sectors"][sector_name] = top
+                results["total_stocks"] += len(top)
                 for t, s in sharpe_scores[:stocks_per_sector]:
                     print(f"  >> {t}: Sharpe = {s:.2f}")
             else:
@@ -173,21 +173,21 @@ class SP500Scanner:
         if scan_results is None:
             scan_results = self.scan_sectors()
         tickers: List[str] = []
-        for stocks in scan_results['sectors'].values():
+        for stocks in scan_results["sectors"].values():
             tickers.extend(stocks)
         return tickers
 
     def save_results(self, results: Dict, filepath: Optional[str] = None):
         """Sauvegarde les resultats en JSON."""
-        path = Path(filepath) if filepath else self.cache_dir / 'latest_scan.json'
+        path = Path(filepath) if filepath else self.cache_dir / "latest_scan.json"
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, 'w', encoding='utf-8') as f:
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(results, f, indent=2, ensure_ascii=False)
         print(f"Results saved: {path}")
 
     def load_cached_results(self, max_age_days: int = 30) -> Optional[Dict]:
         """Charge les resultats caches si assez recents."""
-        path = self.cache_dir / 'latest_scan.json'
+        path = self.cache_dir / "latest_scan.json"
         if not path.exists():
             return None
 
@@ -196,7 +196,7 @@ class SP500Scanner:
             print(f"Cache too old ({age.days} days)")
             return None
 
-        with open(path, encoding='utf-8') as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         print(f"Loaded cached scan ({age.days} days old, {data.get('total_stocks', '?')} stocks)")
         return data
@@ -205,16 +205,16 @@ class SP500Scanner:
 # ======================================================================
 # CLI standalone
 # ======================================================================
-if __name__ == '__main__':
+if __name__ == "__main__":
     import argparse
 
-    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stdout.reconfigure(encoding="utf-8")
 
-    parser = argparse.ArgumentParser(description='S&P 500 Sector Scanner')
-    parser.add_argument('--stocks-per-sector', type=int, default=2)
-    parser.add_argument('--lookback-days', type=int, default=252)
-    parser.add_argument('--force', action='store_true', help='Ignore cache')
-    parser.add_argument('--output', type=str, default=None)
+    parser = argparse.ArgumentParser(description="S&P 500 Sector Scanner")
+    parser.add_argument("--stocks-per-sector", type=int, default=2)
+    parser.add_argument("--lookback-days", type=int, default=252)
+    parser.add_argument("--force", action="store_true", help="Ignore cache")
+    parser.add_argument("--output", type=str, default=None)
     args = parser.parse_args()
 
     scanner = SP500Scanner(lookback_days=args.lookback_days)
@@ -223,7 +223,7 @@ if __name__ == '__main__':
         cached = scanner.load_cached_results(max_age_days=30)
         if cached:
             print("\nUsing cached results. Use --force to re-scan.\n")
-            for sector, tickers in cached['sectors'].items():
+            for sector, tickers in cached["sectors"].items():
                 sharpes = [f"{t} ({cached['sharpe_ratios'].get(t, '?')})" for t in tickers]
                 print(f"  {sector:35s} {', '.join(sharpes)}")
             print(f"\nTotal: {cached['total_stocks']} stocks")
@@ -235,7 +235,7 @@ if __name__ == '__main__':
     print("\n" + "=" * 70)
     print("SCAN RESULTS")
     print("=" * 70)
-    for sector, tickers in results['sectors'].items():
+    for sector, tickers in results["sectors"].items():
         sharpes = [f"{t} ({results['sharpe_ratios'].get(t, '?')})" for t in tickers]
         print(f"  {sector:35s} {', '.join(sharpes)}")
     print(f"\nTotal: {results['total_stocks']} stocks")
