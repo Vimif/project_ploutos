@@ -8,6 +8,27 @@ from unittest.mock import MagicMock, patch
 # Ensure we can import dashboard.app
 sys.path.insert(0, os.getcwd())
 
+# Mock missing dependencies in CI environment
+import sys
+from unittest.mock import MagicMock
+
+# Mock flask and related dependencies
+mock_flask = MagicMock()
+mock_flask.Flask = MagicMock()
+mock_flask.render_template = MagicMock()
+mock_flask.jsonify = MagicMock()
+mock_flask.request = MagicMock()
+sys.modules["flask"] = mock_flask
+
+mock_flask_cors = MagicMock()
+mock_flask_cors.CORS = MagicMock()
+sys.modules["flask_cors"] = mock_flask_cors
+
+mock_flask_socketio = MagicMock()
+mock_flask_socketio.SocketIO = MagicMock()
+mock_flask_socketio.emit = MagicMock()
+sys.modules["flask_socketio"] = mock_flask_socketio
+
 # We need to mock dependencies before importing dashboard.app
 # because it does side effects on import (like connecting to Alpaca or setting up logging)
 with (
