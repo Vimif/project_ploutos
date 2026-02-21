@@ -1,10 +1,12 @@
-import pytest
-import pandas as pd
-import numpy as np
-import yaml
 import shutil
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import numpy as np
+import pandas as pd
+import pytest
+import yaml
+
 from training.train import run_walk_forward
 
 # Setup paths
@@ -84,14 +86,23 @@ def test_full_pipeline_execution(mock_macro_cls, mock_download, setup_config):
 
     print("\n--- STARTING E2E TRAINING (MOCKED) ---")
 
-    # Run Training
-    results = run_walk_forward(
-        config_path=str(CONFIG_PATH),
-        use_recurrent=False,
-        n_ensemble=1,
-        auto_scale=False,
-        use_shared_memory=False,
-    )
+    # Run Training with PPO patched to avoid PyTorch init issues
+    with patch("training.train.PPO") as mock_ppo_cls:
+        # Mock the PPO instance and its methods
+        mock_model = MagicMock()
+        mock_ppo_cls.return_value = mock_model
+
+        # Ensure model.predict returns a valid action (array of shape (1,))
+        # Action space is typically Box(-1, 1, (1,))
+        mock_model.predict.return_value = (np.array([0.0]), None)
+
+        results = run_walk_forward(
+            config_path=str(CONFIG_PATH),
+            use_recurrent=False,
+            n_ensemble=1,
+            auto_scale=False,
+            use_shared_memory=False,
+        )
 
     # Assertions
     assert results is not None, "Training returned None"

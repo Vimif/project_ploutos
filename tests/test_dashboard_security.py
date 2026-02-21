@@ -1,6 +1,6 @@
+import base64
 import sys
 import unittest
-import base64
 from unittest.mock import MagicMock, patch
 
 # Mock dependencies that might be missing or require configuration

@@ -1,8 +1,8 @@
 # core/utils.py
 """Fonctions utilitaires"""
 
-import logging
 import gc
+import logging
 from datetime import datetime
 
 
