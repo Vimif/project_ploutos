@@ -1,14 +1,6 @@
 import unittest
 from unittest.mock import MagicMock, patch, ANY
 import os
-import json
-from datetime import datetime
-
-# Import AlpacaClient
-# We need to mock alpaca.trading.client and stockhistoricaldataclient before importing if possible,
-# or patch them during the test.
-# Since AlpacaClient imports them at top level, we might need `sys.modules` patching if they are not installed.
-# But `alpaca-py` is in `pyproject.toml`, so assuming installed.
 
 from trading.alpaca_client import AlpacaClient
 
@@ -18,10 +10,18 @@ class TestAlpacaClient(unittest.TestCase):
     @patch.dict(
         os.environ, {"ALPACA_PAPER_API_KEY": "test_key", "ALPACA_PAPER_SECRET_KEY": "test_secret"}
     )
-    @patch("trading.alpaca_client.TradingClient")
     @patch("trading.alpaca_client.StockHistoricalDataClient")
-    def setUp(self, mock_data_client, mock_trading_client):
+    @patch("trading.alpaca_client.TradingClient")
+    def setUp(self, mock_trading_client_cls, mock_data_client_cls):
+        # mock_trading_client_cls is the class Mock.
+        # Its return_value is the instance that will be returned when TradingClient() is called.
+        self.mock_trading_instance = mock_trading_client_cls.return_value
+
         self.client = AlpacaClient(paper_trading=True)
+
+        # In AlpacaClient.__init__, self.trading_client = TradingClient(...)
+        # So self.client.trading_client SHOULD be self.mock_trading_instance
+
         self.mock_trading = self.client.trading_client
         self.mock_data = self.client.data_client
 
