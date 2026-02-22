@@ -90,10 +90,18 @@ def test_full_pipeline_execution(
     # 3. Mock VecEnv (DummyVecEnv)
     mock_env = MagicMock()
     mock_env.num_envs = 1
-    mock_env.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(10,), dtype=np.float32)
+    mock_env.observation_space = gym.spaces.Box(
+        low=-np.inf, high=np.inf, shape=(10,), dtype=np.float32
+    )
     mock_env.action_space = gym.spaces.Discrete(3)
     mock_env.reset.return_value = (np.zeros((1, 10)), {})  # VecEnv returns batched obs
-    mock_env.step.return_value = (np.zeros((1, 10)), np.zeros(1), np.array([False]), np.array([False]), [{}])
+    mock_env.step.return_value = (
+        np.zeros((1, 10)),
+        np.zeros(1),
+        np.array([False]),
+        np.array([False]),
+        [{}],
+    )
 
     mock_dummy.return_value = mock_env
     mock_subproc.return_value = mock_env
@@ -111,7 +119,7 @@ def test_full_pipeline_execution(
     mock_model = MagicMock()
     mock_ppo.return_value = mock_model
     mock_model.learn.return_value = mock_model  # Chaining support
-    mock_model.predict.return_value = (np.array([1]), None) # action, state
+    mock_model.predict.return_value = (np.array([1]), None)  # action, state
 
     print("\n--- STARTING E2E TRAINING (MOCKED) ---")
 
