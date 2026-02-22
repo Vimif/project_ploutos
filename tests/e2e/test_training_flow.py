@@ -3,9 +3,11 @@ import pandas as pd
 import numpy as np
 import yaml
 import shutil
+import os
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 from training.train import run_walk_forward
+import gymnasium as gym
 
 # Setup paths
 BASE_DIR = Path(__file__).parent
@@ -55,12 +57,15 @@ def setup_config():
         shutil.rmtree(OUTPUT_DIR)
 
 
-import os
-
-
 @patch("training.train.download_data")
 @patch("training.train.MacroDataFetcher")
-def test_full_pipeline_execution(mock_macro_cls, mock_download, setup_config):
+@patch("training.train.PPO")
+@patch("training.train.DummyVecEnv")
+@patch("training.train.SubprocVecEnv")
+@patch("training.train.VecNormalize")
+def test_full_pipeline_execution(
+    mock_vecnorm, mock_subproc, mock_dummy, mock_ppo, mock_macro_cls, mock_download, setup_config
+):
     """Lance un training complet avec Mock Data."""
 
     # 1. Mock Market Data
@@ -81,6 +86,32 @@ def test_full_pipeline_execution(mock_macro_cls, mock_download, setup_config):
     # 2. Mock Macro Data
     mock_macro_instance = mock_macro_cls.return_value
     mock_macro_instance.fetch_all.return_value = pd.DataFrame()  # Empty macro
+
+    # 3. Mock VecEnv (DummyVecEnv)
+    mock_env = MagicMock()
+    mock_env.num_envs = 1
+    mock_env.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(10,), dtype=np.float32)
+    mock_env.action_space = gym.spaces.Discrete(3)
+    mock_env.reset.return_value = (np.zeros((1, 10)), {})  # VecEnv returns batched obs
+    mock_env.step.return_value = (np.zeros((1, 10)), np.zeros(1), np.array([False]), np.array([False]), [{}])
+
+    mock_dummy.return_value = mock_env
+    mock_subproc.return_value = mock_env
+
+    # 4. Mock VecNormalize
+    mock_norm_env = MagicMock()
+    mock_norm_env.save.return_value = None
+    mock_norm_env.reset = mock_env.reset
+    mock_norm_env.step = mock_env.step
+    # Add normalize_obs method for evaluation phase
+    mock_norm_env.normalize_obs.side_effect = lambda x: x
+    mock_vecnorm.return_value = mock_norm_env
+
+    # 5. Mock PPO
+    mock_model = MagicMock()
+    mock_ppo.return_value = mock_model
+    mock_model.learn.return_value = mock_model  # Chaining support
+    mock_model.predict.return_value = (np.array([1]), None) # action, state
 
     print("\n--- STARTING E2E TRAINING (MOCKED) ---")
 

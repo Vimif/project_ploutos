@@ -1,18 +1,18 @@
 # trading/alpaca_client.py
 """Client pour l'API Alpaca avec logging JSON"""
 
-from alpaca.trading.client import TradingClient
-from alpaca.trading.requests import MarketOrderRequest, LimitOrderRequest
-from alpaca.trading.enums import OrderSide, TimeInForce, OrderType
-from alpaca.data.historical import StockHistoricalDataClient
-from alpaca.data.requests import StockLatestQuoteRequest, StockBarsRequest
-from alpaca.data.timeframe import TimeFrame
-
-from datetime import datetime, timedelta
-import os
 import json
+import os
 import time
+from datetime import datetime
+
+from alpaca.data.historical import StockHistoricalDataClient
+from alpaca.data.requests import StockLatestQuoteRequest
+from alpaca.trading.client import TradingClient
+from alpaca.trading.enums import OrderSide, TimeInForce
+from alpaca.trading.requests import LimitOrderRequest, MarketOrderRequest
 from dotenv import load_dotenv
+
 from core.utils import setup_logging
 from trading.broker_interface import BrokerInterface
 
@@ -60,7 +60,7 @@ def log_trade_to_json(
 
         # Lire trades existants
         if os.path.exists(filename):
-            with open(filename, "r") as f:
+            with open(filename) as f:
                 trades = json.load(f)
         else:
             trades = []
