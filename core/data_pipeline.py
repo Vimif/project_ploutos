@@ -16,18 +16,18 @@ Usage:
     test_data  = splits.test
 """
 
+from typing import NamedTuple
+
 import pandas as pd
-from typing import Dict, NamedTuple, Optional
-from datetime import datetime
 
 
 class DataSplit(NamedTuple):
     """Résultat d'un split temporel de données."""
 
-    train: Dict[str, pd.DataFrame]
-    val: Dict[str, pd.DataFrame]
-    test: Dict[str, pd.DataFrame]
-    info: Dict  # dates de début/fin par split
+    train: dict[str, pd.DataFrame]
+    val: dict[str, pd.DataFrame]
+    test: dict[str, pd.DataFrame]
+    info: dict  # dates de début/fin par split
 
 
 class DataSplitter:
@@ -40,7 +40,7 @@ class DataSplitter:
 
     @staticmethod
     def split(
-        data: Dict[str, pd.DataFrame],
+        data: dict[str, pd.DataFrame],
         train_ratio: float = 0.6,
         val_ratio: float = 0.2,
         test_ratio: float = 0.2,
@@ -64,24 +64,20 @@ class DataSplitter:
 
         total = train_ratio + val_ratio + test_ratio
         if abs(total - 1.0) > 1e-6:
-            raise ValueError(
-                f"Les ratios doivent sommer à 1.0, obtenu {total:.4f}"
-            )
+            raise ValueError(f"Les ratios doivent sommer à 1.0, obtenu {total:.4f}")
 
         # Trouver les dates communes à tous les tickers pour
         # couper aux mêmes indices, en utilisant le ticker le plus court.
         min_len = min(len(df) for df in data.values())
         if min_len < 10:
-            raise ValueError(
-                f"Pas assez de données: ticker le plus court = {min_len} bars"
-            )
+            raise ValueError(f"Pas assez de données: ticker le plus court = {min_len} bars")
 
         train_end_idx = int(min_len * train_ratio)
         val_end_idx = int(min_len * (train_ratio + val_ratio))
 
-        train_data: Dict[str, pd.DataFrame] = {}
-        val_data: Dict[str, pd.DataFrame] = {}
-        test_data: Dict[str, pd.DataFrame] = {}
+        train_data: dict[str, pd.DataFrame] = {}
+        val_data: dict[str, pd.DataFrame] = {}
+        test_data: dict[str, pd.DataFrame] = {}
 
         for ticker, df in data.items():
             # Tronquer au min_len pour cohérence inter-tickers
