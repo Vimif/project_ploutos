@@ -16,12 +16,11 @@ Usage:
     action = predictor.predict(observation)
 """
 
-import numpy as np
-from typing import List, Optional
 from pathlib import Path
 
+import numpy as np
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import VecNormalize, DummyVecEnv
+from stable_baselines3.common.vec_env import VecNormalize
 
 try:
     from sb3_contrib import RecurrentPPO
@@ -34,7 +33,7 @@ except ImportError:
 class EnsemblePredictor:
     """Prédicteur par vote majoritaire de N modèles RL."""
 
-    def __init__(self, models: List, vecnormalize: Optional[VecNormalize] = None):
+    def __init__(self, models: list, vecnormalize: VecNormalize | None = None):
         """
         Args:
             models: Liste de modèles SB3 (PPO ou RecurrentPPO).
@@ -50,8 +49,8 @@ class EnsemblePredictor:
     @classmethod
     def load(
         cls,
-        model_paths: List[str],
-        vecnorm_path: Optional[str] = None,
+        model_paths: list[str],
+        vecnorm_path: str | None = None,
         env=None,
         use_recurrent: bool = False,
         device: str = "auto",

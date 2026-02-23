@@ -1,8 +1,7 @@
-import unittest
-from unittest.mock import MagicMock, patch, ANY
 import os
 import sys
-from datetime import datetime
+import unittest
+from unittest.mock import MagicMock, patch
 
 # Mock environment variables
 os.environ["ALPACA_PAPER_API_KEY"] = "test_key"
@@ -94,7 +93,6 @@ class TestAlpacaClient(unittest.TestCase):
         self.assertEqual(price, 150.0)
 
     def test_cancel_orders(self):
-        mock_order = {"id": "123", "symbol": "AAPL"}
         # self.client.get_orders = MagicMock(return_value=[mock_order])
         # Need to patch get_orders method of self.client or trading_client?
         # get_orders on AlpacaClient calls trading_client.get_orders

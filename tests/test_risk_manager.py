@@ -1,7 +1,7 @@
-import unittest
-from unittest.mock import MagicMock, patch
 import logging
 import sys
+import unittest
+from unittest.mock import MagicMock
 
 # Mock numpy if not installed
 try:
