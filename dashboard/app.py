@@ -7,7 +7,7 @@ import secrets
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, Response
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 import traceback
@@ -26,6 +26,26 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(24))
 CORS(app)
 
+# Authentication Configuration
+DASHBOARD_USERNAME = os.environ.get('DASHBOARD_USERNAME', 'admin')
+DASHBOARD_PASSWORD = os.environ.get('DASHBOARD_PASSWORD')
+
+if not DASHBOARD_PASSWORD:
+    DASHBOARD_PASSWORD = secrets.token_hex(16)
+    logger.warning(f"⚠️  DASHBOARD_PASSWORD not set. Generated random password: {DASHBOARD_PASSWORD}")
+
+def check_auth(username, password):
+    """Check if username and password are valid."""
+    return secrets.compare_digest(username, DASHBOARD_USERNAME) and \
+           secrets.compare_digest(password, DASHBOARD_PASSWORD)
+
+def authenticate():
+    """Return a 401 response that enables basic auth."""
+    return Response(
+        'Could not verify your access level for that URL.\n'
+        'You have to login with proper credentials', 401,
+        {'WWW-Authenticate': 'Basic realm="Login Required"'})
+
 # SocketIO avec gevent
 socketio = SocketIO(
     app, 
@@ -34,6 +54,17 @@ socketio = SocketIO(
     logger=False,
     engineio_logger=False
 )
+
+@app.before_request
+def require_authorization():
+    # Allow static files
+    if request.endpoint == 'static':
+        return
+
+    # Check auth
+    auth = request.authorization
+    if not auth or not check_auth(auth.username, auth.password):
+        return authenticate()
 
 # Client Alpaca global
 alpaca_client = None
