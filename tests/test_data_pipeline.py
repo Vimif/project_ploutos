@@ -6,10 +6,11 @@ from unittest.mock import MagicMock
 # Mock torch pour éviter l'import GPU
 sys.modules.setdefault("torch", MagicMock())
 
-import pytest
-import numpy as np
-import pandas as pd
-from core.data_pipeline import DataSplitter, DataSplit
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
+import pytest  # noqa: E402
+
+from core.data_pipeline import DataSplitter  # noqa: E402
 
 # ============================================================================
 # Fixtures

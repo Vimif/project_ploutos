@@ -1,3 +1,5 @@
+# ruff: noqa: F403, F405
+# flake8: noqa
 # database/__init__.py
 """Package de gestion de la base de données"""
 
