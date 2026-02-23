@@ -27,12 +27,18 @@ dependencies = [
     "requests>=2.31.0",
     "ta>=0.11.0",
     "scipy>=1.10.0",
+    "flask>=3.0.0",
+    "flask-cors>=4.0.0",
+    "flask-socketio>=5.0.0",
+    "gevent>=23.0.0",
 ]
 
 [project.optional-dependencies]
 web = [
     "flask>=3.0.0",
     "flask-cors>=4.0.0",
+    "flask-socketio>=5.0.0",
+    "gevent>=23.0.0",
 ]
 training = [
     "sb3-contrib>=2.0.0",

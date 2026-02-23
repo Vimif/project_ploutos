@@ -1,7 +1,7 @@
-import unittest
-import sys
-import os
 import base64
+import os
+import sys
+import unittest
 from unittest.mock import MagicMock
 
 # Set environment variables required by app.py
