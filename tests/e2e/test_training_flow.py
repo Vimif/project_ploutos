@@ -61,9 +61,10 @@ def setup_config():
 
 import os
 
+@patch('training.train.PPO')
 @patch('training.train.download_data')
 @patch('training.train.MacroDataFetcher')
-def test_full_pipeline_execution(mock_macro_cls, mock_download, setup_config):
+def test_full_pipeline_execution(mock_macro_cls, mock_download, mock_ppo, setup_config):
     """Lance un training complet avec Mock Data."""
     
     # 1. Mock Market Data
@@ -82,6 +83,13 @@ def test_full_pipeline_execution(mock_macro_cls, mock_download, setup_config):
     mock_macro_instance = mock_macro_cls.return_value
     mock_macro_instance.fetch_all.return_value = pd.DataFrame() # Empty macro
     
+    # 3. Mock PPO
+    mock_model_instance = MagicMock()
+    mock_ppo.return_value = mock_model_instance
+    # Mock predict to return (action, states)
+    # Action size for 1 env is (1,)
+    mock_model_instance.predict.return_value = (np.array([0]), None)
+
     print("\n--- STARTING E2E TRAINING (MOCKED) ---")
     
     # Run Training
@@ -97,6 +105,10 @@ def test_full_pipeline_execution(mock_macro_cls, mock_download, setup_config):
     assert results is not None, "Training returned None"
     assert results["n_folds"] > 0
     
+    # Check that model was "trained" and "saved"
+    assert mock_model_instance.learn.called
+    assert mock_model_instance.save.called
+
     # Check Index Preservation in Train Loop (indirectly via success)
     out_path = Path(results["output_dir"])
     assert (out_path / "walk_forward_results.json").exists()
