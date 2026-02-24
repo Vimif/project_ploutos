@@ -173,7 +173,7 @@ class EToroClient(BrokerInterface):
                 raise ConnectionError(f"Login eToro echoue (status: {status})")
 
         except requests.exceptions.RequestException as e:
-            raise ConnectionError(f"Impossible de se connecter a eToro: {e}")
+            raise ConnectionError(f"Impossible de se connecter a eToro: {e}") from e
 
     def _ensure_auth(self):
         """Re-login si le token a expiré."""
@@ -376,8 +376,8 @@ class EToroClient(BrokerInterface):
                     current_rate = float(
                         trade.get("CurrentRate", 0) or trade.get("currentRate", open_rate)
                     )
-                    leverage = float(trade.get("Leverage", 1) or trade.get("leverage", 1))
-                    is_buy = (
+                    float(trade.get("Leverage", 1) or trade.get("leverage", 1))
+                    (
                         trade.get("IsBuy", True) if "IsBuy" in trade else trade.get("isBuy", True)
                     )
 

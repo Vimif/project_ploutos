@@ -57,7 +57,7 @@ def setup_config():
         shutil.rmtree(OUTPUT_DIR)
 
 
-import os
+import os  # noqa: E402
 
 
 @patch("training.train.download_data")

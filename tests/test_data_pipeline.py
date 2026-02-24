@@ -1,16 +1,20 @@
 """Tests du pipeline de données avec split temporel."""
 
 import sys
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
-# Mock torch pour éviter l'import GPU
-sys.modules.setdefault("torch", MagicMock())
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
+import pytest  # noqa: E402
 
-import numpy as np
-import pandas as pd
-import pytest
+from core.data_pipeline import DataSplitter  # noqa: E402
 
-from core.data_pipeline import DataSplitter
+
+@pytest.fixture(autouse=True)
+def mock_dependencies():
+    """Mock torch globally for these tests"""
+    with patch.dict(sys.modules, {"torch": MagicMock()}):
+        yield
 
 # ============================================================================
 # Fixtures

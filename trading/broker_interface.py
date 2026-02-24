@@ -180,4 +180,4 @@ class BrokerInterface(ABC):
 
     def log_current_positions(self):
         """Logger les positions actuelles (optionnel)."""
-        pass
+        pass  # noqa: B027

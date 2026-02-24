@@ -1,18 +1,23 @@
 """Tests unitaires pour TradingEnv."""
 
 import sys
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
-sys.modules.setdefault("torch", MagicMock())
+import numpy as np  # noqa: E402
+import pytest  # noqa: E402
 
-import numpy as np
-import pytest
-
-from core.environment import VALID_MODES, TradingEnv
+from core.environment import VALID_MODES, TradingEnv  # noqa: E402
 
 # ============================================================================
 # Fixtures (env-specific, using shared data generators from conftest)
 # ============================================================================
+
+
+@pytest.fixture(autouse=True)
+def mock_dependencies():
+    """Mock torch globally for these tests to avoid GPU requirements"""
+    with patch.dict(sys.modules, {"torch": MagicMock()}):
+        yield
 
 
 @pytest.fixture
@@ -193,8 +198,7 @@ class TestSlippage:
         env_train.reset()
         env_back.reset()
 
-        ticker = env_train.tickers[0]
-        price = 150.0
+        env_train.tickers[0]
 
         # Both modes should use the transaction model (not simple random)
         assert env_train.transaction_model is not None

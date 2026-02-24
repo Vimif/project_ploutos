@@ -1,15 +1,17 @@
 import sys
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch  # noqa: E402
 
-# Mock missing dependencies before importing Portfolio
-mock_torch = MagicMock()
-sys.modules["torch"] = mock_torch
+import pytest  # noqa: E402
 
-from unittest.mock import patch
 
-import pytest
+@pytest.fixture(autouse=True)
+def mock_dependencies():
+    """Mock torch globally for these tests"""
+    with patch.dict(sys.modules, {"torch": MagicMock()}):
+        yield
 
-from trading.portfolio import Portfolio
+
+from trading.portfolio import Portfolio  # noqa: E402
 
 
 @pytest.fixture

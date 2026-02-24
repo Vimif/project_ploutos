@@ -3,29 +3,33 @@
 import sys
 from unittest.mock import MagicMock, patch
 
-# Mock torch et stable_baselines3 pour éviter l'import GPU
-for mod in [
-    "torch",
-    "torch.nn",
-    "torch.nn.functional",
-    "torch.optim",
-    "torch.utils",
-    "torch.utils.data",
-    "torch.distributions",
-    "stable_baselines3",
-    "stable_baselines3.common",
-    "stable_baselines3.common.vec_env",
-    "stable_baselines3.common.monitor",
-    "stable_baselines3.common.callbacks",
-    "sb3_contrib",
-]:
-    sys.modules.setdefault(mod, MagicMock())
+import numpy as np  # noqa: E402
+import pytest  # noqa: E402
 
-import numpy as np
-import pytest
+import core.ensemble as ensemble_module  # noqa: E402
+from core.ensemble import EnsemblePredictor  # noqa: E402
 
-import core.ensemble as ensemble_module
-from core.ensemble import EnsemblePredictor
+
+@pytest.fixture(autouse=True)
+def mock_dependencies():
+    """Mock dependencies globally for these tests"""
+    modules_to_mock = {
+        "torch": MagicMock(),
+        "torch.nn": MagicMock(),
+        "torch.nn.functional": MagicMock(),
+        "torch.optim": MagicMock(),
+        "torch.utils": MagicMock(),
+        "torch.utils.data": MagicMock(),
+        "torch.distributions": MagicMock(),
+        "stable_baselines3": MagicMock(),
+        "stable_baselines3.common": MagicMock(),
+        "stable_baselines3.common.vec_env": MagicMock(),
+        "stable_baselines3.common.monitor": MagicMock(),
+        "stable_baselines3.common.callbacks": MagicMock(),
+        "sb3_contrib": MagicMock(),
+    }
+    with patch.dict(sys.modules, modules_to_mock):
+        yield
 
 # sb3_contrib est mocké → RecurrentPPO est un MagicMock (pas un type).
 # Désactiver HAS_RECURRENT par défaut pour éviter isinstance() crash.

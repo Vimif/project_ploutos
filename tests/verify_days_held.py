@@ -17,7 +17,7 @@ mock_utils.setup_logging.return_value = mock_logger
 # Ajouter la racine du projet au path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from core.risk_manager import RiskManager
+from core.risk_manager import RiskManager  # noqa: E402
 
 
 def test_days_held_calculation():

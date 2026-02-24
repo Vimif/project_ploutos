@@ -37,10 +37,10 @@ import numpy as np
 
 warnings.filterwarnings("ignore", message=".*Gym has been unmaintained.*")
 
-from core.data_fetcher import download_data
-from core.data_pipeline import DataSplitter
-from core.environment import TradingEnv
-from core.features import FeatureEngineer  # V9 Turbo
+from core.data_fetcher import download_data  # noqa: E402
+from core.data_pipeline import DataSplitter  # noqa: E402
+from core.environment import TradingEnv  # noqa: E402
+from core.features import FeatureEngineer  # noqa: E402 # V9 Turbo
 
 
 def run_validation(
