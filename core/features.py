@@ -9,10 +9,10 @@ Date: Feb 2026
 """
 
 import warnings
+
 import numpy as np
 import pandas as pd
 import polars as pl
-from typing import Optional, Union
 
 warnings.filterwarnings("ignore")
 
@@ -27,8 +27,8 @@ class FeatureEngineer:
         self.features_calculated = []
 
     def calculate_all_features(
-        self, df: Union[pd.DataFrame, pl.DataFrame], return_pandas: bool = True
-    ) -> Union[pd.DataFrame, pl.DataFrame]:
+        self, df: pd.DataFrame | pl.DataFrame, return_pandas: bool = True
+    ) -> pd.DataFrame | pl.DataFrame:
         """
         Calcule TOUTES les features optimisées.
         Accepte Pandas ou Polars en entrée.
@@ -48,7 +48,11 @@ class FeatureEngineer:
         else:
             pdf = df
 
-        # Calculs chaînés (Lazy-like syntax but eager execution for now)
+        # Switch to LazyFrame for optimization
+        if isinstance(pdf, pl.DataFrame):
+            pdf = pdf.lazy()
+
+        # Calculs chaînés (Lazy execution)
 
         # 1. Support/Resistance
         pdf = self._calculate_support_resistance(pdf)
@@ -80,17 +84,14 @@ class FeatureEngineer:
         # 10. Volatility Regime
         pdf = self._calculate_volatility_regime(pdf)
 
-        # Protect datetime column from fill_null(0) which would corrupt it
-        _date_col = None
-        if "__date_idx" in pdf.columns:
-            _date_col = pdf.select("__date_idx")
-            pdf = pdf.drop("__date_idx")
+        # Optimized cleanup: replace Inf/NaN with 0, forward-fill nulls, then fill remaining with 0
+        # Use exclude("__date_idx") which works even if column is missing (no need for schema check)
+        pdf = pdf.with_columns(
+            pl.all().exclude("__date_idx").fill_nan(0).fill_null(strategy="forward").fill_null(0)
+        )
 
-        # Cleanup: replace Inf/NaN with 0, forward-fill nulls, then fill remaining with 0
-        pdf = pdf.fill_nan(0).fill_null(strategy="forward").fill_null(0)
-
-        if _date_col is not None:
-            pdf = pl.concat([_date_col, pdf], how="horizontal")
+        # Collect results
+        pdf = pdf.collect()
 
         # Conversion sortie
         if return_pandas:
@@ -392,9 +393,9 @@ class FeatureEngineer:
 
         # Sum signals (assuming columns exist)
         # We need to filter only existing columns
-        cols = df.columns
-        valid_buy_signals = [s for s in buy_signals if s in cols]
-        valid_sell_signals = [s for s in sell_signals if s in cols]
+        # OPTIMIZATION: Assume all signals are present to avoid schema collection overhead
+        valid_buy_signals = buy_signals
+        valid_sell_signals = sell_signals
 
         buy_score = (
             sum([pl.col(s).fill_null(0) for s in valid_buy_signals])
