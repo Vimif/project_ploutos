@@ -1,8 +1,6 @@
-import os
-import sys
-import unittest
 import base64
-from unittest.mock import patch, MagicMock
+import os
+import unittest
 
 # Set env vars BEFORE importing app
 os.environ["DASHBOARD_USERNAME"] = "testuser"

@@ -1,10 +1,9 @@
 import logging
+from multiprocessing.shared_memory import SharedMemory
+from typing import Any
 
 import numpy as np
 import pandas as pd
-from multiprocessing.shared_memory import SharedMemory
-import pickle
-from typing import Dict, Tuple, Any, List
 
 logger = logging.getLogger(__name__)
 
@@ -16,9 +15,9 @@ class SharedDataManager:
     """
 
     def __init__(self):
-        self._shm_registry: List[SharedMemory] = []
+        self._shm_registry: list[SharedMemory] = []
 
-    def put_data(self, data_dict: Dict[str, pd.DataFrame]) -> Dict[str, Any]:
+    def put_data(self, data_dict: dict[str, pd.DataFrame]) -> dict[str, Any]:
         """
         Stocke un dictionnaire de DataFrames en mémoire partagée.
 
@@ -73,7 +72,7 @@ class SharedDataManager:
         self._shm_registry.clear()
 
 
-def load_shared_array(metadata_item: Dict[str, Any]) -> Tuple[SharedMemory, np.ndarray]:
+def load_shared_array(metadata_item: dict[str, Any]) -> tuple[SharedMemory, np.ndarray]:
     """
     Charge un array numpy depuis la SHM en mode Zero-Copy.
 
@@ -86,7 +85,7 @@ def load_shared_array(metadata_item: Dict[str, Any]) -> Tuple[SharedMemory, np.n
     return shm, arr
 
 
-def load_shared_data(metadata: Dict[str, Any]) -> Dict[str, pd.DataFrame]:
+def load_shared_data(metadata: dict[str, Any]) -> dict[str, pd.DataFrame]:
     """Reconstruit les DataFrames (avec copie). legacy V8 compatible."""
     reconstructed_data = {}
 

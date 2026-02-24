@@ -4,9 +4,9 @@ Modèle Avancé de Coûts de Transaction
 Simule slippage, impact de marché, et latence
 """
 
+
 import numpy as np
 import pandas as pd
-from typing import Dict, Tuple
 
 
 class AdvancedTransactionModel:
@@ -69,7 +69,7 @@ class AdvancedTransactionModel:
         current_volume: float,
         side: str = "buy",
         recent_prices: pd.Series = None,
-    ) -> Tuple[float, Dict]:
+    ) -> tuple[float, dict]:
         """
         Calcule le prix d'exécution réel tenant compte de tous les coûts
 
@@ -194,7 +194,7 @@ class AdvancedTransactionModel:
         volume: float,
         side: str = "buy",
         recent_prices: pd.Series = None,
-    ) -> Dict:
+    ) -> dict:
         """
         Estime le coût total d'un trade AVANT exécution
 
