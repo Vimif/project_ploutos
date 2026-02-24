@@ -7,7 +7,7 @@ import secrets
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, Response
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 import traceback
@@ -25,6 +25,41 @@ app = Flask(__name__)
 # SECURE: Use environment variable or generate random key
 app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(24))
 CORS(app)
+
+# ========== SÉCURITÉ (Basic Auth) ==========
+DASHBOARD_USERNAME = os.environ.get('DASHBOARD_USERNAME', 'admin')
+DASHBOARD_PASSWORD = os.environ.get('DASHBOARD_PASSWORD')
+
+if not DASHBOARD_PASSWORD:
+    # Générer un mot de passe sécurisé si non défini
+    random_password = secrets.token_hex(16)
+    logger.warning("⚠️  DASHBOARD_PASSWORD non défini. Utilisation d'un mot de passe aléatoire (voir sortie standard).")
+    # Écrire uniquement sur stderr pour éviter les logs fichiers persistants
+    sys.stderr.write(f"\n🔐 GENERATED DASHBOARD PASSWORD: {random_password}\n\n")
+    DASHBOARD_PASSWORD = random_password
+
+def check_auth(username, password):
+    """Vérifier les identifiants de manière sécurisée"""
+    return secrets.compare_digest(username, DASHBOARD_USERNAME) and \
+           secrets.compare_digest(password, DASHBOARD_PASSWORD)
+
+def authenticate():
+    """Envoyer une réponse 401 pour demander l'authentification"""
+    return Response(
+        'Accès refusé. Veuillez vous connecter.\n'
+        'Access denied. Please login.', 401,
+        {'WWW-Authenticate': 'Basic realm="Ploutos Dashboard Login"'})
+
+@app.before_request
+def require_login():
+    """Protéger toutes les routes avec Basic Auth (sauf static)"""
+    # Autoriser les fichiers statiques et options CORS
+    if request.method == 'OPTIONS' or (request.endpoint and 'static' in request.endpoint):
+        return
+
+    auth = request.authorization
+    if not auth or not check_auth(auth.username, auth.password):
+        return authenticate()
 
 # SocketIO avec gevent
 socketio = SocketIO(
