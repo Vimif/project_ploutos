@@ -1,4 +1,3 @@
-
 import unittest
 
 from core.risk_manager import RiskManager
@@ -7,9 +6,7 @@ from core.risk_manager import RiskManager
 class TestRiskManager(unittest.TestCase):
     def setUp(self):
         self.risk_manager = RiskManager(
-            max_portfolio_risk=0.02,
-            max_daily_loss=0.03,
-            max_position_size=0.05
+            max_portfolio_risk=0.02, max_daily_loss=0.03, max_position_size=0.05
         )
         self.risk_manager.daily_start_value = 10000.0
 
@@ -19,9 +16,7 @@ class TestRiskManager(unittest.TestCase):
 
     def test_calculate_position_size(self):
         quantity, value = self.risk_manager.calculate_position_size(
-            portfolio_value=10000.0,
-            entry_price=150.0,
-            stop_loss_pct=0.05
+            portfolio_value=10000.0, entry_price=150.0, stop_loss_pct=0.05
         )
         self.assertGreater(quantity, 0)
 
@@ -32,11 +27,9 @@ class TestRiskManager(unittest.TestCase):
         # Value = 133*150 = 19950 > 500 (5% of 10000)
         # Should be capped
         quantity_capped, value_capped = self.risk_manager.calculate_position_size(
-            portfolio_value=10000.0,
-            entry_price=150.0,
-            stop_loss_pct=0.01
+            portfolio_value=10000.0, entry_price=150.0, stop_loss_pct=0.01
         )
-        self.assertLessEqual(value_capped, 500.0 + 150.0) # allow rounding margin
+        self.assertLessEqual(value_capped, 500.0 + 150.0)  # allow rounding margin
 
     def test_check_daily_loss_limit(self):
         # No daily start value yet
@@ -45,15 +38,15 @@ class TestRiskManager(unittest.TestCase):
         self.assertEqual(rm.daily_start_value, 10000.0)
 
         # Normal fluctuation
-        self.assertTrue(rm.check_daily_loss_limit(9900.0)) # -1%
+        self.assertTrue(rm.check_daily_loss_limit(9900.0))  # -1%
 
         # Limit hit
-        self.assertFalse(rm.check_daily_loss_limit(9000.0)) # -10% > -3%
+        self.assertFalse(rm.check_daily_loss_limit(9000.0))  # -10% > -3%
         self.assertTrue(rm.circuit_breaker_triggered)
 
     def test_reset_daily_stats(self):
         self.risk_manager.log_trade("AAPL", "BUY", 100.0)
-        self.risk_manager.check_daily_loss_limit(9000.0) # Trigger breaker
+        self.risk_manager.check_daily_loss_limit(9000.0)  # Trigger breaker
 
         self.risk_manager.reset_daily_stats(11000.0)
         self.assertEqual(self.risk_manager.daily_start_value, 11000.0)
@@ -61,10 +54,7 @@ class TestRiskManager(unittest.TestCase):
         self.assertFalse(self.risk_manager.circuit_breaker_triggered)
 
     def test_calculate_portfolio_exposure(self):
-        positions = [
-            {"market_value": 1000.0},
-            {"market_value": 2000.0}
-        ]
+        positions = [{"market_value": 1000.0}, {"market_value": 2000.0}]
         exposure = self.risk_manager.calculate_portfolio_exposure(positions, 10000.0)
         self.assertEqual(exposure, 0.3)
 
@@ -84,7 +74,7 @@ class TestRiskManager(unittest.TestCase):
         positions_losers = [
             {"market_value": 100.0, "unrealized_plpc": -0.1},
             {"market_value": 100.0, "unrealized_plpc": -0.1},
-            {"market_value": 100.0, "unrealized_plpc": 0.1}
+            {"market_value": 100.0, "unrealized_plpc": 0.1},
         ]
         reduce, reason = self.risk_manager.should_reduce_exposure(positions_losers, 10000.0)
         self.assertTrue(reduce)
@@ -100,7 +90,7 @@ class TestRiskManager(unittest.TestCase):
 
         # Bad stats
         k = self.risk_manager.calculate_kelly_criterion(0.0, 0.1, 0.1)
-        self.assertEqual(k, 0.02) # Fallback
+        self.assertEqual(k, 0.02)  # Fallback
 
     def test_calculate_sharpe_ratio(self):
         returns = [0.01, -0.01, 0.02, 0.0]
@@ -119,16 +109,12 @@ class TestRiskManager(unittest.TestCase):
 
     def test_assess_position_risk(self):
         # Risky
-        risk = self.risk_manager.assess_position_risk(
-            "AAPL", 600.0, 10000.0, -0.15, 40
-        )
+        risk = self.risk_manager.assess_position_risk("AAPL", 600.0, 10000.0, -0.15, 40)
         self.assertGreaterEqual(risk["risk_score"], 4)
         self.assertEqual(risk["recommendation"], "FERMER IMMÉDIATEMENT")
 
         # Safe
-        risk = self.risk_manager.assess_position_risk(
-            "MSFT", 400.0, 10000.0, 0.05, 5
-        )
+        risk = self.risk_manager.assess_position_risk("MSFT", 400.0, 10000.0, 0.05, 5)
         self.assertEqual(risk["risk_level"], "FAIBLE")
 
     def test_get_risk_report(self):

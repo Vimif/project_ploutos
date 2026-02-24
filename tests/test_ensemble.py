@@ -31,6 +31,7 @@ def mock_dependencies():
     with patch.dict(sys.modules, modules_to_mock):
         yield
 
+
 # sb3_contrib est mocké → RecurrentPPO est un MagicMock (pas un type).
 # Désactiver HAS_RECURRENT par défaut pour éviter isinstance() crash.
 ensemble_module.HAS_RECURRENT = False
