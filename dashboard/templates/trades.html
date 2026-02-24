@@ -101,7 +101,7 @@
     <!-- Filtres -->
     <div class="filters">
         <div class="filter-group">
-            <label>Période</label>
+            <label for="filter-days">Période</label>
             <select id="filter-days">
                 <option value="7">7 derniers jours</option>
                 <option value="14">14 derniers jours</option>
@@ -112,7 +112,7 @@
         </div>
         
         <div class="filter-group">
-            <label>Action</label>
+            <label for="filter-action">Action</label>
             <select id="filter-action">
                 <option value="">Toutes</option>
                 <option value="BUY">Achats</option>
@@ -121,12 +121,12 @@
         </div>
         
         <div class="filter-group">
-            <label>Symbole</label>
-            <input type="text" id="filter-symbol" placeholder="Ex: NVDA">
+            <label for="filter-symbol">Symbole</label>
+            <input type="text" id="filter-symbol" placeholder="Ex: NVDA" onkeydown="if(event.key === 'Enter') applyFilters()">
         </div>
         
         <div class="filter-group" style="justify-content: flex-end;">
-            <button class="btn" onclick="applyFilters()">Filtrer</button>
+            <button class="btn" onclick="applyFilters()" aria-label="Appliquer les filtres">Filtrer</button>
         </div>
     </div>
     
