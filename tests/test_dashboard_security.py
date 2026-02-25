@@ -4,68 +4,98 @@ import unittest
 import base64
 from unittest.mock import MagicMock, patch
 
-# Mock dependencies to avoid side effects and missing credentials
-# We must do this BEFORE importing dashboard.app
-
-# Mock core.utils
-sys.modules['core'] = MagicMock()
-sys.modules['core.utils'] = MagicMock()
-sys.modules['core.utils'].setup_logging = MagicMock(return_value=MagicMock())
-
-# Mock trading.alpaca_client
-mock_alpaca_module = MagicMock()
-sys.modules['trading'] = MagicMock()
-sys.modules['trading.alpaca_client'] = mock_alpaca_module
-
-# Add project root to path so dashboard.app can find other modules if needed
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-from dashboard.app import app
-import dashboard.app as dashboard_module
 
 class TestDashboardSecurity(unittest.TestCase):
     def setUp(self):
-        self.client = app.test_client()
-        app.config['TESTING'] = True
+        # Setup environment variables needed for the app
+        self.env_patcher = patch.dict(
+            os.environ,
+            {
+                "DASHBOARD_USERNAME": "admin",
+                "DASHBOARD_PASSWORD": "securepassword123",
+                "FLASK_SECRET_KEY": "testing_key",
+                "ALPACA_PAPER_API_KEY": "fake_key",
+                "ALPACA_PAPER_SECRET_KEY": "fake_secret",
+            },
+        )
+        self.env_patcher.start()
 
-        # Mock the Alpaca client to return valid data
-        self.mock_alpaca = MagicMock()
-        self.mock_alpaca.get_account.return_value = {
-            'portfolio_value': 100000.0,
-            'cash': 50000.0,
-            'buying_power': 200000.0,
-            'equity': 100000.0,
-            'last_equity': 99000.0
+        # Mock dependencies modules to avoid import side effects or requirement issues
+        # We use a dict to patch sys.modules temporarily
+        self.modules_patcher = patch.dict(
+            sys.modules,
+            {
+                "trading.alpaca_client": MagicMock(),
+                "core.utils": MagicMock(),
+            },
+        )
+        self.modules_patcher.start()
+
+        # Mock specific components used by app
+        sys.modules["core.utils"].setup_logging = MagicMock(return_value=MagicMock())
+
+        # Setup mock Alpaca client class
+        self.mock_alpaca_client_cls = MagicMock()
+        self.mock_alpaca_instance = self.mock_alpaca_client_cls.return_value
+        self.mock_alpaca_instance.get_account.return_value = {
+            "portfolio_value": 100000.0,
+            "cash": 50000.0,
+            "buying_power": 200000.0,
+            "equity": 100000.0,
+            "last_equity": 99000.0,
         }
-        # Inject the mock client directly into the module
-        dashboard_module.alpaca_client = self.mock_alpaca
+        sys.modules["trading.alpaca_client"].AlpacaClient = self.mock_alpaca_client_cls
+
+        # Import the app inside the test method or setup to apply mocks
+        # Since app is a module-level variable in dashboard.app, we need to be careful.
+        # Ideally, we reload it, but standard import might work if it hasn't been imported yet.
+        # Or we patch `dashboard.app.alpaca_client` after import.
+
+        try:
+            import dashboard.app
+
+            self.app_module = dashboard.app
+            # Force re-initialization or injection
+            self.app_module.alpaca_client = self.mock_alpaca_instance
+            self.app = self.app_module.app
+            self.app.config["TESTING"] = True
+            self.client = self.app.test_client()
+        except ImportError:
+            self.fail("Could not import dashboard.app")
+
+    def tearDown(self):
+        self.modules_patcher.stop()
+        self.env_patcher.stop()
 
     def test_unauthorized_access(self):
         """Test that sensitive endpoints require authentication."""
         # Attempt to access a sensitive endpoint without auth
-        response = self.client.get('/api/account')
+        response = self.client.get("/api/account")
 
         # Should return 401 Unauthorized
-        self.assertEqual(response.status_code, 401, "Endpoint /api/account should require authentication")
-        self.assertIn('WWW-Authenticate', response.headers)
+        self.assertEqual(
+            response.status_code, 401, "Endpoint /api/account should require authentication"
+        )
+        self.assertIn("WWW-Authenticate", response.headers)
 
     def test_authorized_access(self):
         """Test that access is granted with correct credentials."""
-        # Get the current credentials (even if generated)
-        username = dashboard_module.DASHBOARD_USERNAME
-        password = dashboard_module.DASHBOARD_PASSWORD
+        # Get the credentials we set in setUp
+        username = "admin"
+        password = "securepassword123"
 
         # Create Basic Auth header
         auth_str = f"{username}:{password}"
-        auth_bytes = auth_str.encode('ascii')
+        auth_bytes = auth_str.encode("ascii")
         base64_bytes = base64.b64encode(auth_bytes)
-        base64_str = base64_bytes.decode('ascii')
-        headers = {'Authorization': f'Basic {base64_str}'}
+        base64_str = base64_bytes.decode("ascii")
+        headers = {"Authorization": f"Basic {base64_str}"}
 
-        response = self.client.get('/api/account', headers=headers)
+        response = self.client.get("/api/account", headers=headers)
 
         # Should return 200 OK
         self.assertEqual(response.status_code, 200, "Should allow access with correct credentials")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()
