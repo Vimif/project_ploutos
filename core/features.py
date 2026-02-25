@@ -9,10 +9,10 @@ Date: Feb 2026
 """
 
 import warnings
+
 import numpy as np
 import pandas as pd
 import polars as pl
-from typing import Optional, Union
 
 warnings.filterwarnings("ignore")
 
@@ -27,8 +27,8 @@ class FeatureEngineer:
         self.features_calculated = []
 
     def calculate_all_features(
-        self, df: Union[pd.DataFrame, pl.DataFrame], return_pandas: bool = True
-    ) -> Union[pd.DataFrame, pl.DataFrame]:
+        self, df: pd.DataFrame | pl.DataFrame, return_pandas: bool = True
+    ) -> pd.DataFrame | pl.DataFrame:
         """
         Calcule TOUTES les features optimisées.
         Accepte Pandas ou Polars en entrée.
@@ -332,8 +332,16 @@ class FeatureEngineer:
         period = 20
         std_mult = 2
 
-        mid = pl.col("Close").rolling_mean(window_size=period).alias("bb_mid")
-        std = pl.col("Close").rolling_std(window_size=period).alias("bb_std")
+        # Reuse MA_20 and STD_20 from mean reversion if available
+        if "ma_20" in df.columns:
+            mid = pl.col("ma_20").alias("bb_mid")
+        else:
+            mid = pl.col("Close").rolling_mean(window_size=period).alias("bb_mid")
+
+        if "std_20" in df.columns:
+            std = pl.col("std_20").alias("bb_std")
+        else:
+            std = pl.col("Close").rolling_std(window_size=period).alias("bb_std")
 
         df = df.with_columns([mid, std])
 
@@ -468,9 +476,7 @@ class FeatureEngineer:
 
         # Max of 3 values
         tr = pl.max_horizontal([tr1, tr2, tr3])
-        atr = tr.rolling_mean(window_size=period).alias(
-            "atr_temp"
-        )  # Keep logical name local for now
+        atr = tr.rolling_mean(window_size=period).alias("atr_14")
 
         up_move = high - high.shift(1)
         down_move = low.shift(1) - low
@@ -484,12 +490,12 @@ class FeatureEngineer:
         plus_di = (
             100
             * pl.col("plus_dm_raw").rolling_mean(window_size=period)
-            / (pl.col("atr_temp") + 1e-8)
+            / (pl.col("atr_14") + 1e-8)
         )
         minus_di = (
             100
             * pl.col("minus_dm_raw").rolling_mean(window_size=period)
-            / (pl.col("atr_temp") + 1e-8)
+            / (pl.col("atr_14") + 1e-8)
         )
 
         df = df.with_columns([plus_di.alias("plus_di"), minus_di.alias("minus_di")])
@@ -506,21 +512,25 @@ class FeatureEngineer:
         strong = (pl.col("adx") > 25).cast(pl.Int32).alias("strong_trend")
         weak = (pl.col("adx") < 20).cast(pl.Int32).alias("weak_trend")
 
-        return df.with_columns([strong, weak]).drop(["atr_temp", "plus_dm_raw", "minus_dm_raw"])
+        # Keep atr_14 for next steps
+        return df.with_columns([strong, weak]).drop(["plus_dm_raw", "minus_dm_raw"])
 
     def _calculate_volatility_regime(self, df: pl.DataFrame) -> pl.DataFrame:
         """✅ Régime de VOLATILITÉ"""
-        # Re-calc ATR properly if needed, but we can reuse logic
-        period = 14
-        high = pl.col("High")
-        low = pl.col("Low")
-        close = pl.col("Close")
-        prev_close = close.shift(1)
+        # Reuse ATR if calculated in trend strength (step 9)
+        if "atr_14" in df.columns:
+            df = df.with_columns(pl.col("atr_14").alias("atr"))
+        else:
+            # Re-calc ATR properly if needed
+            period = 14
+            high = pl.col("High")
+            low = pl.col("Low")
+            close = pl.col("Close")
+            prev_close = close.shift(1)
 
-        tr = pl.max_horizontal([high - low, (high - prev_close).abs(), (low - prev_close).abs()])
-        atr = tr.rolling_mean(window_size=period).alias("atr")
-
-        df = df.with_columns(atr)
+            tr = pl.max_horizontal([high - low, (high - prev_close).abs(), (low - prev_close).abs()])
+            atr = tr.rolling_mean(window_size=period).alias("atr")
+            df = df.with_columns(atr)
 
         atr_pct = (pl.col("atr") / pl.col("Close")).alias("atr_pct")
         df = df.with_columns(atr_pct)
