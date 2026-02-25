@@ -1,10 +1,12 @@
-import pytest
-import pandas as pd
-import numpy as np
-import yaml
 import shutil
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
+
+import numpy as np
+import pandas as pd
+import pytest
+import yaml
+
 from training.train import run_walk_forward
 
 # Setup paths
@@ -55,16 +57,12 @@ def setup_config():
         shutil.rmtree(OUTPUT_DIR)
 
 
-import os
+import os  # noqa: E402
 
 
-@patch("training.train.PPO")
-@patch("training.train.RecurrentPPO")
 @patch("training.train.download_data")
 @patch("training.train.MacroDataFetcher")
-def test_full_pipeline_execution(
-    mock_macro_cls, mock_download, mock_recurrent_ppo, mock_ppo, setup_config
-):
+def test_full_pipeline_execution(mock_macro_cls, mock_download, setup_config):
     """Lance un training complet avec Mock Data."""
 
     # 1. Mock Market Data
@@ -85,18 +83,6 @@ def test_full_pipeline_execution(
     # 2. Mock Macro Data
     mock_macro_instance = mock_macro_cls.return_value
     mock_macro_instance.fetch_all.return_value = pd.DataFrame()  # Empty macro
-
-    # 3. Configure Mock PPO
-    mock_model_instance = MagicMock()
-    mock_ppo.return_value = mock_model_instance
-    mock_recurrent_ppo.return_value = mock_model_instance
-
-    # Setup learn to return the model itself (common SB3 pattern)
-    mock_model_instance.learn.return_value = mock_model_instance
-
-    # Setup predict to return a tuple (action, states)
-    # Action shape: (1,) for 1 ticker
-    mock_model_instance.predict.return_value = (np.array([0.5]), None)
 
     print("\n--- STARTING E2E TRAINING (MOCKED) ---")
 

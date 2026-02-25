@@ -2,44 +2,28 @@
 # scripts/validate_pipeline.py
 """Pipeline de validation automatique: train → val → backtest → certification.
 
-Exécute tout le workflow de validation en une seule commande:
-    1. Télécharge les données
-    2. Split temporel train/val/test
-    3. Entraîne un modèle rapide (ou utilise un modèle existant)
-    4. Évalue sur les données de validation
-    5. Backtest sur les données de test (OOS)
-    6. Calcule les métriques de certification
-    7. Génère un rapport
-
-Usage:
-    # Validation complète (entraînement + backtest)
-    python scripts/validate_pipeline.py --tickers AAPL MSFT NVDA --timesteps 100000
-
-    # Validation d'un modèle existant
-    python scripts/validate_pipeline.py --model models/v7_sp500/best.zip --tickers AAPL MSFT NVDA
-
-    # Validation rapide (smoke test)
-    python scripts/validate_pipeline.py --quick
+Exécute tout le workflow de validation en une seule commande.
 """
 
+import argparse
+import json
+import os
 import sys
+import warnings
+from datetime import datetime
 from pathlib import Path
 
+import numpy as np
+
+# Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import os
-import json
-import warnings
-import argparse
-import numpy as np
-from datetime import datetime
+from core.data_fetcher import download_data  # noqa: E402
+from core.data_pipeline import DataSplitter  # noqa: E402
+from core.environment import TradingEnv  # noqa: E402
+from core.features import FeatureEngineer  # noqa: E402
 
 warnings.filterwarnings("ignore", message=".*Gym has been unmaintained.*")
-
-from core.data_fetcher import download_data
-from core.data_pipeline import DataSplitter
-from core.environment import TradingEnv
-from core.features import FeatureEngineer  # V9 Turbo
 
 
 def run_validation(
@@ -69,7 +53,7 @@ def run_validation(
     # ================================================================
     # Stage 1: Download data & Feature Engineering
     # ================================================================
-    print(f"\n📥 Stage 1/6: Téléchargement & Features...")
+    print("\n📥 Stage 1/6: Téléchargement & Features...")
     try:
         data = download_data(tickers, period=period, interval=interval)
         if not data or len(data) == 0:
@@ -99,7 +83,7 @@ def run_validation(
     try:
         splits = DataSplitter.split(data, train_ratio, val_ratio, test_ratio)
         DataSplitter.validate_no_overlap(splits)
-        # ... logs ...
+        print(f"  ✅ Splits générés: Train={len(splits.train['TEST'] if 'TEST' in splits.train else 0)}")
         results["stages"]["split"] = {"status": "OK", "info": splits.info}
     except Exception as e:
         print(f"  ❌ Erreur: {e}")
@@ -109,12 +93,12 @@ def run_validation(
     # ================================================================
     # Stage 3: Training (ou chargement modèle)
     # ================================================================
-    print(f"\n🧠 Stage 3/6: Modèle...")
+    print("\n🧠 Stage 3/6: Modèle...")
     model = None
     try:
         from stable_baselines3 import PPO
-        from stable_baselines3.common.vec_env import DummyVecEnv
         from stable_baselines3.common.monitor import Monitor
+        from stable_baselines3.common.vec_env import DummyVecEnv
 
         if model_path:
             print(f"  📂 Chargement modèle: {model_path}")
@@ -125,7 +109,9 @@ def run_validation(
             train_env = DummyVecEnv(
                 [
                     lambda: Monitor(
-                        TradingEnv(splits.train, mode="train", seed=seed, features_precomputed=True)
+                        TradingEnv(
+                            splits.train, mode="train", seed=seed, features_precomputed=True
+                        )
                     )
                 ]
             )
@@ -143,9 +129,11 @@ def run_validation(
     # ================================================================
     # Stage 4: Evaluation (val data)
     # ================================================================
-    print(f"\n📈 Stage 4/6: Évaluation sur données de validation...")
+    print("\n📈 Stage 4/6: Évaluation sur données de validation...")
     try:
-        val_env = TradingEnv(splits.val, mode="eval", seed=seed, features_precomputed=True)
+        val_env = TradingEnv(
+            splits.val, mode="eval", seed=seed, features_precomputed=True
+        )
         val_results = _run_episodes(model, val_env, n_episodes=3, label="Val")
         results["stages"]["validation"] = {"status": "OK", **val_results}
     except Exception as e:
@@ -155,9 +143,11 @@ def run_validation(
     # ================================================================
     # Stage 5: Backtest OOS (test data)
     # ================================================================
-    print(f"\n🎯 Stage 5/6: Backtest Out-of-Sample (données test)...")
+    print("\n🎯 Stage 5/6: Backtest Out-of-Sample (données test)...")
     try:
-        test_env = TradingEnv(splits.test, mode="backtest", seed=seed, features_precomputed=True)
+        test_env = TradingEnv(
+            splits.test, mode="backtest", seed=seed, features_precomputed=True
+        )
         oos_results = _run_episodes(model, test_env, n_episodes=1, label="OOS")
 
         results["stages"]["oos_backtest"] = {
@@ -171,7 +161,7 @@ def run_validation(
     # ================================================================
     # Stage 6: Certification
     # ================================================================
-    print(f"\n🏆 Stage 6/6: Certification...")
+    print("\n🏆 Stage 6/6: Certification...")
     cert = _certify(results)
     results["stages"]["certification"] = cert
 
@@ -196,14 +186,14 @@ def _run_episodes(model, env, n_episodes: int, label: str) -> dict:
     all_win_rates = []
 
     for ep in range(n_episodes):
-        obs, info = env.reset()
+        obs, _ = env.reset()
         done = False
-        ep_reward = 0.0
+        # ep_reward = 0.0
 
         while not done:
             action, _ = model.predict(obs, deterministic=True)
-            obs, reward, done, trunc, info = env.step(action)
-            ep_reward += reward
+            obs, reward, done, _, info = env.step(action)
+            # ep_reward += reward
 
         total_return = info.get("total_return", 0.0)
         trades = info.get("total_trades", 0)
@@ -260,7 +250,9 @@ def _certify(results: dict) -> dict:
     cert["passed"] = n_passed
     cert["total"] = n_total
     cert["certified"] = n_passed == n_total
-    cert["status"] = "CERTIFIED ✅" if cert["certified"] else f"FAILED ({n_passed}/{n_total})"
+    cert["status"] = (
+        "CERTIFIED ✅" if cert["certified"] else f"FAILED ({n_passed}/{n_total})"
+    )
 
     return cert
 

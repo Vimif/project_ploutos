@@ -5,10 +5,10 @@ from unittest.mock import MagicMock
 
 sys.modules.setdefault("torch", MagicMock())
 
-import pytest
-import numpy as np
-from core.environment import TradingEnv, VALID_MODES
-from conftest import make_market_data, make_macro_data
+import numpy as np  # noqa: E402
+import pytest  # noqa: E402
+
+from core.environment import VALID_MODES, TradingEnv  # noqa: E402
 
 # ============================================================================
 # Fixtures (env-specific, using shared data generators from conftest)
@@ -193,8 +193,8 @@ class TestSlippage:
         env_train.reset()
         env_back.reset()
 
-        ticker = env_train.tickers[0]
-        price = 150.0
+        __ticker = env_train.tickers[0]
+        _price = 150.0
 
         # Both modes should use the transaction model (not simple random)
         assert env_train.transaction_model is not None
@@ -203,10 +203,10 @@ class TestSlippage:
     def test_slippage_none_returns_price(self, market_data):
         env = TradingEnv(market_data, mode="train", seed=42, slippage_model="none")
         env.reset()
-        ticker = env.tickers[0]
-        price = 150.0
-        assert env._apply_slippage_buy(ticker, price) == price
-        assert env._apply_slippage_sell(ticker, price) == price
+        _ticker = env.tickers[0]
+        _price = 150.0
+        assert env._apply_slippage_buy(_ticker, _price) == _price
+        assert env._apply_slippage_sell(_ticker, _price) == _price
 
 
 # ============================================================================
