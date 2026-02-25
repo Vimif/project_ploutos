@@ -169,6 +169,8 @@
     
     async function loadTrades() {
         const btn = document.getElementById('btn-filter');
+        if (btn.disabled) return;
+
         const originalText = btn.innerHTML;
 
         try {
