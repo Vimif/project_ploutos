@@ -8,9 +8,11 @@ from core.data_fetcher import UniversalDataFetcher, download_data
 # MacroDataFetcher Tests
 # ============================================================================
 
+
 def test_macro_data_fetcher_init():
     fetcher = MacroDataFetcher()
     assert isinstance(fetcher, MacroDataFetcher)
+
 
 @patch("yfinance.download")
 def test_fetch_macro_data(mock_download):
@@ -24,6 +26,7 @@ def test_fetch_macro_data(mock_download):
 
     assert isinstance(data, pd.DataFrame)
     assert any("vix" in col.lower() for col in data.columns)
+
 
 def test_align_to_ticker():
     fetcher = MacroDataFetcher()
@@ -41,20 +44,25 @@ def test_align_to_ticker():
     assert len(aligned) == len(ticker_df)
     assert aligned.index.equals(ticker_df.index)
 
+
 # ============================================================================
 # DataFetcher Tests
 # ============================================================================
 
+
 @patch("core.data_fetcher.UniversalDataFetcher.fetch")
 def test_data_fetcher_download(mock_fetch):
     dates = pd.date_range("2023-01-01", periods=5, freq="D")
-    mock_df = pd.DataFrame({
-        "Open": [100.0] * 5,
-        "High": [110.0] * 5,
-        "Low": [90.0] * 5,
-        "Close": [105.0] * 5,
-        "Volume": [1000] * 5
-    }, index=dates)
+    mock_df = pd.DataFrame(
+        {
+            "Open": [100.0] * 5,
+            "High": [110.0] * 5,
+            "Low": [90.0] * 5,
+            "Close": [105.0] * 5,
+            "Volume": [1000] * 5,
+        },
+        index=dates,
+    )
     mock_fetch.return_value = mock_df
 
     fetcher = UniversalDataFetcher()
@@ -64,32 +72,40 @@ def test_data_fetcher_download(mock_fetch):
     assert len(data) == 5
     assert "Close" in data.columns
 
+
 def test_normalize_dataframe():
     fetcher = UniversalDataFetcher()
     dates = pd.date_range("2023-01-01", periods=5, freq="D")
-    raw_df = pd.DataFrame({
-        "open": [100.0] * 5,
-        "HIGH": [110.0] * 5,
-        "low": [90.0] * 5,
-        "Close": [105.0] * 5,
-        "v": [1000] * 5
-    }, index=dates)
+    raw_df = pd.DataFrame(
+        {
+            "open": [100.0] * 5,
+            "HIGH": [110.0] * 5,
+            "low": [90.0] * 5,
+            "Close": [105.0] * 5,
+            "v": [1000] * 5,
+        },
+        index=dates,
+    )
 
     processed = fetcher._normalize_dataframe(raw_df)
     assert isinstance(processed, pd.DataFrame)
-    assert "Volume" in processed.columns # 'v' mapped to 'Volume'
-    assert "High" in processed.columns   # 'HIGH' mapped to 'High'
+    assert "Volume" in processed.columns  # 'v' mapped to 'Volume'
+    assert "High" in processed.columns  # 'HIGH' mapped to 'High'
+
 
 @patch("core.data_fetcher.UniversalDataFetcher.fetch")
 def test_bulk_fetch(mock_fetch):
     dates = pd.date_range("2023-01-01", periods=5, freq="D")
-    mock_df = pd.DataFrame({
-        "Open": [100.0] * 5,
-        "High": [110.0] * 5,
-        "Low": [90.0] * 5,
-        "Close": [105.0] * 5,
-        "Volume": [1000] * 5
-    }, index=dates)
+    mock_df = pd.DataFrame(
+        {
+            "Open": [100.0] * 5,
+            "High": [110.0] * 5,
+            "Low": [90.0] * 5,
+            "Close": [105.0] * 5,
+            "Volume": [1000] * 5,
+        },
+        index=dates,
+    )
     mock_fetch.return_value = mock_df
 
     fetcher = UniversalDataFetcher()
@@ -100,16 +116,20 @@ def test_bulk_fetch(mock_fetch):
     assert "MSFT" in results
     assert isinstance(results["AAPL"], pd.DataFrame)
 
+
 @patch("core.data_fetcher.UniversalDataFetcher.fetch")
 def test_download_data_wrapper(mock_fetch):
     dates = pd.date_range("2023-01-01", periods=5, freq="D")
-    mock_df = pd.DataFrame({
-        "Open": [100.0] * 5,
-        "High": [110.0] * 5,
-        "Low": [90.0] * 5,
-        "Close": [105.0] * 5,
-        "Volume": [1000] * 5
-    }, index=dates)
+    mock_df = pd.DataFrame(
+        {
+            "Open": [100.0] * 5,
+            "High": [110.0] * 5,
+            "Low": [90.0] * 5,
+            "Close": [105.0] * 5,
+            "Volume": [1000] * 5,
+        },
+        index=dates,
+    )
     mock_fetch.return_value = mock_df
 
     # Test single ticker
