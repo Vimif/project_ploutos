@@ -1,4 +1,3 @@
-```ignore
 # Python
 __pycache__/
 *.py[cod]
@@ -68,7 +67,9 @@ Thumbs.db
 .jules/
 .cursor/
 
+# Exceptions for AI Assistant journals
+!.jules/palette.md
+
 # Ploutos specific
 reports/
 wandb/
-```

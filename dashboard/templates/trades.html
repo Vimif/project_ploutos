@@ -53,6 +53,11 @@
         background: #3b82f6;
     }
     
+    .btn:disabled {
+        background: #94a3b8;
+        cursor: wait;
+    }
+
     .trade-row-buy {
         border-left: 3px solid #10b981;
     }
@@ -101,7 +106,7 @@
     <!-- Filtres -->
     <div class="filters">
         <div class="filter-group">
-            <label>Période</label>
+            <label for="filter-days">Période</label>
             <select id="filter-days">
                 <option value="7">7 derniers jours</option>
                 <option value="14">14 derniers jours</option>
@@ -112,7 +117,7 @@
         </div>
         
         <div class="filter-group">
-            <label>Action</label>
+            <label for="filter-action">Action</label>
             <select id="filter-action">
                 <option value="">Toutes</option>
                 <option value="BUY">Achats</option>
@@ -121,12 +126,12 @@
         </div>
         
         <div class="filter-group">
-            <label>Symbole</label>
-            <input type="text" id="filter-symbol" placeholder="Ex: NVDA">
+            <label for="filter-symbol">Symbole</label>
+            <input type="text" id="filter-symbol" placeholder="Ex: NVDA" onkeydown="if(event.key === 'Enter') applyFilters()">
         </div>
         
         <div class="filter-group" style="justify-content: flex-end;">
-            <button class="btn" onclick="applyFilters()">Filtrer</button>
+            <button id="btn-filter" class="btn" onclick="applyFilters()">🔍 Filtrer</button>
         </div>
     </div>
     
@@ -163,7 +168,14 @@
     let tradesData = [];
     
     async function loadTrades() {
+        const btn = document.getElementById('btn-filter');
+        const originalText = btn.innerHTML;
+
         try {
+            // Loading state
+            btn.disabled = true;
+            btn.textContent = 'Filtrage...';
+
             const days = document.getElementById('filter-days').value;
             const action = document.getElementById('filter-action').value;
             const symbol = document.getElementById('filter-symbol').value;
@@ -195,6 +207,10 @@
             console.error('Erreur loadTrades:', error);
             document.getElementById('trades-container').innerHTML = 
                 `<p style="color: #ef4444; text-align: center; padding: 20px;">❌ ${error.message}</p>`;
+        } finally {
+            // Restore button state
+            btn.disabled = false;
+            btn.innerHTML = originalText;
         }
     }
     
