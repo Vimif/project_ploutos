@@ -1,7 +1,7 @@
-import sys
-import os
-import unittest
 import base64
+import os
+import sys
+import unittest
 from unittest.mock import MagicMock, patch
 
 
