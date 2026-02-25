@@ -66,7 +66,13 @@ DB_USER=ploutos
 DB_PASSWORD=your_password
 PORT=5000
 DEBUG=True
+
+# AUTHENTIFICATION DASHBOARD
+DASHBOARD_USERNAME=admin
+DASHBOARD_PASSWORD=votre_mot_de_passe_securise
 ```
+
+⚠️ **Note de Sécurité** : Si `DASHBOARD_PASSWORD` n'est pas défini, le dashboard générera un mot de passe aléatoire au démarrage et l'affichera dans la console.
 
 ---
 
@@ -380,7 +386,7 @@ which python3
 
 ## 📝 TODO
 
-- [ ] Authentification (login/password)
+- [x] Authentification (Basic Auth)
 - [ ] WebSocket pour updates temps réel
 - [ ] Graphiques avancés (Plotly)
 - [ ] Export CSV trades
