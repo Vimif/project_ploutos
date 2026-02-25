@@ -83,7 +83,9 @@ def run_validation(
     try:
         splits = DataSplitter.split(data, train_ratio, val_ratio, test_ratio)
         DataSplitter.validate_no_overlap(splits)
-        print(f"  ✅ Splits générés: Train={len(splits.train['TEST'] if 'TEST' in splits.train else 0)}")
+        print(
+            f"  ✅ Splits générés: Train={len(splits.train['TEST'] if 'TEST' in splits.train else 0)}"
+        )
         results["stages"]["split"] = {"status": "OK", "info": splits.info}
     except Exception as e:
         print(f"  ❌ Erreur: {e}")
@@ -109,9 +111,7 @@ def run_validation(
             train_env = DummyVecEnv(
                 [
                     lambda: Monitor(
-                        TradingEnv(
-                            splits.train, mode="train", seed=seed, features_precomputed=True
-                        )
+                        TradingEnv(splits.train, mode="train", seed=seed, features_precomputed=True)
                     )
                 ]
             )
@@ -131,9 +131,7 @@ def run_validation(
     # ================================================================
     print("\n📈 Stage 4/6: Évaluation sur données de validation...")
     try:
-        val_env = TradingEnv(
-            splits.val, mode="eval", seed=seed, features_precomputed=True
-        )
+        val_env = TradingEnv(splits.val, mode="eval", seed=seed, features_precomputed=True)
         val_results = _run_episodes(model, val_env, n_episodes=3, label="Val")
         results["stages"]["validation"] = {"status": "OK", **val_results}
     except Exception as e:
@@ -145,9 +143,7 @@ def run_validation(
     # ================================================================
     print("\n🎯 Stage 5/6: Backtest Out-of-Sample (données test)...")
     try:
-        test_env = TradingEnv(
-            splits.test, mode="backtest", seed=seed, features_precomputed=True
-        )
+        test_env = TradingEnv(splits.test, mode="backtest", seed=seed, features_precomputed=True)
         oos_results = _run_episodes(model, test_env, n_episodes=1, label="OOS")
 
         results["stages"]["oos_backtest"] = {
@@ -250,9 +246,7 @@ def _certify(results: dict) -> dict:
     cert["passed"] = n_passed
     cert["total"] = n_total
     cert["certified"] = n_passed == n_total
-    cert["status"] = (
-        "CERTIFIED ✅" if cert["certified"] else f"FAILED ({n_passed}/{n_total})"
-    )
+    cert["status"] = "CERTIFIED ✅" if cert["certified"] else f"FAILED ({n_passed}/{n_total})"
 
     return cert
 
