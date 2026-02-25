@@ -1,6 +1,5 @@
 """Tests du pipeline de données avec split temporel."""
 
-
 # Mock torch pour éviter l'import GPU
 
 

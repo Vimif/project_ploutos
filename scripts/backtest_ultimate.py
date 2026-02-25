@@ -276,9 +276,7 @@ def detect_environment(model, metadata=None, config=None):
         else:
             params = dict(ENV_PARAMS_V6)
 
-        logger.info(
-            f"  -> Match exact: {version} BetterTiming avec {n_tickers} tickers"
-        )
+        logger.info(f"  -> Match exact: {version} BetterTiming avec {n_tickers} tickers")
         return version, n_tickers, None, env_cls, params
 
     # Legacy fallback...
