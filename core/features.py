@@ -488,9 +488,7 @@ class FeatureEngineer:
 
         # Smooth DM ?? Original uses rolling mean on DM directly
         plus_di = (
-            100
-            * pl.col("plus_dm_raw").rolling_mean(window_size=period)
-            / (pl.col("atr_14") + 1e-8)
+            100 * pl.col("plus_dm_raw").rolling_mean(window_size=period) / (pl.col("atr_14") + 1e-8)
         )
         minus_di = (
             100
@@ -528,7 +526,9 @@ class FeatureEngineer:
             close = pl.col("Close")
             prev_close = close.shift(1)
 
-            tr = pl.max_horizontal([high - low, (high - prev_close).abs(), (low - prev_close).abs()])
+            tr = pl.max_horizontal(
+                [high - low, (high - prev_close).abs(), (low - prev_close).abs()]
+            )
             atr = tr.rolling_mean(window_size=period).alias("atr")
             df = df.with_columns(atr)
 

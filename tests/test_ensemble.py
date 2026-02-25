@@ -1,28 +1,9 @@
 """Tests unitaires pour EnsemblePredictor."""
 
 import sys
-from unittest.mock import MagicMock, patch
-
-# Mock torch et stable_baselines3 pour éviter l'import GPU
-for mod in [
-    "torch",
-    "torch.nn",
-    "torch.nn.functional",
-    "torch.optim",
-    "torch.utils",
-    "torch.utils.data",
-    "torch.distributions",
-    "stable_baselines3",
-    "stable_baselines3.common",
-    "stable_baselines3.common.vec_env",
-    "stable_baselines3.common.monitor",
-    "stable_baselines3.common.callbacks",
-    "sb3_contrib",
-]:
-    sys.modules.setdefault(mod, MagicMock())
-
 import pytest
 import numpy as np
+from unittest.mock import MagicMock, patch
 
 import core.ensemble as ensemble_module
 from core.ensemble import EnsemblePredictor
