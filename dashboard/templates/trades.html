@@ -91,6 +91,21 @@
         background: #60a5fa;
         color: white;
     }
+
+    .spinner {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border: 2px solid rgba(255,255,255,0.3);
+        border-radius: 50%;
+        border-top-color: #fff;
+        animation: spin 1s ease-in-out infinite;
+        margin-right: 8px;
+    }
+
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
 </style>
 {% endblock %}
 
@@ -126,7 +141,7 @@
         </div>
         
         <div class="filter-group" style="justify-content: flex-end;">
-            <button class="btn" onclick="applyFilters()">Filtrer</button>
+            <button class="btn" id="btn-filter" onclick="applyFilters()">Filtrer</button>
         </div>
     </div>
     
@@ -151,7 +166,7 @@
     </div>
     
     <!-- Table des trades -->
-    <div id="trades-container">
+    <div id="trades-container" aria-live="polite">
         <div class="loading">Chargement des trades...</div>
     </div>
 </div>
@@ -254,8 +269,19 @@
         document.getElementById('trades-container').innerHTML = html;
     }
     
-    function applyFilters() {
-        loadTrades();
+    async function applyFilters() {
+        const btn = document.getElementById('btn-filter');
+        const originalText = btn.innerHTML;
+
+        try {
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Chargement...';
+
+            await loadTrades();
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        }
     }
     
     // Chargement initial
