@@ -178,6 +178,6 @@ class BrokerInterface(ABC):
         except Exception:
             return 0
 
-    def log_current_positions(self): # noqa: B027
+    def log_current_positions(self):  # noqa: B027
         """Logger les positions actuelles (optionnel)."""
         pass
