@@ -120,7 +120,11 @@ class TestLSTMStatePropagation:
         ens = EnsemblePredictor(models=models)
         ens.lstm_states = [np.array([[0.0, 0.0]]), np.array([[0.0, 0.0]])]
 
-        # Activer HAS_RECURRENT et définir RecurrentPPO = MockRecurrentModel
+        # Patch HAS_RECURRENT and RecurrentPPO
+        # If RecurrentPPO doesn't exist, we set it first to allow patching
+        if not hasattr(ensemble_module, "RecurrentPPO"):
+            ensemble_module.RecurrentPPO = MockRecurrentModel
+
         with (
             patch.object(ensemble_module, "HAS_RECURRENT", True),
             patch.object(ensemble_module, "RecurrentPPO", MockRecurrentModel),
@@ -168,6 +172,10 @@ class TestConfidence:
         models = [MockRecurrentModel(1), MockRecurrentModel(0)]
         ens = EnsemblePredictor(models=models)
         ens.lstm_states = [np.array([[0.0, 0.0]]), np.array([[0.0, 0.0]])]
+
+        # Patch HAS_RECURRENT and RecurrentPPO
+        if not hasattr(ensemble_module, "RecurrentPPO"):
+            ensemble_module.RecurrentPPO = MockRecurrentModel
 
         with (
             patch.object(ensemble_module, "HAS_RECURRENT", True),
