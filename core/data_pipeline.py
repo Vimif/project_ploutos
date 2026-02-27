@@ -64,17 +64,13 @@ class DataSplitter:
 
         total = train_ratio + val_ratio + test_ratio
         if abs(total - 1.0) > 1e-6:
-            raise ValueError(
-                f"Les ratios doivent sommer à 1.0, obtenu {total:.4f}"
-            )
+            raise ValueError(f"Les ratios doivent sommer à 1.0, obtenu {total:.4f}")
 
         # Trouver les dates communes à tous les tickers pour
         # couper aux mêmes indices, en utilisant le ticker le plus court.
         min_len = min(len(df) for df in data.values())
         if min_len < 10:
-            raise ValueError(
-                f"Pas assez de données: ticker le plus court = {min_len} bars"
-            )
+            raise ValueError(f"Pas assez de données: ticker le plus court = {min_len} bars")
 
         train_end_idx = int(min_len * train_ratio)
         val_end_idx = int(min_len * (train_ratio + val_ratio))
