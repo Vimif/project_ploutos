@@ -26,6 +26,13 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(24))
 CORS(app)
 
+# Security: Ensure DASHBOARD_PASSWORD is set
+if not os.environ.get('DASHBOARD_PASSWORD'):
+    token = secrets.token_hex(16)
+    os.environ['DASHBOARD_PASSWORD'] = token
+    # Print to stderr so it's visible but not in stdout logs usually
+    sys.stderr.write(f"\n{'='*60}\n⚠️  SECURITY: No DASHBOARD_PASSWORD set.\n🔑 One-time password generated: {token}\n{'='*60}\n\n")
+
 # SocketIO avec gevent
 socketio = SocketIO(
     app, 
@@ -40,6 +47,35 @@ alpaca_client = None
 
 # Dossier logs trades
 TRADES_LOG_DIR = Path('logs/trades')
+
+# ========== AUTHENTICATION ==========
+
+def check_auth(username, password):
+    """Vérifier les identifiants"""
+    valid_user = os.environ.get('DASHBOARD_USERNAME', 'admin')
+    valid_pass = os.environ.get('DASHBOARD_PASSWORD')
+
+    return username and password and \
+           secrets.compare_digest(username, valid_user) and \
+           secrets.compare_digest(password, valid_pass)
+
+def authenticate():
+    """Envoyer une réponse 401 pour demander l'authentification"""
+    return jsonify({'error': 'Authentication required'}), 401, \
+           {'WWW-Authenticate': 'Basic realm="Login Required"'}
+
+@app.before_request
+def require_auth():
+    """Vérifier l'authentification avant chaque requête"""
+    # Exclusions: fichiers statiques, socket.io, et webhooks potentiels
+    if (request.path.startswith('/static') or
+        request.path.startswith('/socket.io') or
+        request.path.startswith('/api/webhook')):
+        return None
+
+    auth = request.authorization
+    if not auth or not check_auth(auth.username, auth.password):
+        return authenticate()
 
 def init_alpaca():
     """Initialiser le client Alpaca"""
