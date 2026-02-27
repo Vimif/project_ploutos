@@ -63,7 +63,22 @@ import os
 
 @patch('training.train.download_data')
 @patch('training.train.MacroDataFetcher')
-def test_full_pipeline_execution(mock_macro_cls, mock_download, setup_config):
+@patch('training.train.PPO')  # Patch PPO to avoid real Torch init
+# Only patch RecurrentPPO if it exists in the module, handled by a try/except import in the module
+# But we can patch where it's used. Since `training.train` tries to import it,
+# if it fails, HAS_RECURRENT is False.
+# However, `unittest.mock.patch` will fail if the target doesn't exist.
+# We should conditionally patch or patch `sb3_contrib.RecurrentPPO` if we knew where it was coming from,
+# but `training.train` imports it.
+# If `sb3_contrib` is not installed, `training.train` sets HAS_RECURRENT=False and doesn't expose RecurrentPPO.
+# Let's inspect `training.train` logic again.
+# It does: `from sb3_contrib import RecurrentPPO` inside a try/except block.
+# If that succeeds, `RecurrentPPO` is in `training.train` namespace.
+# If it fails, it is NOT.
+# The previous error `AttributeError: <module 'training.train' ...> does not have the attribute 'RecurrentPPO'`
+# confirms that `RecurrentPPO` is NOT in `training.train`.
+# So we should NOT patch it if it's missing.
+def test_full_pipeline_execution(mock_ppo, mock_macro_cls, mock_download, setup_config):
     """Lance un training complet avec Mock Data."""
     
     # 1. Mock Market Data
@@ -82,6 +97,19 @@ def test_full_pipeline_execution(mock_macro_cls, mock_download, setup_config):
     mock_macro_instance = mock_macro_cls.return_value
     mock_macro_instance.fetch_all.return_value = pd.DataFrame() # Empty macro
     
+    # 3. Configure Mock PPO
+    # PPO instance returned by constructor
+    mock_model = MagicMock()
+    mock_ppo.return_value = mock_model
+    # learn() returns self
+    mock_model.learn.return_value = mock_model
+    # predict() returns (action, state)
+    mock_model.predict.return_value = (np.array([0]), None)
+    # save() does nothing
+    mock_model.save.return_value = None
+    # load() returns the mock model
+    mock_ppo.load.return_value = mock_model
+
     print("\n--- STARTING E2E TRAINING (MOCKED) ---")
     
     # Run Training
