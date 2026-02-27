@@ -97,8 +97,11 @@ class ObservationBuilder:
         # Map dict values to array indices corresponding to tickers list order
         # We trust self.tickers order matches observation slots
         pos_vals = [
-            (portfolio.get(t, 0.0) * prices.get(t, 0.0) * equity_inv)
-            if prices.get(t, 0.0) > 0 else 0.0
+            (
+                (portfolio.get(t, 0.0) * prices.get(t, 0.0) * equity_inv)
+                if prices.get(t, 0.0) > 0
+                else 0.0
+            )
             for t in self.tickers
         ]
 
@@ -110,7 +113,9 @@ class ObservationBuilder:
         # Clip individual values here as they are scalars
         obs[self._global_start] = np.clip(balance * equity_inv, 0, 1)
         obs[self._global_start + 1] = np.clip((equity - initial_balance) / initial_balance, -1, 5)
-        obs[self._global_start + 2] = np.clip((peak_value - equity) / (peak_value + EQUITY_EPSILON), 0, 1)
+        obs[self._global_start + 2] = np.clip(
+            (peak_value - equity) / (peak_value + EQUITY_EPSILON), 0, 1
+        )
 
         # Final pass: Global Clip/NaN handling
         # Doing this once on the full array is significantly faster than on small chunks

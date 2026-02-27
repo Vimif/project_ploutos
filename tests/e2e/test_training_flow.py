@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import yaml
 import shutil
+import os
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 from training.train import run_walk_forward
@@ -59,11 +60,11 @@ def setup_config():
     if CONFIG_PATH.exists(): os.remove(CONFIG_PATH)
     if OUTPUT_DIR.exists(): shutil.rmtree(OUTPUT_DIR)
 
-import os
-
+@patch('training.train.PPO')
+@patch('training.train.RecurrentPPO')
 @patch('training.train.download_data')
 @patch('training.train.MacroDataFetcher')
-def test_full_pipeline_execution(mock_macro_cls, mock_download, setup_config):
+def test_full_pipeline_execution(mock_macro_cls, mock_download, mock_recurrent_ppo, mock_ppo, setup_config):
     """Lance un training complet avec Mock Data."""
     
     # 1. Mock Market Data
@@ -82,6 +83,20 @@ def test_full_pipeline_execution(mock_macro_cls, mock_download, setup_config):
     mock_macro_instance = mock_macro_cls.return_value
     mock_macro_instance.fetch_all.return_value = pd.DataFrame() # Empty macro
     
+    # 3. Mock PPO/RecurrentPPO behavior
+    # PPO mock needs to return a valid object that can be "learned" and "saved"
+    mock_model_instance = MagicMock()
+    mock_model_instance.learn.return_value = mock_model_instance
+    mock_model_instance.save.return_value = None
+    mock_model_instance.predict.return_value = (np.array([1]), None) # action, state
+
+    mock_ppo.return_value = mock_model_instance
+    mock_recurrent_ppo.return_value = mock_model_instance
+
+    # Ensure load returns the mock too
+    mock_ppo.load.return_value = mock_model_instance
+    mock_recurrent_ppo.load.return_value = mock_model_instance
+
     print("\n--- STARTING E2E TRAINING (MOCKED) ---")
     
     # Run Training
