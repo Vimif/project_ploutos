@@ -5,15 +5,18 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 from core.sp500_scanner import SP500Scanner
 
+
 @pytest.fixture
 def mock_fetcher():
     with patch("core.sp500_scanner.UniversalDataFetcher") as mock:
         yield mock.return_value
 
+
 @pytest.fixture
 def scanner(mock_fetcher):
     # Use a temp cache dir, lookback_days=60 to satisfy min requirements
     return SP500Scanner(cache_dir="/tmp/sp500_cache_test", lookback_days=60)
+
 
 def test_fetch_sp500_list(scanner):
     # Mock requests.get
@@ -58,6 +61,7 @@ def test_fetch_sp500_list(scanner):
         assert "JNJ" in df["Symbol"].values
         assert "Information Technology" in df["GICS Sector"].values
 
+
 def test_calculate_sharpe(scanner, mock_fetcher):
     # Create fake daily data (200 days)
     dates = pd.date_range("2023-01-01", periods=200, freq="D")
@@ -73,17 +77,26 @@ def test_calculate_sharpe(scanner, mock_fetcher):
     assert not np.isnan(sharpe)
     assert isinstance(sharpe, float)
 
+
 def test_calculate_sharpe_no_data(scanner, mock_fetcher):
     mock_fetcher.fetch.return_value = None
     sharpe = scanner._calculate_sharpe("EMPTY")
     assert np.isnan(sharpe)
 
+
 def test_scan_sectors(scanner):
     # Mock list
-    mock_constituents = pd.DataFrame({
-        "Symbol": ["AAPL", "MSFT", "JNJ", "PFE"],
-        "GICS Sector": ["Information Technology", "Information Technology", "Health Care", "Health Care"]
-    })
+    mock_constituents = pd.DataFrame(
+        {
+            "Symbol": ["AAPL", "MSFT", "JNJ", "PFE"],
+            "GICS Sector": [
+                "Information Technology",
+                "Information Technology",
+                "Health Care",
+                "Health Care",
+            ],
+        }
+    )
 
     # Mock sharpe calculation
     def mock_sharpe(ticker):
@@ -97,17 +110,13 @@ def test_scan_sectors(scanner):
 
             assert "Information Technology" in results["sectors"]
             assert "Health Care" in results["sectors"]
-            assert results["sectors"]["Information Technology"] == ["AAPL"] # Best sharpe
-            assert results["sectors"]["Health Care"] == ["JNJ"] # Best sharpe
+            assert results["sectors"]["Information Technology"] == ["AAPL"]  # Best sharpe
+            assert results["sectors"]["Health Care"] == ["JNJ"]  # Best sharpe
             assert results["total_stocks"] == 2
 
+
 def test_helpers(scanner):
-    results = {
-        "sectors": {
-            "Tech": ["AAPL", "MSFT"],
-            "Health": ["JNJ"]
-        }
-    }
+    results = {"sectors": {"Tech": ["AAPL", "MSFT"], "Health": ["JNJ"]}}
 
     # get_top_stocks
     stocks = scanner.get_top_stocks(results)

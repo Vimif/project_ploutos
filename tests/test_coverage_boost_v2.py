@@ -7,6 +7,7 @@ from core.data_pipeline import DataSplitter
 from core.ensemble import EnsemblePredictor
 from trading.portfolio import Portfolio
 
+
 # --- Test DataSplitter (core/data_pipeline.py) ---
 def test_data_splitter_coverage():
     dates = pd.date_range("2020-01-01", "2020-01-10", freq="D")
@@ -29,7 +30,8 @@ def test_data_splitter_coverage():
 
     # Test error cases
     with pytest.raises(ValueError):
-        DataSplitter.split(data, 0.5, 0.5, 0.5) # Sum > 1.0
+        DataSplitter.split(data, 0.5, 0.5, 0.5)  # Sum > 1.0
+
 
 # --- Test EnsemblePredictor (core/ensemble.py) ---
 def test_ensemble_coverage():
@@ -64,6 +66,7 @@ def test_ensemble_coverage():
         ens = EnsemblePredictor.load(["path1", "path2"])
         assert len(ens.models) == 2
 
+
 # --- Test Portfolio (trading/portfolio.py) ---
 def test_portfolio_coverage():
     p = Portfolio(initial_capital=10000.0)
@@ -72,12 +75,12 @@ def test_portfolio_coverage():
     assert p.cash == 10000.0
 
     # Test Buy
-    p.buy("AAPL", 150.0, 1500.0) # 10 shares
+    p.buy("AAPL", 150.0, 1500.0)  # 10 shares
     assert p.positions["AAPL"]["shares"] == 10
     assert p.cash == 10000.0 - 1500.0
 
     # Test Sell
-    p.sell("AAPL", 160.0, 0.5) # Sell 50% (5 shares)
+    p.sell("AAPL", 160.0, 0.5)  # Sell 50% (5 shares)
     assert p.positions["AAPL"]["shares"] == 5
     assert p.cash == 8500.0 + (5 * 160.0)
 
