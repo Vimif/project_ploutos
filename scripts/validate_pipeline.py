@@ -93,7 +93,6 @@ def run_validation(
     # ================================================================
     # Stage 2: Split temporel
     # ================================================================
-    # ... (code identique) ...
     print(f"\n📊 Stage 2/6: Split temporel ({train_ratio}/{val_ratio}/{test_ratio})...")
     try:
         splits = DataSplitter.split(data, train_ratio, val_ratio, test_ratio)
@@ -108,11 +107,22 @@ def run_validation(
     # ================================================================
     # Stage 3: Training (ou chargement modèle)
     # ================================================================
-    # ...
-    # (Dans le bloc else pour training)
-    # ...
+    model = None
+    if model_path:
+        print(f"\n🏋️ Stage 3/6: Chargement modèle existant ({model_path})...")
+        try:
             from stable_baselines3 import PPO
-            from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+            model = PPO.load(model_path)
+            results['stages']['training'] = {'status': 'SKIPPED', 'model_path': model_path}
+        except Exception as e:
+            print(f"  ❌ Erreur: {e}")
+            results['stages']['training'] = {'status': 'FAIL', 'error': str(e)}
+            return results
+    else:
+        print(f"\n🏋️ Stage 3/6: Entraînement rapide ({total_timesteps} steps)...")
+        try:
+            from stable_baselines3 import PPO
+            from stable_baselines3.common.vec_env import DummyVecEnv
             from stable_baselines3.common.monitor import Monitor
 
             # Utiliser TradingEnv V9 avec features_precomputed=True
@@ -121,8 +131,31 @@ def run_validation(
                     splits.train, mode='train', seed=seed, features_precomputed=True
                 ))
             ])
-            # ...
-    # ...
+
+            model = PPO(
+                "MlpPolicy",
+                train_env,
+                verbose=1,
+                seed=seed,
+                learning_rate=3e-4,
+                n_steps=2048,
+                batch_size=64,
+                n_epochs=10,
+                gamma=0.99,
+                gae_lambda=0.95,
+                clip_range=0.2,
+                ent_coef=0.0,
+                vf_coef=0.5,
+                max_grad_norm=0.5,
+            )
+
+            model.learn(total_timesteps=total_timesteps)
+            results['stages']['training'] = {'status': 'OK', 'timesteps': total_timesteps}
+
+        except Exception as e:
+            print(f"  ❌ Erreur: {e}")
+            results['stages']['training'] = {'status': 'FAIL', 'error': str(e)}
+            return results
 
     # ================================================================
     # Stage 4: Evaluation (val data)

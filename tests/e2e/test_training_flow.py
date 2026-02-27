@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import yaml
 import shutil
+import os
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 from training.train import run_walk_forward
@@ -59,11 +60,10 @@ def setup_config():
     if CONFIG_PATH.exists(): os.remove(CONFIG_PATH)
     if OUTPUT_DIR.exists(): shutil.rmtree(OUTPUT_DIR)
 
-import os
-
 @patch('training.train.download_data')
 @patch('training.train.MacroDataFetcher')
-def test_full_pipeline_execution(mock_macro_cls, mock_download, setup_config):
+@patch('training.train.PPO')
+def test_full_pipeline_execution(mock_ppo, mock_macro_cls, mock_download, setup_config):
     """Lance un training complet avec Mock Data."""
     
     # 1. Mock Market Data
@@ -81,6 +81,20 @@ def test_full_pipeline_execution(mock_macro_cls, mock_download, setup_config):
     # 2. Mock Macro Data
     mock_macro_instance = mock_macro_cls.return_value
     mock_macro_instance.fetch_all.return_value = pd.DataFrame() # Empty macro
+
+    # 3. Mock Models (PPO)
+    # They need to simulate being a trained model
+    mock_model_instance = MagicMock()
+    # predict returns (action, state)
+    mock_model_instance.predict.return_value = (np.array([0]), None)
+
+    mock_ppo.return_value = mock_model_instance
+    # Mock load method to return the same mock instance
+    mock_ppo.load.return_value = mock_model_instance
+
+    # If RecurrentPPO is available/imported in train.py, we might want to patch it too,
+    # but since we are running with use_recurrent=False, it's not strictly necessary unless initialized.
+    # The previous error was because we tried to patch it when it didn't exist.
     
     print("\n--- STARTING E2E TRAINING (MOCKED) ---")
     
