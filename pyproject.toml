@@ -74,6 +74,39 @@ python_functions = ["test_*"]
 addopts = "-v"
 
 [tool.black]
+extend-exclude = '''
+(
+  ^/config/.*
+  | ^/core/.*
+  | ^/database/.*
+  | ^/legacy/.*
+  | ^/notifications/.*
+  | ^/trading/.*
+  | ^/training/.*
+  | ^/dashboard/analytics\.py$
+  | ^/dashboard/technical_analysis\.py$
+  | ^/scripts/check_gpu\.py$
+  | ^/scripts/init_database\.py$
+  | ^/scripts/build_dataset\.py$
+  | ^/scripts/import_grafana_dashboard\.py$
+  | ^/scripts/optimize_hyperparams\.py$
+  | ^/scripts/run_pipeline\.py$
+  | ^/scripts/robustness_tests\.py$
+  | ^/scripts/paper_trade\.py$
+  | ^/scripts/backtest_ultimate\.py$
+  | ^/tests/conftest\.py$
+  | ^/tests/test_env_config\.py$
+  | ^/tests/test_integration_v9\.py$
+  | ^/tests/test_data_pipeline\.py$
+  | ^/tests/test_portfolio\.py$
+  | ^/tests/test_shared_memory\.py$
+  | ^/tests/test_reward_calculator\.py$
+  | ^/tests/v9_preflight_check\.py$
+  | ^/tests/verify_days_held\.py$
+  | ^/tests/test_trading_env_v8\.py$
+)
+'''
+
 line-length = 100
 target-version = ['py310']
 

@@ -1,5 +1,5 @@
 import pytest
-import numpy as np
+
 from core.risk_manager import RiskManager
 
 
@@ -76,7 +76,7 @@ def test_should_reduce_exposure():
     ]
     reduce, reason = rm.should_reduce_exposure(positions, 10000)
     assert isinstance(reduce, bool)
-    assert reduce == True
+    assert reduce
 
 
 def test_calculate_kelly_criterion():
