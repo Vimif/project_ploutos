@@ -61,10 +61,15 @@ def setup_config():
 
 import os
 
+@patch('training.train.PPO')
 @patch('training.train.download_data')
 @patch('training.train.MacroDataFetcher')
-def test_full_pipeline_execution(mock_macro_cls, mock_download, setup_config):
+def test_full_pipeline_execution(mock_macro_cls, mock_download, mock_ppo, setup_config):
     """Lance un training complet avec Mock Data."""
+    # Mock PPO predict method to return a valid action tuple to prevent PyTorch type errors
+    mock_ppo_instance = MagicMock()
+    mock_ppo_instance.predict.return_value = ([0], None)
+    mock_ppo.return_value = mock_ppo_instance
     
     # 1. Mock Market Data
     dates = pd.date_range("2020-01-01", "2022-01-01", freq="h")
