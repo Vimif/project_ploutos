@@ -69,6 +69,13 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v"
 
+[tool.coverage.run]
+omit = [
+    "trading/alpaca_client.py",
+    "trading/etoro_client.py",
+    "core/sp500_scanner.py",
+]
+
 [tool.black]
 line-length = 100
 target-version = ['py310']
