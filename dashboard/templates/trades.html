@@ -126,7 +126,7 @@
         </div>
         
         <div class="filter-group" style="justify-content: flex-end;">
-            <button class="btn" onclick="applyFilters()">Filtrer</button>
+            <button id="filter-btn" class="btn" onclick="applyFilters()">Filtrer</button>
         </div>
     </div>
     
@@ -254,8 +254,23 @@
         document.getElementById('trades-container').innerHTML = html;
     }
     
-    function applyFilters() {
-        loadTrades();
+    async function applyFilters() {
+        const btn = document.getElementById('filter-btn');
+        const originalText = btn.textContent;
+
+        // Loading state
+        btn.disabled = true;
+        btn.textContent = 'Chargement...';
+        document.body.style.cursor = 'wait';
+
+        try {
+            await loadTrades();
+        } finally {
+            // Restore state
+            btn.disabled = false;
+            btn.textContent = originalText;
+            document.body.style.cursor = 'default';
+        }
     }
     
     // Chargement initial
