@@ -61,9 +61,15 @@ def setup_config():
 
 import os
 
+@patch('training.train.PPO')
 @patch('training.train.download_data')
 @patch('training.train.MacroDataFetcher')
-def test_full_pipeline_execution(mock_macro_cls, mock_download, setup_config):
+def test_full_pipeline_execution(mock_macro_cls, mock_download, mock_ppo, setup_config):
+    # Mock PPO predict
+    mock_instance = MagicMock()
+    mock_instance.predict.return_value = (np.array([1]), None)
+    mock_ppo.return_value = mock_instance
+    mock_ppo.load.return_value = mock_instance
     """Lance un training complet avec Mock Data."""
     
     # 1. Mock Market Data

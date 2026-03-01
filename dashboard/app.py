@@ -7,7 +7,7 @@ import secrets
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, Response
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 import traceback
@@ -34,6 +34,46 @@ socketio = SocketIO(
     logger=False,
     engineio_logger=False
 )
+
+def check_auth(username, password):
+    """Vérifier les identifiants HTTP Basic Auth"""
+    expected_user = os.environ.get('DASHBOARD_USERNAME')
+    expected_pass = os.environ.get('DASHBOARD_PASSWORD')
+
+    # Fail secure if no credentials are set in environment
+    if not expected_user or not expected_pass:
+        logger.error("🚨 CRITICAL: DASHBOARD_USERNAME or DASHBOARD_PASSWORD not set in environment.")
+        return False
+
+    return secrets.compare_digest(username, expected_user) and secrets.compare_digest(password, expected_pass)
+
+def authenticate():
+    """Envoyer une réponse 401 pour demander l'authentification"""
+    return Response('Authentification requise', 401, {'WWW-Authenticate': 'Basic realm="Dashboard Ploutos"'})
+
+@app.before_request
+def require_auth():
+    """Exiger l'authentification pour toutes les routes sauf exceptions"""
+    # Allow static and webhook but DO NOT allow unauthenticated socket.io
+    if request.path.startswith(('/static', '/api/webhook')):
+        return
+
+    # Apply basic auth to all other routes, including initial socket.io handshakes
+    auth = request.authorization
+    if not auth or not check_auth(auth.username, auth.password):
+        return authenticate()
+
+# Verify authentication on WebSocket connection
+@socketio.on('connect')
+def handle_connect():
+    auth = request.authorization
+    # Some socket.io clients don't send authorization header properly initially,
+    # so we can check if they provided credentials or close it.
+    if not auth or not check_auth(auth.username, auth.password):
+        logger.warning("🔌 Unauthorized WebSocket connection attempt")
+        return False # Reject connection
+    logger.info("🔌 Client WebSocket connecté")
+    emit('status', {'message': 'Connecté au serveur'})
 
 # Client Alpaca global
 alpaca_client = None
@@ -428,11 +468,6 @@ def api_db_summary():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 # ========== WEBSOCKET ==========
-
-@socketio.on('connect')
-def handle_connect():
-    logger.info("🔌 Client WebSocket connecté")
-    emit('status', {'message': 'Connecté au serveur'})
 
 @socketio.on('disconnect')
 def handle_disconnect():
