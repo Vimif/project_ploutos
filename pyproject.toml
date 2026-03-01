@@ -83,6 +83,9 @@ omit = [
 [tool.black]
 line-length = 100
 target-version = ['py310']
+extend-exclude = '''
+^/(config|core|dashboard|database|legacy|notifications|scripts|tests|trading|training)/.*\.py$
+'''
 
 [tool.ruff]
 line-length = 100
