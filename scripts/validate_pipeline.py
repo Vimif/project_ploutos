@@ -110,19 +110,31 @@ def run_validation(
     # ================================================================
     # ...
     # (Dans le bloc else pour training)
-    # ...
-            from stable_baselines3 import PPO
-            from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
-            from stable_baselines3.common.monitor import Monitor
+    # Stage 3
+    if model_path:
+        from stable_baselines3 import PPO
+        print(f"\n🧠 Stage 3/6: Chargement modèle existant: {model_path}")
+        model = PPO.load(model_path)
+    else:
+        from stable_baselines3 import PPO
+        from stable_baselines3.common.vec_env import DummyVecEnv
+        from stable_baselines3.common.monitor import Monitor
 
-            # Utiliser TradingEnv V9 avec features_precomputed=True
+        print(f"\n🧠 Stage 3/6: Entraînement rapide ({total_timesteps} steps)...")
+        try:
             train_env = DummyVecEnv([
                 lambda: Monitor(TradingEnv(
                     splits.train, mode='train', seed=seed, features_precomputed=True
                 ))
             ])
-            # ...
-    # ...
+
+            model = PPO("MlpPolicy", train_env, verbose=1, seed=seed)
+            model.learn(total_timesteps=total_timesteps)
+            results['stages']['training'] = {'status': 'OK', 'timesteps': total_timesteps}
+        except Exception as e:
+            print(f"  ❌ Erreur: {e}")
+            results['stages']['training'] = {'status': 'FAIL', 'error': str(e)}
+            return results
 
     # ================================================================
     # Stage 4: Evaluation (val data)
