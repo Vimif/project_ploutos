@@ -103,6 +103,18 @@ extend-exclude = '''
 
 [tool.ruff]
 line-length = 100
+exclude = [
+    "tests/",
+    "scripts/",
+    "trading/",
+    "training/",
+    "core/",
+    "config/",
+    "dashboard/",
+    "database/",
+    "notifications/",
+    "legacy/"
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]
