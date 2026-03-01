@@ -62,6 +62,13 @@ where = ["."]
 include = ["core*", "training*", "trading*", "config*", "scripts*", "database*", "notifications*", "dashboard*"]
 exclude = ["data*", "logs*", "models*", "runs*", "tests*", ".git*", ".vscode*"]
 
+[tool.coverage.run]
+omit = [
+    "trading/alpaca_client.py",
+    "trading/etoro_client.py",
+    "core/sp500_scanner.py"
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
@@ -72,6 +79,11 @@ addopts = "-v"
 [tool.black]
 line-length = 100
 target-version = ['py310']
+extend-exclude = '''
+/(
+    scripts/validate_pipeline\.py
+)
+'''
 
 [tool.ruff]
 line-length = 100

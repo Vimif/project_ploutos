@@ -1,11 +1,5 @@
 """Tests du pipeline de données avec split temporel."""
 
-import sys
-from unittest.mock import MagicMock
-
-# Mock torch pour éviter l'import GPU
-sys.modules.setdefault("torch", MagicMock())
-
 import pytest
 import numpy as np
 import pandas as pd
