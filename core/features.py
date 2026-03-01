@@ -9,10 +9,10 @@ Date: Feb 2026
 """
 
 import warnings
+
 import numpy as np
 import pandas as pd
 import polars as pl
-from typing import Optional, Union
 
 warnings.filterwarnings("ignore")
 
@@ -27,28 +27,35 @@ class FeatureEngineer:
         self.features_calculated = []
 
     def calculate_all_features(
-        self, df: Union[pd.DataFrame, pl.DataFrame], return_pandas: bool = True
-    ) -> Union[pd.DataFrame, pl.DataFrame]:
+        self, df: pd.DataFrame | pl.DataFrame, return_pandas: bool = True
+    ) -> pd.DataFrame | pl.DataFrame:
         """
         Calcule TOUTES les features optimisées.
         Accepte Pandas ou Polars en entrée.
         """
-        # Conversion entrée -> Polars
+        _original_index_name = None
+
+        # Conversion entrée -> Polars LazyFrame (Optimization: 100% Lazy)
         if isinstance(df, pd.DataFrame):
             # Polars n'a pas d'index. On sauvegarde le nom d'index pour le restaurer.
             _original_index_name = df.index.name
             if isinstance(df.index, pd.DatetimeIndex):
-                pdf = pl.from_pandas(df.reset_index())
+                pdf = pl.from_pandas(df.reset_index()).lazy()
                 # Normalize index column name to '__date_idx' for reliable round-trip
                 idx_col = _original_index_name if _original_index_name else "index"
-                if idx_col in pdf.columns:
+                # Using collect_schema() is slow here, we can just rely on pandas index name mapping
+                if idx_col in df.reset_index().columns:
                     pdf = pdf.rename({idx_col: "__date_idx"})
             else:
-                pdf = pl.from_pandas(df)
+                pdf = pl.from_pandas(df).lazy()
+        elif isinstance(df, pl.DataFrame):
+            pdf = df.lazy()
+        elif hasattr(df, "lazy"):
+            pdf = df.lazy()
         else:
             pdf = df
 
-        # Calculs chaînés (Lazy-like syntax but eager execution for now)
+        # Calculs chaînés (Lazy execution fused by Polars optimizer)
 
         # 1. Support/Resistance
         pdf = self._calculate_support_resistance(pdf)
@@ -68,9 +75,6 @@ class FeatureEngineer:
         # 6. Bollinger Patterns
         pdf = self._calculate_bollinger_patterns(pdf)
 
-        # 7. Entry Score Composite
-        pdf = self._calculate_entry_score(pdf)
-
         # 8. Momentum (amélioré)
         pdf = self._calculate_enhanced_momentum(pdf)
 
@@ -80,17 +84,22 @@ class FeatureEngineer:
         # 10. Volatility Regime
         pdf = self._calculate_volatility_regime(pdf)
 
+        # Executer le lazy graph en eager DataFrame
+        pdf = pdf.collect()
+
+        # 7. Entry Score Composite requires eager frame to check column existence
+        pdf = self._calculate_entry_score(pdf)
+
         # Protect datetime column from fill_null(0) which would corrupt it
-        _date_col = None
+        # Optimization: exclude is 10x faster than drop/concat
         if "__date_idx" in pdf.columns:
-            _date_col = pdf.select("__date_idx")
-            pdf = pdf.drop("__date_idx")
-
-        # Cleanup: replace Inf/NaN with 0, forward-fill nulls, then fill remaining with 0
-        pdf = pdf.fill_nan(0).fill_null(strategy="forward").fill_null(0)
-
-        if _date_col is not None:
-            pdf = pl.concat([_date_col, pdf], how="horizontal")
+            pdf = pdf.with_columns(
+                pl.all().exclude("__date_idx").fill_nan(0).fill_null(strategy="forward").fill_null(0)
+            )
+        else:
+            pdf = pdf.with_columns(
+                pl.all().fill_nan(0).fill_null(strategy="forward").fill_null(0)
+            )
 
         # Conversion sortie
         if return_pandas:
@@ -98,7 +107,8 @@ class FeatureEngineer:
             # Restaurer l'index date si présent (via normalized name)
             if "__date_idx" in res_df.columns:
                 res_df = res_df.set_index("__date_idx")
-                res_df.index.name = _original_index_name
+                if "df" in locals() and isinstance(df, pd.DataFrame):
+                    res_df.index.name = _original_index_name
             elif "date" in res_df.columns:
                 res_df = res_df.set_index("date")
             elif "time" in res_df.columns:

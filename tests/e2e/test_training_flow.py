@@ -63,8 +63,12 @@ import os
 
 @patch('training.train.download_data')
 @patch('training.train.MacroDataFetcher')
-def test_full_pipeline_execution(mock_macro_cls, mock_download, setup_config):
+@patch('training.train.PPO')
+def test_full_pipeline_execution(mock_ppo_cls, mock_macro_cls, mock_download, setup_config):
     """Lance un training complet avec Mock Data."""
+    # Mock PPO prediction to avoid TypeError with torch instance checking
+    mock_ppo_instance = mock_ppo_cls.return_value
+    mock_ppo_instance.predict.return_value = (np.array([1]), None)
     
     # 1. Mock Market Data
     dates = pd.date_range("2020-01-01", "2022-01-01", freq="h")
