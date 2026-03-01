@@ -94,12 +94,14 @@ class FeatureEngineer:
         # Optimization: exclude is 10x faster than drop/concat
         if "__date_idx" in pdf.columns:
             pdf = pdf.with_columns(
-                pl.all().exclude("__date_idx").fill_nan(0).fill_null(strategy="forward").fill_null(0)
+                pl.all()
+                .exclude("__date_idx")
+                .fill_nan(0)
+                .fill_null(strategy="forward")
+                .fill_null(0)
             )
         else:
-            pdf = pdf.with_columns(
-                pl.all().fill_nan(0).fill_null(strategy="forward").fill_null(0)
-            )
+            pdf = pdf.with_columns(pl.all().fill_nan(0).fill_null(strategy="forward").fill_null(0))
 
         # Conversion sortie
         if return_pandas:
