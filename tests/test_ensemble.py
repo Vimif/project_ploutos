@@ -3,6 +3,9 @@
 import sys
 from unittest.mock import MagicMock, patch
 
+import numpy as np
+import pytest
+
 # Mock stable_baselines3 pour éviter l'import GPU (mais pas torch pour éviter test pollution)
 for mod in [
     "stable_baselines3",
@@ -14,11 +17,9 @@ for mod in [
 ]:
     sys.modules.setdefault(mod, MagicMock())
 
-import pytest
-import numpy as np
 
-import core.ensemble as ensemble_module
-from core.ensemble import EnsemblePredictor
+import core.ensemble as ensemble_module  # noqa: E402
+from core.ensemble import EnsemblePredictor  # noqa: E402
 
 # sb3_contrib est mocké → RecurrentPPO est un MagicMock (pas un type).
 # Désactiver HAS_RECURRENT par défaut pour éviter isinstance() crash.

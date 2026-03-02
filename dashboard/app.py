@@ -1,23 +1,24 @@
 # dashboard/app.py
 """Dashboard Flask pour le bot de trading - VERSION JSON (Sans PostgreSQL)"""
 
-import sys
 import os
 import secrets
+import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from flask import Flask, render_template, jsonify, request
+import json
+import traceback
+from collections import defaultdict
+from datetime import datetime, timedelta
+
+from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
-import traceback
-import json
-from datetime import datetime, timedelta
-from collections import defaultdict
 
-from trading.alpaca_client import AlpacaClient
 from core.utils import setup_logging
+from trading.alpaca_client import AlpacaClient
 
 logger = setup_logging(__name__, "dashboard.log")
 
@@ -73,7 +74,7 @@ def load_trades_from_json(days=30):
         # Charger tous les fichiers trades_*.json
         for json_file in sorted(TRADES_LOG_DIR.glob("trades_*.json"), reverse=True):
             try:
-                with open(json_file, "r") as f:
+                with open(json_file) as f:
                     file_trades = json.load(f)
                     trades.extend(file_trades)
             except Exception as e:
@@ -247,9 +248,9 @@ def get_orders():
                 "qty": float(o.get("qty", 0)),
                 "side": o.get("side", ""),
                 "status": o.get("status", ""),
-                "filled_avg_price": float(o.get("filled_avg_price", 0))
-                if o.get("filled_avg_price")
-                else 0,
+                "filled_avg_price": (
+                    float(o.get("filled_avg_price", 0)) if o.get("filled_avg_price") else 0
+                ),
                 "filled_at": o.get("filled_at", ""),
             }
             for o in orders
