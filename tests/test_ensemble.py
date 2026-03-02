@@ -3,15 +3,8 @@
 import sys
 from unittest.mock import MagicMock, patch
 
-# Mock torch et stable_baselines3 pour éviter l'import GPU
+# Mock stable_baselines3 pour éviter l'import GPU (mais pas torch pour éviter test pollution)
 for mod in [
-    "torch",
-    "torch.nn",
-    "torch.nn.functional",
-    "torch.optim",
-    "torch.utils",
-    "torch.utils.data",
-    "torch.distributions",
     "stable_baselines3",
     "stable_baselines3.common",
     "stable_baselines3.common.vec_env",
