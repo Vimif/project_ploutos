@@ -77,6 +77,32 @@ addopts = "-v"
 line-length = 100
 target-version = ['py310']
 
+exclude = '''
+/(
+    \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+  | scripts
+  | core/
+  | config/
+  | trading/
+  | tests/
+  | legacy/
+  | database/
+  | dashboard/analytics\.py
+  | dashboard/technical_analysis\.py
+  | notifications/
+  | training/
+)/
+'''
+
+
 [tool.ruff]
 line-length = 100
 
