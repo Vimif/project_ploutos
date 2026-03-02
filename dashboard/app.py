@@ -22,6 +22,24 @@ logger = setup_logging(__name__, 'dashboard.log')
 
 # Configuration Flask
 app = Flask(__name__)
+from flask import Response
+
+def check_auth(username, password):
+    """Vérifier les identifiants d'authentification."""
+    expected_user = os.environ.get('DASHBOARD_USERNAME')
+    expected_pass = os.environ.get('DASHBOARD_PASSWORD')
+    if not expected_user or not expected_pass or not username or not password:
+        return False
+    return secrets.compare_digest(username, expected_user) and secrets.compare_digest(password, expected_pass)
+
+@app.before_request
+def require_auth():
+    if request.path.startswith('/static') or request.path.startswith('/api/webhook'):
+        return
+    auth = request.authorization
+    if not auth or not check_auth(auth.username, auth.password):
+        return Response('Unauthorized', 401, {'WWW-Authenticate': 'Basic realm="Login Required"'})
+
 # SECURE: Use environment variable or generate random key
 app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(24))
 CORS(app)
