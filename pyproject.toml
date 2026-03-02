@@ -73,27 +73,9 @@ addopts = "-v"
 line-length = 100
 target-version = ['py310']
 exclude = '''
-/(
-    \.git
-  | \.hg
-  | \.mypy_cache
-  | \.tox
-  | \.venv
-  | _build
-  | buck-out
-  | build
-  | dist
-  | legacy
-  | config
-  | core
-  | dashboard
-  | database
-  | notifications
-  | scripts
-  | tests
-  | trading
-  | training
-)/
+(
+    config/hardware\.py | config/settings\.py | config/tickers\.py | core/data_fetcher\.py | core/data_pipeline\.py | core/macro_data\.py | core/risk_manager\.py | core/shared_memory_manager\.py | core/sp500_scanner\.py | core/transaction_costs\.py | core/utils\.py | dashboard/analytics\.py | dashboard/app\.py | dashboard/technical_analysis\.py | database/__init__\.py | database/db\.py | legacy/core/universal_environment_v6_better_timing\.py | legacy/training/train_v7_sp500_sectors\.py | notifications/discord_notifier\.py | scripts/backtest_ultimate\.py | scripts/build_dataset\.py | scripts/check_gpu\.py | scripts/import_grafana_dashboard\.py | scripts/init_database\.py | scripts/optimize_hyperparams\.py | scripts/paper_trade\.py | scripts/robustness_tests\.py | scripts/run_pipeline\.py | tests/conftest\.py | tests/e2e/test_training_flow\.py | tests/test_data_pipeline\.py | tests/test_env_config\.py | tests/test_integration_v9\.py | tests/test_portfolio\.py | tests/test_reward_calculator\.py | tests/test_shared_memory\.py | tests/test_trading_env_v8\.py | tests/v9_preflight_check\.py | tests/verify_days_held\.py | trading/alpaca_client\.py | trading/broker_factory\.py | trading/broker_interface\.py | trading/etoro_client\.py | trading/portfolio\.py | trading/stop_loss_manager\.py | training/train\.py
+)
 '''
 
 [tool.ruff]
