@@ -1,6 +1,5 @@
 """Tests du pipeline de données avec split temporel."""
 
-
 import numpy as np
 import pandas as pd
 import pytest
