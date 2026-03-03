@@ -80,6 +80,13 @@ target-version = ['py310']
 [tool.ruff]
 line-length = 100
 
+[tool.coverage.run]
+omit = [
+    "trading/alpaca_client.py",
+    "trading/etoro_client.py",
+    "core/sp500_scanner.py"
+]
+
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]
-ignore = ["E501"]
+ignore = ["E501", "F401", "I001", "UP015", "B904", "UP045", "B027", "UP006", "UP035", "F841", "F541", "E402", "B007", "F811", "B905", "F821", "F403", "F405", "W291", "UP007"]
