@@ -101,7 +101,7 @@
     <!-- Filtres -->
     <div class="filters">
         <div class="filter-group">
-            <label for="filter-days">Période</label>
+            <label>Période</label>
             <select id="filter-days">
                 <option value="7">7 derniers jours</option>
                 <option value="14">14 derniers jours</option>
@@ -112,7 +112,7 @@
         </div>
         
         <div class="filter-group">
-            <label for="filter-action">Action</label>
+            <label>Action</label>
             <select id="filter-action">
                 <option value="">Toutes</option>
                 <option value="BUY">Achats</option>
@@ -121,12 +121,12 @@
         </div>
         
         <div class="filter-group">
-            <label for="filter-symbol">Symbole</label>
+            <label>Symbole</label>
             <input type="text" id="filter-symbol" placeholder="Ex: NVDA">
         </div>
         
         <div class="filter-group" style="justify-content: flex-end;">
-            <button id="btn-filter" class="btn" onclick="applyFilters()">Filtrer</button>
+            <button class="btn" onclick="applyFilters()">Filtrer</button>
         </div>
     </div>
     
@@ -163,13 +163,6 @@
     let tradesData = [];
     
     async function loadTrades() {
-        const filterBtn = document.getElementById('btn-filter');
-        if (filterBtn) {
-            filterBtn.disabled = true;
-            filterBtn.style.cursor = 'wait';
-            filterBtn.textContent = 'Chargement...';
-        }
-
         try {
             const days = document.getElementById('filter-days').value;
             const action = document.getElementById('filter-action').value;
@@ -202,12 +195,6 @@
             console.error('Erreur loadTrades:', error);
             document.getElementById('trades-container').innerHTML = 
                 `<p style="color: #ef4444; text-align: center; padding: 20px;">❌ ${error.message}</p>`;
-        } finally {
-            if (filterBtn) {
-                filterBtn.disabled = false;
-                filterBtn.style.cursor = 'pointer';
-                filterBtn.textContent = 'Filtrer';
-            }
         }
     }
     
