@@ -1,6 +1,7 @@
 import pytest
 from core.risk_manager import RiskManager
 
+
 def test_daily_stats_reset():
     rm = RiskManager()
     rm.daily_trades = 10
@@ -13,6 +14,7 @@ def test_daily_stats_reset():
     assert rm.daily_trades == 0
     assert rm.daily_wins == 0
     assert rm.daily_losses == 0
+
 
 def test_log_trade():
     rm = RiskManager()
@@ -29,8 +31,9 @@ def test_log_trade():
     assert rm.daily_wins == 1
     assert rm.daily_losses == 1
 
+
 def test_get_risk_report_empty():
     rm = RiskManager()
     report = rm.get_risk_report(positions=[], portfolio_value=100000)
-    assert report['exposure_pct'] == 0.0
-    assert report['positions_count'] == 0
+    assert report["exposure_pct"] == 0.0
+    assert report["positions_count"] == 0
