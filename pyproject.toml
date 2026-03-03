@@ -86,6 +86,24 @@ omit = [
 [tool.black]
 line-length = 100
 target-version = ['py310']
+exclude = '''
+/(
+    \.git
+  | \.venv
+  | env
+  | venv
+  | core
+  | config
+  | dashboard
+  | database
+  | legacy
+  | notifications
+  | scripts
+  | tests
+  | trading
+  | training
+)/
+'''
 
 [tool.ruff]
 line-length = 100
