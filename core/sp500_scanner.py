@@ -4,13 +4,13 @@ Selectionne les meilleures actions de chaque secteur GICS du S&P 500
 en se basant sur le Sharpe ratio annualise.
 """
 
-import os
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timedelta
+from typing import Any
+
 import numpy as np
 import pandas as pd
-from datetime import datetime, timedelta
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Dict, List, Optional, Any
 
 from core.data_fetcher import UniversalDataFetcher
 
@@ -33,6 +33,7 @@ class SP500Scanner:
     ]
 
     def __init__(self, cache_dir: str = "data/sp500_cache", lookback_days: int = 252):
+        from pathlib import Path
         self.cache_dir = Path(cache_dir)
         self.lookback_days = lookback_days
         self.risk_free_rate = 0.04
@@ -44,8 +45,9 @@ class SP500Scanner:
     # ------------------------------------------------------------------
     def fetch_sp500_list(self) -> pd.DataFrame:
         """Recupere la liste des constituants S&P 500 depuis Wikipedia."""
-        import requests
         from io import StringIO
+
+        import requests
 
         url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
         headers = {
@@ -101,7 +103,7 @@ class SP500Scanner:
         self,
         stocks_per_sector: int = 2,
         max_workers: int = 5,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Scanne tous les secteurs GICS et selectionne les top performers.
 
         Args:
@@ -111,6 +113,7 @@ class SP500Scanner:
         Returns:
             Dictionnaire avec les resultats du scan.
         """
+        import sys
         sys.stdout.reconfigure(encoding="utf-8")
 
         print("Fetching S&P 500 constituents...")
@@ -119,7 +122,7 @@ class SP500Scanner:
 
         groups = constituents.groupby("GICS Sector")
 
-        results: Dict[str, Any] = {
+        results: dict[str, Any] = {
             "scan_date": datetime.now().strftime("%Y-%m-%d"),
             "lookback_days": self.lookback_days,
             "stocks_per_sector": stocks_per_sector,
@@ -137,7 +140,7 @@ class SP500Scanner:
             tickers = group["Symbol"].tolist()
             print(f"\nScanning {sector_name} ({len(tickers)} stocks)...")
 
-            sharpe_scores: List[tuple] = []
+            sharpe_scores: list[tuple] = []
 
             with ThreadPoolExecutor(max_workers=max_workers) as pool:
                 futures = {pool.submit(self._calculate_sharpe, t): t for t in tickers}
@@ -168,24 +171,25 @@ class SP500Scanner:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
-    def get_top_stocks(self, scan_results: Optional[Dict] = None) -> List[str]:
+    def get_top_stocks(self, scan_results: dict | None = None) -> list[str]:
         """Liste plate de tous les tickers selectionnes."""
         if scan_results is None:
             scan_results = self.scan_sectors()
-        tickers: List[str] = []
+        tickers: list[str] = []
         for stocks in scan_results["sectors"].values():
             tickers.extend(stocks)
         return tickers
 
-    def save_results(self, results: Dict, filepath: Optional[str] = None):
+    def save_results(self, results: dict, filepath: str | None = None):
         """Sauvegarde les resultats en JSON."""
+        from pathlib import Path
         path = Path(filepath) if filepath else self.cache_dir / "latest_scan.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             json.dump(results, f, indent=2, ensure_ascii=False)
         print(f"Results saved: {path}")
 
-    def load_cached_results(self, max_age_days: int = 30) -> Optional[Dict]:
+    def load_cached_results(self, max_age_days: int = 30) -> dict | None:
         """Charge les resultats caches si assez recents."""
         path = self.cache_dir / "latest_scan.json"
         if not path.exists():
@@ -207,6 +211,7 @@ class SP500Scanner:
 # ======================================================================
 if __name__ == "__main__":
     import argparse
+    import sys
 
     sys.stdout.reconfigure(encoding="utf-8")
 

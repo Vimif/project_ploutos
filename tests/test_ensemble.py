@@ -1,10 +1,9 @@
 """Tests unitaires pour EnsemblePredictor."""
 
-import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import pytest
 import numpy as np
+import pytest
 
 import core.ensemble as ensemble_module
 from core.ensemble import EnsemblePredictor
