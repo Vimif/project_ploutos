@@ -7,7 +7,7 @@ import secrets
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, Response
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 import traceback
@@ -34,6 +34,43 @@ socketio = SocketIO(
     logger=False,
     engineio_logger=False
 )
+
+def check_auth(username, password):
+    """Vérifier les identifiants Basic Auth."""
+    expected_username = os.environ.get('DASHBOARD_USERNAME')
+    expected_password = os.environ.get('DASHBOARD_PASSWORD')
+
+    if not expected_username or not expected_password:
+        return False
+
+    if not username or not password:
+        return False
+
+    return (secrets.compare_digest(username, expected_username) and
+            secrets.compare_digest(password, expected_password))
+
+def authenticate():
+    """Envoyer une réponse 401 pour demander l'authentification."""
+    return Response(
+        'Veuillez vous authentifier pour accéder au dashboard.\n',
+        401,
+        {'WWW-Authenticate': 'Basic realm="Ploutos Dashboard"'}
+    )
+
+@app.before_request
+def require_auth():
+    """Exiger l'authentification pour toutes les requêtes (sauf exceptions)."""
+    # Exclure les requêtes OPTIONS (CORS)
+    if request.method == 'OPTIONS':
+        return None
+
+    # Exclure certains chemins
+    if request.path.startswith('/static') or request.path == '/api/webhook' or request.path.startswith('/socket.io/'):
+        return None
+
+    auth = request.authorization
+    if not auth or not check_auth(auth.username, auth.password):
+        return authenticate()
 
 # Client Alpaca global
 alpaca_client = None
