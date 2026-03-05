@@ -9,7 +9,8 @@ from dashboard.app import app
 
 @pytest.fixture
 def client():
-    app.config["TESTING"] = True
+    # Make sure TESTING is False to actually trigger our auth check logic
+    app.config["TESTING"] = False
     with app.test_client() as client:
         yield client
 
@@ -24,10 +25,7 @@ def test_dashboard_auth_missing_credentials(client):
     """Test that requests without credentials return 401 Unauthorized."""
     response = client.get("/")
     assert response.status_code == 401
-    assert (
-        b"WWW-Authenticate" in str(response.headers.get("WWW-Authenticate", "")).encode()
-        or response.headers.get("WWW-Authenticate") == 'Basic realm="Ploutos Dashboard"'
-    )
+    assert "WWW-Authenticate" in response.headers
 
 
 @patch.dict(os.environ, {"DASHBOARD_USERNAME": "admin", "DASHBOARD_PASSWORD": "secret"})

@@ -6,9 +6,6 @@ mock_torch = MagicMock()
 sys.modules["torch"] = mock_torch
 
 import pytest
-
-def teardown_module(module):
-    sys.modules.pop("torch", None)
 from unittest.mock import patch
 from pathlib import Path
 from trading.portfolio import Portfolio

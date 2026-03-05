@@ -7,9 +7,6 @@ from unittest.mock import MagicMock
 sys.modules.setdefault("torch", MagicMock())
 
 import pytest
-
-def teardown_module(module):
-    sys.modules.pop("torch", None)
 import numpy as np
 import pandas as pd
 from core.data_pipeline import DataSplitter, DataSplit
