@@ -14,14 +14,16 @@ Usage :
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import os
 import argparse
+import os
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
+
 import pandas as pd
 import yfinance as yf
-from datetime import datetime, timedelta
-from concurrent.futures import ThreadPoolExecutor
 from dotenv import load_dotenv
 
 from core.utils import setup_logging
@@ -52,13 +54,13 @@ def get_alpaca_data(ticker: str, start_date: str, end_date: str, interval: str):
         from alpaca.data.requests import StockBarsRequest
         from alpaca.data.timeframe import TimeFrame
     except ImportError:
-        logger.warning(f"Alpaca-py non installé. `pip install alpaca-py` pour l'historique étendu.")
+        logger.warning("Alpaca-py non installé. `pip install alpaca-py` pour l'historique étendu.")
         return None
 
     client = StockHistoricalDataClient(api_key, api_secret)
-    
+
     tf = TimeFrame.Hour if interval == '1h' else TimeFrame.Day
-    
+
     req = StockBarsRequest(
         symbol_or_symbols=ticker,
         timeframe=tf,
@@ -66,13 +68,13 @@ def get_alpaca_data(ticker: str, start_date: str, end_date: str, interval: str):
         end=pd.Timestamp(end_date),
         adjustment='all'
     )
-    
+
     logger.info(f"Downloading {ticker} via Alpaca ({start_date} -> {end_date})...")
     try:
         bars = client.get_stock_bars(req)
         if bars.df.empty:
             return None
-            
+
         df = bars.df.reset_index()
         # Format standard : Date, Open, High, Low, Close, Volume
         df = df.rename(columns={
@@ -104,11 +106,11 @@ def get_yahoo_data(ticker: str, period: str, interval: str):
         )
         if df.empty:
             return None
-            
+
         # Standardisation
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.droplevel(1)
-            
+
         df = df[['Open', 'High', 'Low', 'Close', 'Volume']]
         df.index = pd.to_datetime(df.index, utc=True)
         return df
@@ -118,13 +120,13 @@ def get_yahoo_data(ticker: str, period: str, interval: str):
 
 def process_ticker(ticker, period, interval):
     """Traite un ticker : Alpaca -> Yahoo -> Sauvegarde."""
-    
+
     # Calcul des dates (pour Alpaca)
     end_date = datetime.now()
     years = 2
     if period.endswith('y'):
         years = int(period[:-1])
-    
+
     start_date = end_date - timedelta(days=365 * years)
     start_str = start_date.strftime('%Y-%m-%d')
     end_str = end_date.strftime('%Y-%m-%d')
@@ -132,7 +134,7 @@ def process_ticker(ticker, period, interval):
     # 1. Essayer Alpaca (Meilleur historique)
     df = get_alpaca_data(ticker, start_str, end_str, interval)
     source = "Alpaca"
-    
+
     if df is None:
         # 2. Fallback Yahoo (Max 2 ans 1h)
         source = "Yahoo"
@@ -141,7 +143,7 @@ def process_ticker(ticker, period, interval):
         if interval == '1h' and years > 2:
             logger.warning(f"Yahoo limite 1h à 2 ans. Ajustement {period} -> 2y.")
             adjusted_period = '2y'
-            
+
         df = get_yahoo_data(ticker, adjusted_period, interval)
 
     if df is None or df.empty:
@@ -150,7 +152,7 @@ def process_ticker(ticker, period, interval):
 
     # Nettoyage
     df = df.ffill().bfill()  # Remplir trous
-    
+
     # Validation basique
     if interval == '1h' and len(df) < 1000:
         logger.warning(f"⚠️  {ticker}: Peu de données ({len(df)} lignes) via {source}")
@@ -171,15 +173,15 @@ def main():
 
     logger.info(f"Building dataset: Period={args.period}, Interval={args.interval}")
     logger.info(f"Target Directory: {DATA_DIR.resolve()}")
-    
+
     # Vérification API
     ak = os.getenv("ALPACA_API_KEY") or os.getenv("ALPACA_PAPER_API_KEY")
     ask = os.getenv("ALPACA_SECRET_KEY") or os.getenv("ALPACA_PAPER_SECRET_KEY")
-    
+
     if ak and ask:
-        logger.info(f"KEYS DETECTED: Alpaca keys found. Mode 'Full History' enabled.")
+        logger.info("KEYS DETECTED: Alpaca keys found. Mode 'Full History' enabled.")
     else:
-        logger.warning(f"NO KEYS: Alpaca keys not found. Mode 'Yahoo Limited' (Max 2y for 1h)")
+        logger.warning("NO KEYS: Alpaca keys not found. Mode 'Yahoo Limited' (Max 2y for 1h)")
 
     with ThreadPoolExecutor(max_workers=5) as executor:
         futures = [

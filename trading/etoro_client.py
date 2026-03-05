@@ -1,16 +1,16 @@
 # trading/etoro_client.py
 """Client pour l'API eToro avec logging JSON"""
 
-import os
 import json
+import os
 import time
-import requests
 from datetime import datetime
-from typing import Optional
+
+import requests
 from dotenv import load_dotenv
 
-from trading.broker_interface import BrokerInterface
 from core.utils import setup_logging
+from trading.broker_interface import BrokerInterface
 
 logger = setup_logging(__name__, 'etoro.log')
 
@@ -41,7 +41,7 @@ def log_trade_to_json(symbol, action, quantity, price, amount, reason='', portfo
         filename = f"{TRADES_LOG_DIR}/trades_{datetime.now().strftime('%Y-%m-%d')}.json"
 
         if os.path.exists(filename):
-            with open(filename, 'r') as f:
+            with open(filename) as f:
                 trades = json.load(f)
         else:
             trades = []
@@ -181,7 +181,7 @@ class EToroClient(BrokerInterface):
     # ========== HTTP HELPER ==========
 
     def _request(self, method: str, path: str, json_data=None, params=None,
-                 auth_required=True, retries=3) -> Optional[requests.Response]:
+                 auth_required=True, retries=3) -> requests.Response | None:
         """
         Effectuer une requête HTTP vers l'API eToro avec retry.
 
@@ -235,7 +235,7 @@ class EToroClient(BrokerInterface):
 
     # ========== INSTRUMENTS ==========
 
-    def _get_instrument_id(self, symbol: str) -> Optional[int]:
+    def _get_instrument_id(self, symbol: str) -> int | None:
         """
         Convertir un symbole ticker en InstrumentId eToro.
         Utilise un cache pour éviter les appels répétés.
@@ -287,7 +287,7 @@ class EToroClient(BrokerInterface):
 
     # ========== COMPTE ==========
 
-    def get_account(self) -> Optional[dict]:
+    def get_account(self) -> dict | None:
         """Obtenir les infos du compte eToro."""
         try:
             # Récupérer credit (cash disponible)
@@ -420,7 +420,7 @@ class EToroClient(BrokerInterface):
             logger.error(f"Erreur recuperation positions: {e}")
             return []
 
-    def get_position(self, symbol: str) -> Optional[dict]:
+    def get_position(self, symbol: str) -> dict | None:
         """Obtenir une position spécifique."""
         positions = self.get_positions()
         for pos in positions:
@@ -430,7 +430,7 @@ class EToroClient(BrokerInterface):
 
     # ========== PRIX ==========
 
-    def get_current_price(self, symbol: str) -> Optional[float]:
+    def get_current_price(self, symbol: str) -> float | None:
         """
         Obtenir le prix actuel d'un ticker.
         Utilise les endpoints de rates/metadata eToro.
@@ -473,7 +473,7 @@ class EToroClient(BrokerInterface):
     # ========== ORDRES ==========
 
     def place_market_order(self, symbol: str, qty: int, side: str = 'buy',
-                           reason: str = '') -> Optional[dict]:
+                           reason: str = '') -> dict | None:
         """
         Passer un ordre au marché via eToro.
 
@@ -563,7 +563,7 @@ class EToroClient(BrokerInterface):
             return None
 
     def place_limit_order(self, symbol: str, qty: int, limit_price: float,
-                          side: str = 'buy') -> Optional[dict]:
+                          side: str = 'buy') -> dict | None:
         """Passer un ordre limite via eToro."""
         try:
             inst_id = self._get_instrument_id(symbol)
@@ -840,7 +840,7 @@ class EToroClient(BrokerInterface):
 
     # ========== FEES ==========
 
-    def get_fees(self) -> Optional[dict]:
+    def get_fees(self) -> dict | None:
         """Obtenir les frais de trading."""
         try:
             resp = self._request('GET', f'/Fees/{self.system}')

@@ -4,9 +4,9 @@
 Vérifie pourquoi le GPU n'est pas détecté
 """
 
-import sys
-import subprocess
 import os
+import subprocess
+import sys
 
 print("\n" + "="*70)
 print("🔍 DIAGNOSTIC GPU CUDA")
@@ -63,7 +63,7 @@ try:
     import torch
     print(f"✅ PyTorch installé: version {torch.__version__}")
     print(f"  • CUDA available: {torch.cuda.is_available()}")
-    
+
     if torch.cuda.is_available():
         print(f"  • CUDA version: {torch.version.cuda}")
         print(f"  • GPU count: {torch.cuda.device_count()}")
@@ -71,32 +71,32 @@ try:
         print(f"  • Device name: {torch.cuda.get_device_name(0)}")
         print(f"  • Memory allocated: {torch.cuda.memory_allocated(0) / 1024**3:.2f} GB")
         print(f"  • Memory reserved: {torch.cuda.memory_reserved(0) / 1024**3:.2f} GB")
-        
+
         # Test simple
         print("\n  🧪 Test rapide GPU...")
         x = torch.randn(1000, 1000).cuda()
         y = torch.randn(1000, 1000).cuda()
         z = torch.matmul(x, y)
         print("  ✅ Test GPU réussi !")
-        
+
     else:
         print("\n  ❌ PyTorch ne détecte pas CUDA !")
         print("\n  🔍 Causes possibles:")
         print("    1. PyTorch installé sans support CUDA")
         print("    2. Version CUDA incompatible avec PyTorch")
         print("    3. Driver NVIDIA incompatible")
-        
+
         print("\n  💡 Solutions:")
         print("\n    Option 1: Réinstaller PyTorch avec CUDA")
         print("    -----------------------------------------")
         print("    pip3 uninstall torch torchvision torchaudio")
         print("    pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118")
-        
+
         print("\n    Option 2: Vérifier compatibilité")
         print("    ------------------------------------")
         print("    Aller sur: https://pytorch.org/get-started/locally/")
         print("    Sélectionner votre config et copier la commande")
-        
+
 except ImportError:
     print("❌ PyTorch non installé")
     print("\n💡 Installation:")
@@ -107,16 +107,16 @@ print("\n" + "-"*70 + "\n")
 # 5. Vérifier version driver vs CUDA
 print("5️⃣  Compatibilité Driver <→ CUDA...")
 try:
-    result = subprocess.run(['nvidia-smi', '--query-gpu=driver_version', '--format=csv,noheader'], 
+    result = subprocess.run(['nvidia-smi', '--query-gpu=driver_version', '--format=csv,noheader'],
                           capture_output=True, text=True)
     if result.returncode == 0:
         driver_version = result.stdout.strip()
         print(f"  • Driver NVIDIA: {driver_version}")
-        
+
         # Extraire version majeure
         try:
             driver_major = int(driver_version.split('.')[0])
-            
+
             if driver_major >= 535:
                 print("  ✅ Driver compatible CUDA 12.x")
             elif driver_major >= 520:
@@ -125,7 +125,7 @@ try:
                 print("  ⚠️  Driver ancien, compatible CUDA 11.4")
             else:
                 print("  ❌ Driver trop ancien, mise à jour recommandée")
-                
+
         except Exception:
             pass
 except Exception:
@@ -142,7 +142,7 @@ try:
     import torch
     if torch.cuda.is_available():
         print("✅ GPU FONCTIONNEL - Prêt pour entraînement !")
-        print(f"\n   Utiliser: bash scripts/train_v4_optimal.sh")
+        print("\n   Utiliser: bash scripts/train_v4_optimal.sh")
     else:
         print("❌ GPU NON DÉTECTÉ par PyTorch")
         print("\n   🔧 Actions à faire:")

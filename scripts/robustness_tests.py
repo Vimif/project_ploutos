@@ -16,26 +16,26 @@ Usage:
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import os
 import json
+import os
+from datetime import datetime
+
 import numpy as np
 import pandas as pd
-from datetime import datetime
-from typing import Dict, Optional
-from scipy.stats import skew, kurtosis, norm
-
+from scipy.stats import kurtosis, norm, skew
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import VecNormalize, DummyVecEnv
 from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
-from core.environment import TradingEnv
-from core.macro_data import MacroDataFetcher
+from config.hardware import compute_optimal_params, detect_hardware
 from core.data_fetcher import download_data
 from core.data_pipeline import DataSplitter
+from core.environment import TradingEnv
+from core.macro_data import MacroDataFetcher
 from core.utils import setup_logging
-from config.hardware import detect_hardware, compute_optimal_params
 
 logger = setup_logging(__name__, 'robustness_tests.log')
 
@@ -52,7 +52,7 @@ def load_model(model_path: str, use_recurrent: bool = False):
     return ModelClass.load(model_path)
 
 
-def add_price_noise(data: Dict[str, pd.DataFrame], noise_std: float = 0.005) -> Dict[str, pd.DataFrame]:
+def add_price_noise(data: dict[str, pd.DataFrame], noise_std: float = 0.005) -> dict[str, pd.DataFrame]:
     """Ajoute du bruit gaussien aux prix OHLCV.
 
     Args:
@@ -94,7 +94,7 @@ def calculate_psr(returns: np.array, benchmark_sr: float = 0.0) -> float:
 
     sigma_sr_sq = (1 + (0.5 * sr_est**2) - (skew_est * sr_est) + ((kurt_est / 4) * sr_est**2)) / denom
     if sigma_sr_sq <= 0: return 0.0
-    
+
     sigma_sr = np.sqrt(sigma_sr_sq)
     psr = norm.cdf((sr_est - benchmark_sr) / sigma_sr)
     return float(psr)
@@ -104,7 +104,7 @@ def calculate_dsr(returns: np.array, n_trials: int = 1) -> float:
     """Calcule le Deflated Sharpe Ratio (DSR) simplifié."""
     if n_trials <= 1:
         return calculate_psr(returns, 0.0)
-    
+
     # Benchmark ajusté pour le biais de sélection (Multiple Testing)
     # E[max(SR)] approx sqrt(2 * logN)
     benchmark_sr = np.sqrt(2 * np.log(n_trials)) * 0.05 # Scale factor empirique pour hourly
@@ -112,11 +112,11 @@ def calculate_dsr(returns: np.array, n_trials: int = 1) -> float:
 
 
 def simulate_crash(
-    data: Dict[str, pd.DataFrame],
+    data: dict[str, pd.DataFrame],
     crash_pct: float = -0.20,
     crash_day_idx: int = None,
     instant: bool = False,
-) -> Dict[str, pd.DataFrame]:
+) -> dict[str, pd.DataFrame]:
     """Simule un krach boursier à une date donnée.
 
     Args:
@@ -211,8 +211,8 @@ def _mc_worker(args):
 
 def monte_carlo_test(
     model,
-    test_data: Dict[str, pd.DataFrame],
-    macro_data: Optional[pd.DataFrame],
+    test_data: dict[str, pd.DataFrame],
+    macro_data: pd.DataFrame | None,
     n_simulations: int = 1000,
     noise_std: float = 0.005,
     vecnorm_env=None,
@@ -285,12 +285,12 @@ def monte_carlo_test(
     # Calcul PSR/DSR sur la distribution des *moyennes* de rendement des simulations
     # Note: Le PSR s'applique normalement à une série temporelle de rendements d'UNE stratégie.
     # Ici on l'applique à la distribution des Sharpes de Monte Carlo pour voir la robustesse globale.
-    
+
     # Agrégation des rendements de tous les MC pour un PSR global "Meta"
     # On prend le rendement moyen par pas de temps sur toutes les sims
     # C'est une approximation pour voir si la stratégie "en moyenne" a un PSR élevé.
     all_returns_flat = np.array(returns) # Rendements totaux des épisodes
-    
+
     # Calcul PSR sur la distribution des Scénarios (Est-ce que >95% des scénarios battent 0 ?)
     # On utilise simplement le taux de perte pour ça, mais le PSR ajoute la nuance de la variance.
     psr = calculate_psr(np.array(returns), benchmark_sr=0.0)
@@ -320,8 +320,8 @@ def monte_carlo_test(
 
 def stress_test_crash(
     model,
-    test_data: Dict[str, pd.DataFrame],
-    macro_data: Optional[pd.DataFrame],
+    test_data: dict[str, pd.DataFrame],
+    macro_data: pd.DataFrame | None,
     crash_pct: float = -0.20,
     vecnorm_env=None,
     env_kwargs: dict = None,
@@ -382,6 +382,7 @@ def stress_test_crash(
 
 def main():
     import argparse
+
     import yaml
 
     parser = argparse.ArgumentParser(description='Robustness Tests (Monte Carlo + Stress Test)')
@@ -414,7 +415,7 @@ def main():
     model = load_model(args.model, use_recurrent=args.recurrent)
 
     # Charger config
-    with open(args.config, 'r') as f:
+    with open(args.config) as f:
         config = yaml.safe_load(f)
 
     env_kwargs = {k: v for k, v in config.get('environment', {}).items()}

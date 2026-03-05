@@ -14,10 +14,11 @@ Usage:
     # Returns: pd.DataFrame with columns [vix, tnx, dxy, vix_ma20, ...]
 """
 
-import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
 import warnings
+from datetime import datetime, timedelta
+
+import numpy as np
+import pandas as pd
 
 warnings.filterwarnings('ignore')
 
@@ -207,12 +208,12 @@ class MacroDataFetcher:
         elif ticker_tz is None and macro_tz is not None:
             # Ticker est naïf, Macro est UTC -> Remove TZ
             macro_df.index = macro_df.index.tz_localize(None)
-        
+
         # 2. Réindexer sur l'index du ticker, forward-fill
         # Utiliser reindex avec la méthode 'ffill' (pad) pour propager la dernière valeur connue
         # limit=None pour propager indéfiniment (la macro change peu)
         aligned = macro_df.reindex(ticker_df.index, method='ffill')
-        
+
         # Remplir les nan initiaux (backfill) et finaux (0)
         aligned = aligned.bfill().fillna(0)
 

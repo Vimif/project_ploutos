@@ -2,7 +2,6 @@
 """Interface abstraite pour les brokers (Alpaca, eToro, etc.)"""
 
 from abc import ABC, abstractmethod
-from typing import Optional
 
 
 class BrokerInterface(ABC):
@@ -12,7 +11,7 @@ class BrokerInterface(ABC):
     """
 
     @abstractmethod
-    def get_account(self) -> Optional[dict]:
+    def get_account(self) -> dict | None:
         """
         Obtenir les infos du compte.
 
@@ -45,7 +44,7 @@ class BrokerInterface(ABC):
         pass
 
     @abstractmethod
-    def get_position(self, symbol: str) -> Optional[dict]:
+    def get_position(self, symbol: str) -> dict | None:
         """
         Obtenir une position spécifique.
 
@@ -58,7 +57,7 @@ class BrokerInterface(ABC):
         pass
 
     @abstractmethod
-    def get_current_price(self, symbol: str) -> Optional[float]:
+    def get_current_price(self, symbol: str) -> float | None:
         """
         Obtenir le prix actuel d'un ticker.
 
@@ -71,7 +70,7 @@ class BrokerInterface(ABC):
         pass
 
     @abstractmethod
-    def place_market_order(self, symbol: str, qty: int, side: str = 'buy', reason: str = '') -> Optional[dict]:
+    def place_market_order(self, symbol: str, qty: int, side: str = 'buy', reason: str = '') -> dict | None:
         """
         Passer un ordre au marché.
 
@@ -87,7 +86,7 @@ class BrokerInterface(ABC):
         pass
 
     @abstractmethod
-    def place_limit_order(self, symbol: str, qty: int, limit_price: float, side: str = 'buy') -> Optional[dict]:
+    def place_limit_order(self, symbol: str, qty: int, limit_price: float, side: str = 'buy') -> dict | None:
         """
         Passer un ordre limite.
 

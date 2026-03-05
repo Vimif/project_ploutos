@@ -1,5 +1,4 @@
 import subprocess
-import re
 
 print("Running black...")
 out = subprocess.run(["black", "--check", "."], capture_output=True, text=True)
