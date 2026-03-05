@@ -110,14 +110,14 @@ class UniversalDataFetcher:
     def fetch(self, ticker, start_date=None, end_date=None, interval='1h', max_retries=2):
         """
         Récupère les données avec fallback automatique
-        
+
         Args:
             ticker: Symbol (ex: 'NVDA')
             start_date: Date début (datetime, str 'YYYY-MM-DD', ou None)
             end_date: Date fin (datetime, str, ou None)
             interval: '1m', '5m', '15m', '1h', '1d'
             max_retries: Nombre de tentatives par source
-            
+
         Returns:
             pd.DataFrame avec colonnes [Open, High, Low, Close, Volume]
         """
@@ -308,7 +308,7 @@ class UniversalDataFetcher:
     def _normalize_dataframe(self, df):
         """
         Normalise le DataFrame pour un format uniforme
-        
+
         Returns:
             DataFrame avec [Open, High, Low, Close, Volume] et index DatetimeIndex
         """
@@ -370,11 +370,11 @@ class UniversalDataFetcher:
     ):
         """
         Récupère plusieurs tickers en parallèle
-        
+
         Args:
             tickers: Liste de symbols
             save_to_cache: Si True, sauvegarde dans data_cache/
-            
+
         Returns:
             dict: {ticker: DataFrame}
         """
@@ -422,10 +422,10 @@ class UniversalDataFetcher:
     def load_from_cache(self, ticker, cache_dir='data_cache', max_age_days=7):
         """
         Charge depuis le cache si récent
-        
+
         Args:
             max_age_days: Age maximum du cache en jours
-            
+
         Returns:
             DataFrame ou None si cache trop vieux/absent
         """
@@ -455,13 +455,13 @@ class UniversalDataFetcher:
 def download_data(tickers, period='2y', interval='1h', max_workers=3, dataset_path=None):
     """
     Fonction wrapper simple pour télécharger des données
-    
+
     Args:
         tickers: Liste de tickers ou ticker unique (str)
         period: Période ('1y', '2y', '5y', etc.)
         interval: Intervalle ('1h', '1d', etc.)
         dataset_path: Chemin vers dossier CSV locaux (optionnel)
-    
+
     Returns:
         dict: {ticker: DataFrame} ou DataFrame si ticker unique
     """

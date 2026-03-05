@@ -12,13 +12,13 @@ import pandas as pd
 class AdvancedTransactionModel:
     """
     Modèle réaliste de coûts de transaction pour trading algorithmique
-    
+
     Composantes :
     1. Commission fixe (courtier)
     2. Slippage dynamique (volatilité-dépendant)
     3. Impact de marché (taille ordre vs volume)
     4. Latence (délai exécution)
-    
+
     Example:
         model = AdvancedTransactionModel()
         exec_price, costs = model.calculate_execution_price(
@@ -68,7 +68,7 @@ class AdvancedTransactionModel:
                                   recent_prices: pd.Series = None) -> tuple[float, dict]:
         """
         Calcule le prix d'exécution réel tenant compte de tous les coûts
-        
+
         Args:
             ticker: Symbol (ex: 'NVDA')
             intended_price: Prix souhaité (limit order)
@@ -76,7 +76,7 @@ class AdvancedTransactionModel:
             current_volume: Volume actuel (pour impact de marché)
             side: 'buy' ou 'sell'
             recent_prices: Série de prix récents (pour volatilité)
-            
+
         Returns:
             (execution_price, costs_breakdown)
         """
@@ -114,7 +114,7 @@ class AdvancedTransactionModel:
     def _calculate_slippage(self, ticker: str, recent_prices: pd.Series = None) -> float:
         """
         Calcule slippage dynamique basé sur volatilité récente
-        
+
         Principe : Marchés volatils = slippage plus élevé
         """
 
@@ -152,9 +152,9 @@ class AdvancedTransactionModel:
     def _calculate_market_impact(self, order_size: float, current_volume: float) -> float:
         """
         Calcule l'impact de l'ordre sur le marché
-        
+
         Principe : Gros ordres par rapport au volume = impact plus fort
-        
+
         Modèle simplifié : impact = coef * sqrt(order_size / volume)
         (Modèle réel : Almgren-Chriss, mais trop complexe)
         """
@@ -178,12 +178,12 @@ class AdvancedTransactionModel:
     def _calculate_latency_cost(self) -> float:
         """
         Simule le coût de latence (mouvement prix pendant exécution)
-        
+
         En production :
         - Latence réseau : 5-50ms
         - Latence bourse : 10-100ms
         - Prix peut bouger pendant ce temps
-        
+
         Simulation : Bruit aléatoire gaussien
         """
 
@@ -202,12 +202,12 @@ class AdvancedTransactionModel:
                            recent_prices: pd.Series = None) -> dict:
         """
         Estime le coût total d'un trade AVANT exécution
-        
+
         Utile pour :
         - Position sizing
         - Validation ordre
         - Optimisation stratégie
-        
+
         Returns:
             Dict avec estimation coûts en $ et %
         """

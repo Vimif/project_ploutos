@@ -19,7 +19,7 @@ class RiskManager:
                  max_correlation: float = 0.7):
         """
         Initialiser le risk manager
-        
+
         Args:
             max_portfolio_risk: Risque max par trade (2% par défaut)
             max_daily_loss: Perte quotidienne max (3% par défaut)
@@ -50,13 +50,13 @@ class RiskManager:
         """
         Calculer la taille optimale d'une position basée sur le risque
         Position Sizing = Risk Amount / Stop Loss Distance
-        
+
         Args:
             portfolio_value: Valeur totale du portfolio
             entry_price: Prix d'entrée prévu
             stop_loss_pct: Stop loss en % (ex: 0.05 pour 5%)
             risk_pct: Risque par trade (utilise max_portfolio_risk si None)
-        
+
         Returns:
             (quantity, position_value): Quantité et valeur de la position
         """
@@ -93,10 +93,10 @@ class RiskManager:
     def check_daily_loss_limit(self, current_value: float) -> bool:
         """
         Vérifier si la perte quotidienne dépasse la limite (Circuit Breaker)
-        
+
         Args:
             current_value: Valeur actuelle du portfolio
-        
+
         Returns:
             True si trading autorisé, False si circuit breaker activé
         """
@@ -132,7 +132,7 @@ class RiskManager:
     def calculate_portfolio_exposure(self, positions: list[dict], portfolio_value: float) -> float:
         """
         Calculer l'exposition totale du portfolio
-        
+
         Returns:
             Exposition en % (0.0 à 1.0)
         """
@@ -143,7 +143,7 @@ class RiskManager:
     def should_reduce_exposure(self, positions: list[dict], portfolio_value: float) -> tuple[bool, str]:
         """
         Déterminer si on doit réduire l'exposition
-        
+
         Returns:
             (should_reduce, reason)
         """
@@ -165,12 +165,12 @@ class RiskManager:
         Calculer le Kelly Criterion pour position sizing optimal
         Kelly% = W - [(1-W) / R]
         où W = win rate, R = avg_win / avg_loss
-        
+
         Args:
             win_rate: Taux de réussite (0.0 à 1.0)
             avg_win: Gain moyen en %
             avg_loss: Perte moyenne en % (positif)
-        
+
         Returns:
             Position size optimal en % (0.0 à 1.0)
         """
@@ -197,11 +197,11 @@ class RiskManager:
         """
         Calculer le Sharpe Ratio
         Sharpe = (Mean Return - Risk Free Rate) / Std Dev of Returns
-        
+
         Args:
             returns: Liste des returns quotidiens
             risk_free_rate: Taux sans risque annuel (4% par défaut)
-        
+
         Returns:
             Sharpe ratio
         """
@@ -226,10 +226,10 @@ class RiskManager:
     def calculate_max_drawdown(self, portfolio_values: list[float]) -> tuple[float, float]:
         """
         Calculer le maximum drawdown
-        
+
         Args:
             portfolio_values: Liste des valeurs historiques du portfolio
-        
+
         Returns:
             (max_drawdown_pct, max_drawdown_amount)
         """
@@ -261,7 +261,7 @@ class RiskManager:
                             days_held: int) -> dict:
         """
         Évaluer le risque d'une position existante
-        
+
         Returns:
             Dict avec score de risque et recommandations
         """
@@ -315,7 +315,7 @@ class RiskManager:
                        daily_returns: list[float] = None) -> dict:
         """
         Générer un rapport de risque complet
-        
+
         Returns:
             Dict avec métriques de risque
         """

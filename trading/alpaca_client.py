@@ -28,7 +28,7 @@ os.makedirs(TRADES_LOG_DIR, exist_ok=True)
 def log_trade_to_json(symbol, action, quantity, price, amount, reason='', portfolio_value=None, order_id=None):
     """
     Logger un trade en JSON au lieu de PostgreSQL
-    
+
     Args:
         symbol: Ticker
         action: 'BUY' ou 'SELL'
@@ -80,7 +80,7 @@ class AlpacaClient(BrokerInterface):
     def __init__(self, paper_trading=True):
         """
         Initialiser le client Alpaca
-        
+
         Args:
             paper_trading: True pour paper trading, False pour live
         """
@@ -187,10 +187,10 @@ class AlpacaClient(BrokerInterface):
         """
         Annuler tous les ordres en cours pour un ticker
         Utile pour éviter les wash trades
-        
+
         Args:
             symbol: Ticker
-        
+
         Returns:
             int: Nombre d'ordres annulés
         """
@@ -214,11 +214,11 @@ class AlpacaClient(BrokerInterface):
     def wait_for_order_fill(self, order_id, timeout=30):
         """
         ★ ATTENDRE QU'UN ORDRE SOIT EXÉCUTÉ
-        
+
         Args:
             order_id: ID de l'ordre
             timeout: Timeout en secondes
-        
+
         Returns:
             bool: True si exécuté, False si timeout
         """
@@ -250,13 +250,13 @@ class AlpacaClient(BrokerInterface):
     def place_market_order(self, symbol, qty, side='buy', reason=''):
         """
         Passer un ordre au marché avec logging JSON
-        
+
         Args:
             symbol: Ticker (ex: 'AAPL')
             qty: Quantité (nombre d'actions)
             side: 'buy' ou 'sell'
             reason: Raison du trade (optionnel)
-        
+
         Returns:
             Order object ou None
         """
@@ -346,11 +346,11 @@ class AlpacaClient(BrokerInterface):
         """
         Fermer complètement une position avec gestion wash trade
         ★ ATTEND QUE L'ORDRE SOIT EXÉCUTÉ
-        
+
         Args:
             symbol: Ticker
             reason: Raison de la fermeture
-        
+
         Returns:
             bool: Succès/échec
         """

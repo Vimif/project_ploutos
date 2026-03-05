@@ -9,7 +9,7 @@ from datetime import datetime
 def setup_logging(name: str, log_file: str = None):
     """
     Configurer le logging
-    
+
     Args:
         name: Nom du logger
         log_file: Chemin du fichier de log (optionnel)

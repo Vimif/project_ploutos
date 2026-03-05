@@ -19,10 +19,10 @@ class SharedDataManager:
     def put_data(self, data_dict: dict[str, pd.DataFrame]) -> dict[str, Any]:
         """
         Stocke un dictionnaire de DataFrames en mémoire partagée.
-        
+
         Args:
             data_dict: Dict {ticker: DataFrame}
-            
+
         Returns:
             metadata: Dict contenant les infos nécessaires pour reconstruire les arrays
                       (nom shm, shape, dtype, colonnes, index).
@@ -73,7 +73,7 @@ class SharedDataManager:
 def load_shared_array(metadata_item: dict[str, Any]) -> tuple[SharedMemory, np.ndarray]:
     """
     Charge un array numpy depuis la SHM en mode Zero-Copy.
-    
+
     Returns:
         (shm, arr): On retourne l'objet shm pour qu'il ne soit pas GC (et fermé).
                     L'appelant doit conserver 'shm' tant qu'il utilise 'arr'.

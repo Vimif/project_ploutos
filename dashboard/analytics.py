@@ -20,7 +20,7 @@ class PortfolioAnalytics:
     def __init__(self, trades: list[dict], daily_summaries: list[dict] = None):
         """
         Initialiser l'analyseur
-        
+
         Args:
             trades: Liste des trades (depuis BDD ou JSON)
             daily_summaries: Résumés quotidiens (optionnel)
@@ -53,7 +53,7 @@ class PortfolioAnalytics:
     def calculate_returns(self) -> pd.Series:
         """
         Calculer les rendements quotidiens
-        
+
         Returns:
             Series avec les rendements quotidiens
         """
@@ -67,10 +67,10 @@ class PortfolioAnalytics:
     def sharpe_ratio(self, risk_free_rate: float = 0.05) -> float:
         """
         Calculer le ratio de Sharpe (annualisé)
-        
+
         Args:
             risk_free_rate: Taux sans risque annuel (défaut 5%)
-        
+
         Returns:
             Sharpe ratio (float)
         """
@@ -90,10 +90,10 @@ class PortfolioAnalytics:
         """
         Calculer le ratio de Sortino (annualisé)
         Comme Sharpe mais ne pénalise que la volatilité baissière
-        
+
         Args:
             risk_free_rate: Taux sans risque annuel
-        
+
         Returns:
             Sortino ratio (float)
         """
@@ -120,7 +120,7 @@ class PortfolioAnalytics:
     def max_drawdown(self) -> tuple[float, str, str]:
         """
         Calculer le drawdown maximum
-        
+
         Returns:
             Tuple (max_dd%, date_début, date_fin)
         """
@@ -153,7 +153,7 @@ class PortfolioAnalytics:
         """
         Calculer le ratio de Calmar
         = Rendement annualisé / Max Drawdown
-        
+
         Returns:
             Calmar ratio (float)
         """
@@ -183,7 +183,7 @@ class PortfolioAnalytics:
     def win_rate(self) -> dict[str, float]:
         """
         Calculer le win rate (paires BUY->SELL rentables)
-        
+
         Returns:
             Dict avec wins, losses, total, win_rate%
         """
@@ -228,7 +228,7 @@ class PortfolioAnalytics:
     def avg_win_loss(self) -> dict[str, float]:
         """
         Calculer le gain moyen vs perte moyenne
-        
+
         Returns:
             Dict avec avg_win, avg_loss, profit_factor
         """
@@ -279,7 +279,7 @@ class PortfolioAnalytics:
     def trades_by_symbol(self) -> dict[str, dict]:
         """
         Statistiques par symbole
-        
+
         Returns:
             Dict[symbol, stats]
         """
@@ -309,7 +309,7 @@ class PortfolioAnalytics:
     def get_all_metrics(self) -> dict:
         """
         Calculer toutes les métriques en une seule fois
-        
+
         Returns:
             Dict avec toutes les métriques
         """
@@ -361,11 +361,11 @@ def calculate_benchmark_comparison(portfolio_returns: pd.Series,
                                   benchmark_returns: pd.Series) -> dict:
     """
     Comparer le portfolio à un benchmark (ex: SPY)
-    
+
     Args:
         portfolio_returns: Rendements du portfolio
         benchmark_returns: Rendements du benchmark
-    
+
     Returns:
         Dict avec alpha, beta, correlation
     """

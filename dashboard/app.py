@@ -59,10 +59,10 @@ def init_alpaca():
 def load_trades_from_json(days=30):
     """
     Charger les trades depuis les fichiers JSON
-    
+
     Args:
         days: Nombre de jours à charger
-    
+
     Returns:
         list: Liste des trades
     """
@@ -103,10 +103,10 @@ def load_trades_from_json(days=30):
 def calculate_statistics_from_trades(trades):
     """
     Calculer statistiques depuis les trades JSON
-    
+
     Args:
         trades: Liste des trades
-    
+
     Returns:
         dict: Statistiques
     """
@@ -135,11 +135,11 @@ def calculate_statistics_from_trades(trades):
 def get_top_symbols_from_trades(trades, limit=10):
     """
     Obtenir les symboles les plus tradés
-    
+
     Args:
         trades: Liste des trades
         limit: Nombre de symboles à retourner
-    
+
     Returns:
         list: Top symboles
     """

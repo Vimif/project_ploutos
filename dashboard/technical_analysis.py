@@ -47,7 +47,7 @@ class TechnicalAnalyzer:
     def __init__(self, symbol: str, period: str = '3mo', interval: str = '1h'):
         """
         Initialiser l'analyseur technique
-        
+
         Args:
             symbol: Ticker de l'action (ex: 'NVDA')
             period: Période historique ('1mo', '3mo', '6mo', '1y', '2y')
@@ -93,7 +93,7 @@ class TechnicalAnalyzer:
     def calculate_macd(self) -> tuple[pd.Series, pd.Series, pd.Series]:
         """
         MACD (Moving Average Convergence Divergence)
-        
+
         Returns:
             Tuple (macd_line, signal_line, histogram)
         """
@@ -111,7 +111,7 @@ class TechnicalAnalyzer:
     def calculate_rsi(self, period: int = 14) -> pd.Series:
         """
         RSI (Relative Strength Index)
-        
+
         RSI > 70: Suracheté (potentiel SELL)
         RSI < 30: Survendu (potentiel BUY)
         """
@@ -131,7 +131,7 @@ class TechnicalAnalyzer:
     def calculate_stochastic(self, k_period: int = 14, d_period: int = 3) -> tuple[pd.Series, pd.Series]:
         """
         Stochastic Oscillator
-        
+
         %K > 80: Suracheté
         %K < 20: Survendu
         """
@@ -148,7 +148,7 @@ class TechnicalAnalyzer:
     def calculate_bollinger_bands(self, period: int = 20, std_dev: float = 2.0) -> tuple[pd.Series, pd.Series, pd.Series]:
         """
         Bollinger Bands
-        
+
         Prix > Upper Band: Potentiel suracheté
         Prix < Lower Band: Potentiel survendu
         """
@@ -189,7 +189,7 @@ class TechnicalAnalyzer:
     def calculate_vwap(self) -> pd.Series:
         """
         VWAP (Volume Weighted Average Price)
-        
+
         Prix > VWAP: Tendance haussière
         Prix < VWAP: Tendance baissière
         """
@@ -203,7 +203,7 @@ class TechnicalAnalyzer:
     def detect_trend(self) -> str:
         """
         Détecter la tendance actuelle
-        
+
         Returns:
             'BULLISH', 'BEARISH', ou 'NEUTRAL'
         """
@@ -252,7 +252,7 @@ class TechnicalAnalyzer:
     def generate_signal(self) -> TradingSignal:
         """
         Générer un signal de trading complet basé sur tous les indicateurs
-        
+
         Returns:
             TradingSignal avec recommandation BUY/SELL/HOLD
         """
@@ -379,7 +379,7 @@ class TechnicalAnalyzer:
     def get_all_indicators(self) -> dict:
         """
         Obtenir tous les indicateurs techniques actuels
-        
+
         Returns:
             Dict avec toutes les valeurs des indicateurs
         """

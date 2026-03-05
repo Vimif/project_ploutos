@@ -118,7 +118,7 @@ def log_trade(symbol: str, action: str, quantity: float, price: float,
         with get_connection() as conn:
             cur = conn.cursor()
             cur.execute("""
-                INSERT INTO trades (symbol, action, quantity, price, amount, reason, 
+                INSERT INTO trades (symbol, action, quantity, price, amount, reason,
                                   portfolio_value, order_id)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
@@ -139,13 +139,13 @@ def get_trade_history(days: int = 30, symbol: str = None) -> list[dict]:
 
             if symbol:
                 cur.execute("""
-                    SELECT * FROM trades 
+                    SELECT * FROM trades
                     WHERE timestamp > NOW() - INTERVAL %s AND symbol = %s
                     ORDER BY timestamp DESC
                 """, (f'{days} days', symbol))
             else:
                 cur.execute("""
-                    SELECT * FROM trades 
+                    SELECT * FROM trades
                     WHERE timestamp > NOW() - INTERVAL %s
                     ORDER BY timestamp DESC
                 """, (f'{days} days',))
@@ -183,7 +183,7 @@ def get_position_history(symbol: str, days: int = 30) -> list[dict]:
         with get_connection() as conn:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute("""
-                SELECT * FROM positions 
+                SELECT * FROM positions
                 WHERE symbol = %s AND timestamp > NOW() - INTERVAL %s
                 ORDER BY timestamp DESC
             """, (symbol, f'{days} days'))
@@ -243,7 +243,7 @@ def get_daily_summary(days: int = 30) -> list[dict]:
         with get_connection() as conn:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute("""
-                SELECT * FROM daily_summary 
+                SELECT * FROM daily_summary
                 WHERE date > CURRENT_DATE - INTERVAL %s
                 ORDER BY date DESC
             """, (f'{days} days',))
@@ -281,13 +281,13 @@ def get_prediction_history(symbol: str = None, days: int = 7) -> list[dict]:
 
             if symbol:
                 cur.execute("""
-                    SELECT * FROM predictions 
+                    SELECT * FROM predictions
                     WHERE symbol = %s AND timestamp > NOW() - INTERVAL %s
                     ORDER BY timestamp DESC
                 """, (symbol, f'{days} days'))
             else:
                 cur.execute("""
-                    SELECT * FROM predictions 
+                    SELECT * FROM predictions
                     WHERE timestamp > NOW() - INTERVAL %s
                     ORDER BY timestamp DESC
                 """, (f'{days} days',))
@@ -305,7 +305,7 @@ def get_trade_statistics(days: int = 30) -> dict:
         with get_connection() as conn:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute("""
-                SELECT 
+                SELECT
                     COUNT(*) as total_trades,
                     COUNT(CASE WHEN action = 'BUY' THEN 1 END) as buy_count,
                     COUNT(CASE WHEN action = 'SELL' THEN 1 END) as sell_count,
@@ -329,7 +329,7 @@ def get_top_symbols(days: int = 30, limit: int = 10) -> list[dict]:
         with get_connection() as conn:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute("""
-                SELECT 
+                SELECT
                     symbol,
                     COUNT(*) as trade_count,
                     SUM(amount) as total_volume,
@@ -372,7 +372,7 @@ def get_win_loss_ratio(days: int = 30) -> dict:
             # Trouver les paires buy/sell
             cur.execute("""
                 WITH trade_pairs AS (
-                    SELECT 
+                    SELECT
                         symbol,
                         action,
                         price,
@@ -383,7 +383,7 @@ def get_win_loss_ratio(days: int = 30) -> dict:
                     FROM trades
                     WHERE timestamp > NOW() - INTERVAL %s
                 )
-                SELECT 
+                SELECT
                     COUNT(CASE WHEN action = 'SELL' AND price > prev_price THEN 1 END) as wins,
                     COUNT(CASE WHEN action = 'SELL' AND price <= prev_price THEN 1 END) as losses
                 FROM trade_pairs

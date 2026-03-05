@@ -1,7 +1,5 @@
 """Tests unitaires pour TradingEnv."""
 
-import sys
-from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
@@ -197,8 +195,7 @@ class TestSlippage:
         env_train.reset()
         env_back.reset()
 
-        ticker = env_train.tickers[0]
-        price = 150.0
+        env_train.tickers[0]
 
         # Both modes should use the transaction model (not simple random)
         assert env_train.transaction_model is not None

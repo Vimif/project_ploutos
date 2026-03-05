@@ -37,11 +37,11 @@ class DiscordNotifier:
     def send_message(self, content: str = None, embed: dict = None) -> bool:
         """
         Envoyer message Discord
-        
+
         Args:
             content: Texte simple
             embed: Embed riche (dict)
-        
+
         Returns:
             bool: Succès
         """
@@ -92,7 +92,7 @@ class DiscordNotifier:
                      price: float, reason: str = '', success: bool = True):
         """
         Notifier exécution trade
-        
+
         Args:
             symbol: Ticker
             action: 'BUY' ou 'SELL'
@@ -134,7 +134,7 @@ class DiscordNotifier:
                             daily_pl: float = None):
         """
         Notifier résumé de cycle
-        
+
         Args:
             trades_count: {'buy': X, 'sell': Y, 'hold': Z}
             portfolio_value: Valeur totale
@@ -176,7 +176,7 @@ class DiscordNotifier:
     def notify_market_closed(self, next_open: str):
         """
         Notifier que le marché est fermé
-        
+
         Args:
             next_open: Heure prochaine ouverture
         """
@@ -193,7 +193,7 @@ class DiscordNotifier:
     def notify_error(self, error_message: str, details: str = ''):
         """
         Notifier erreur critique
-        
+
         Args:
             error_message: Message d'erreur
             details: Détails additionnels
@@ -219,7 +219,7 @@ class DiscordNotifier:
                                explanation: dict):
         """
         Notifier trade avec explication IA
-        
+
         Args:
             symbol: Ticker
             action: 'BUY' ou 'SELL'
