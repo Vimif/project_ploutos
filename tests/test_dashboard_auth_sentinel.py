@@ -25,7 +25,7 @@ def test_dashboard_auth_missing_credentials(client):
     response = client.get("/")
     assert response.status_code == 401
     assert (
-        b"WWW-Authenticate" in response.headers.get("WWW-Authenticate", b"").encode()
+        b"WWW-Authenticate" in str(response.headers.get("WWW-Authenticate", "")).encode()
         or response.headers.get("WWW-Authenticate") == 'Basic realm="Ploutos Dashboard"'
     )
 
