@@ -7,9 +7,11 @@ from dashboard.app import app, socketio
 @pytest.fixture
 def client():
     # Make sure testing bypass is disabled to test actual auth logic
+    original_testing = app.config.get("TESTING")
     app.config["TESTING"] = False
     with app.test_client() as client:
         yield client
+    app.config["TESTING"] = original_testing
 
 
 def test_missing_env_credentials(client, monkeypatch):
