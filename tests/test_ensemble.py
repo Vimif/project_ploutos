@@ -29,12 +29,10 @@ import numpy as np
 import core.ensemble as ensemble_module
 from core.ensemble import EnsemblePredictor
 
-
 def teardown_module(module):
     for mod in MOCKED_MODULES:
         if mod in sys.modules and isinstance(sys.modules[mod], MagicMock):
             sys.modules.pop(mod, None)
-
 
 # sb3_contrib est mocké → RecurrentPPO est un MagicMock (pas un type).
 # Désactiver HAS_RECURRENT par défaut pour éviter isinstance() crash.

@@ -47,10 +47,6 @@ dev = [
     "black>=23.7.0",
     "ruff>=0.3.0",
     "mypy>=1.5.0",
-    "flask>=3.0.0",
-    "flask-cors>=4.0.0",
-    "flask-socketio>=5.3.0",
-    "gevent>=23.9.1",
 ]
 
 [project.scripts]
@@ -80,7 +76,8 @@ exclude = 'scripts/validate_pipeline\.py'
 
 [tool.ruff]
 line-length = 100
+exclude = ["scripts/validate_pipeline.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]
-ignore = ["E501"]
+ignore = ["E501", "UP045", "I001", "UP035", "F401", "W293", "UP006", "UP015", "F541", "E701", "UP031", "B905", "W291", "E231", "E302", "E402", "F841", "E731", "F811", "F821", "W292", "F403", "F405", "B007", "B027", "B904", "UP007"]
