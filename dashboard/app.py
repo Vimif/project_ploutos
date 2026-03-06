@@ -7,7 +7,7 @@ import secrets
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, Response
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 import traceback
@@ -40,6 +40,59 @@ alpaca_client = None
 
 # Dossier logs trades
 TRADES_LOG_DIR = Path('logs/trades')
+
+@app.before_request
+def require_auth():
+    """Vérification de l'authentification HTTP Basic globale"""
+    # Ignorer l'authentification lors des tests unitaires configurés
+    if app.config.get('TESTING'):
+        return None
+
+    # Exclure les requêtes preflight CORS
+    if request.method == 'OPTIONS':
+        return None
+
+    # Liste des chemins publics qui ne nécessitent pas d'authentification
+    excluded_paths = ['/static', '/api/webhook', '/socket.io/']
+    for path in excluded_paths:
+        if request.path.startswith(path):
+            return None
+
+    auth = request.authorization
+
+    # Récupérer les identifiants depuis les variables d'environnement
+    # SECURE: Ne pas utiliser de valeurs par défaut (fail secure)
+    expected_username = os.environ.get('DASHBOARD_USERNAME')
+    expected_password = os.environ.get('DASHBOARD_PASSWORD')
+
+    # Si les identifiants ne sont pas configurés sur le serveur, on refuse l'accès
+    if not expected_username or not expected_password:
+        logger.error("🔒 CRITICAL: Identifiants du dashboard non configurés dans l'environnement. Accès refusé.")
+        return Response(
+            'Authentication configuration missing on server.\n',
+            401,
+            {'WWW-Authenticate': 'Basic realm="Login Required"'}
+        )
+
+    # Si pas d'authentification fournie ou valeurs None, demander l'authentification
+    if not auth or not auth.username or not auth.password:
+        return Response(
+            'Could not verify your access level for that URL.\n'
+            'You have to login with proper credentials', 401,
+            {'WWW-Authenticate': 'Basic realm="Login Required"'})
+
+    # Vérification sécurisée des identifiants avec protection contre les attaques temporelles
+    if (secrets.compare_digest(auth.username, expected_username) and
+        secrets.compare_digest(auth.password, expected_password)):
+        return None
+
+    # Identifiants incorrects
+    logger.warning(f"🔒 Tentative d'accès refusée avec l'utilisateur: {auth.username}")
+    return Response(
+        'Invalid credentials.\n',
+        401,
+        {'WWW-Authenticate': 'Basic realm="Login Required"'}
+    )
 
 def init_alpaca():
     """Initialiser le client Alpaca"""
