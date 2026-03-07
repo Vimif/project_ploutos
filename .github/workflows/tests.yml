@@ -19,7 +19,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
       - name: Install dependencies
-        run: pip install -e ".[dev,training]"
+        run: pip install -e ".[dev,training,web]"
       - name: Run tests with coverage
         run: pytest tests/ -v --tb=short --cov=core --cov=training --cov=trading --cov-report=term-missing --cov-fail-under=50
       - name: Upload test artifacts on failure
