@@ -162,6 +162,48 @@ def get_top_symbols_from_trades(trades, limit=10):
     
     return top_symbols[:limit]
 
+def authenticate():
+    """Vérifier les identifiants d'authentification basique"""
+    username = os.environ.get('DASHBOARD_USERNAME')
+    password = os.environ.get('DASHBOARD_PASSWORD')
+
+    if not username or not password:
+        logger.error("❌ Identifiants non configurés dans l'environnement")
+        return False
+
+    auth = request.authorization
+    if not auth:
+        return False
+
+    req_user = getattr(auth, 'username', None)
+    req_pass = getattr(auth, 'password', None)
+
+    if req_user is None or req_pass is None:
+        return False
+
+    return (secrets.compare_digest(req_user, username) and
+            secrets.compare_digest(req_pass, password))
+
+@app.before_request
+def require_auth():
+    """Appliquer l'authentification globale avec exclusions"""
+    # Éviter l'authentification en environnement de test si désactivé
+    if app.config.get('TESTING'):
+        return None
+
+    # Exclusions
+    if request.method == 'OPTIONS':
+        return None
+
+    path = request.path
+    if (path.startswith('/static/') or
+        path.startswith('/api/webhook') or
+        path.startswith('/socket.io/')):
+        return None
+
+    if not authenticate():
+        return jsonify({'error': 'Unauthorized access'}), 401, {'WWW-Authenticate': 'Basic realm="Login Required"'}
+
 @app.route('/')
 def index():
     """Page principale du dashboard"""

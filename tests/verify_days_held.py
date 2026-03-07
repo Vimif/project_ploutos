@@ -14,6 +14,10 @@ sys.modules["core.utils"] = mock_utils
 mock_logger = MagicMock()
 mock_utils.setup_logging.return_value = mock_logger
 
+def teardown_module(module):
+    sys.modules.pop("numpy", None)
+    sys.modules.pop("core.utils", None)
+
 # Ajouter la racine du projet au path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 

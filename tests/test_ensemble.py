@@ -21,6 +21,24 @@ for mod in [
 ]:
     sys.modules.setdefault(mod, MagicMock())
 
+def teardown_module(module):
+    for mod in [
+        "torch",
+        "torch.nn",
+        "torch.nn.functional",
+        "torch.optim",
+        "torch.utils",
+        "torch.utils.data",
+        "torch.distributions",
+        "stable_baselines3",
+        "stable_baselines3.common",
+        "stable_baselines3.common.vec_env",
+        "stable_baselines3.common.monitor",
+        "stable_baselines3.common.callbacks",
+        "sb3_contrib",
+    ]:
+        sys.modules.pop(mod, None)
+
 import pytest
 import numpy as np
 
