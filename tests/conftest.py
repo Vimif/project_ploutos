@@ -5,15 +5,25 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+def pytest_runtest_setup(item):
+    """
+    Supprime les mocks de torch et de ses dépendances pour les tests E2E.
+    """
+    if "e2e" in str(item.fspath):
+        for mod in list(sys.modules.keys()):
+            # Safe way to check if it's a MagicMock
+            if type(sys.modules[mod]).__name__ == "MagicMock":
+                if mod.startswith("torch") or mod.startswith("stable_baselines3") or mod == "sb3_contrib":
+                    sys.modules.pop(mod, None)
+sys.path.insert(0, str(project_root))
+
 import numpy as np
 import pandas as pd
 import pytest
 
-
 # ============================================================================
 # Shared data generators
 # ============================================================================
-
 
 def make_market_data(n_tickers: int = 2, n_bars: int = 500) -> dict:
     """Create synthetic OHLCV market data for testing."""
@@ -38,7 +48,6 @@ def make_market_data(n_tickers: int = 2, n_bars: int = 500) -> dict:
             index=dates,
         )
     return data
-
 
 def make_macro_data(n_bars: int = 500) -> pd.DataFrame:
     """Create synthetic macro data (VIX, TNX, DXY) for testing."""
@@ -68,7 +77,6 @@ def make_macro_data(n_bars: int = 500) -> pd.DataFrame:
         index=dates,
     )
 
-
 def make_ohlcv(ticker: str = "TEST", n_bars: int = 300, seed: int = 42) -> pd.DataFrame:
     """Create a single ticker OHLCV DataFrame for testing."""
     np.random.seed(seed)
@@ -87,23 +95,19 @@ def make_ohlcv(ticker: str = "TEST", n_bars: int = 300, seed: int = 42) -> pd.Da
         index=dates,
     )
 
-
 # ============================================================================
 # Shared pytest fixtures
 # ============================================================================
-
 
 @pytest.fixture
 def market_data():
     """Two-ticker market data for environment tests."""
     return make_market_data(n_tickers=2, n_bars=500)
 
-
 @pytest.fixture
 def macro_data():
     """Synthetic macro data (VIX/TNX/DXY) for environment tests."""
     return make_macro_data(n_bars=500)
-
 
 @pytest.fixture
 def single_ohlcv():

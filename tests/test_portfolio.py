@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 
 # Mock missing dependencies before importing Portfolio
 mock_torch = MagicMock()
-sys.modules["torch"] = mock_torch
+sys.modules.setdefault("torch", mock_torch)
 
 def teardown_module(module):
     """Nettoyage des mocks globaux pour éviter la pollution des tests E2E."""
