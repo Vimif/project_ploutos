@@ -7,7 +7,7 @@ import secrets
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, Response
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 import traceback
@@ -40,6 +40,51 @@ alpaca_client = None
 
 # Dossier logs trades
 TRADES_LOG_DIR = Path('logs/trades')
+
+def check_auth(username, password):
+    """Vérifier si les identifiants sont valides"""
+    expected_username = os.environ.get('DASHBOARD_USERNAME')
+    expected_password = os.environ.get('DASHBOARD_PASSWORD')
+
+    # Securite: refuser l'accès si les variables d'environnement ne sont pas définies
+    if not expected_username or not expected_password:
+        logger.error("🚨 TENTATIVE D'ACCÈS REFUSÉE: Variables DASHBOARD_USERNAME/DASHBOARD_PASSWORD manquantes")
+        return False
+
+    # Securite: utiliser compare_digest pour éviter les attaques temporelles
+    return secrets.compare_digest(username, expected_username) and secrets.compare_digest(password, expected_password)
+
+def authenticate():
+    """Renvoyer une réponse 401 pour demander l'authentification"""
+    return Response(
+        'Veuillez vous authentifier pour accéder au dashboard.\n',
+        401,
+        {'WWW-Authenticate': 'Basic realm="Login Required"'}
+    )
+
+@app.before_request
+def require_auth():
+    """Hook avant chaque requête pour vérifier l'authentification"""
+    # Ignorer l'authentification en mode TESTING
+    if app.config.get('TESTING'):
+        return None
+
+    # Laisser passer les requêtes OPTIONS (CORS)
+    if request.method == 'OPTIONS':
+        return None
+
+    # Exclure les routes statiques, webhooks et Socket.IO du contrôle basique
+    if request.path.startswith('/static') or request.path.startswith('/api/webhook') or request.path.startswith('/socket.io/'):
+        return None
+
+    auth = request.authorization
+
+    # Extraction sûre des identifiants (au cas où auth soit None ou malformé)
+    username = getattr(auth, 'username', None)
+    password = getattr(auth, 'password', None)
+
+    if not auth or not username or not password or not check_auth(username, password):
+        return authenticate()
 
 def init_alpaca():
     """Initialiser le client Alpaca"""
