@@ -61,6 +61,10 @@ def setup_config():
 
 import os
 
+def teardown_module(module):
+    import sys
+    sys.modules.pop('torch', None)
+
 @patch('training.train.download_data')
 @patch('training.train.MacroDataFetcher')
 def test_full_pipeline_execution(mock_macro_cls, mock_download, setup_config):
