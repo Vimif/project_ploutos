@@ -102,3 +102,9 @@ def test_full_pipeline_execution(mock_macro_cls, mock_download, setup_config):
     assert (out_path / "walk_forward_results.json").exists()
     
     print("\n--- E2E TRAINING SUCCESS ---")
+
+def teardown_module(module):
+    """Clean up sys.modules overrides created by tests/test_portfolio.py to prevent cross-test pollution."""
+    import sys
+    if "torch" in sys.modules and type(sys.modules["torch"]).__name__ == 'MagicMock':
+        sys.modules.pop("torch", None)
