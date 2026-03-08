@@ -6,6 +6,10 @@ from unittest.mock import MagicMock
 # Mock torch pour éviter l'import GPU
 sys.modules.setdefault("torch", MagicMock())
 
+def teardown_module(module):
+    """Nettoyage des mocks globaux pour éviter la pollution des tests E2E."""
+    sys.modules.pop("torch", None)
+
 import pytest
 import numpy as np
 import pandas as pd

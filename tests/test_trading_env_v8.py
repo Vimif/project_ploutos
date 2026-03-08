@@ -5,6 +5,10 @@ from unittest.mock import MagicMock
 
 sys.modules.setdefault("torch", MagicMock())
 
+def teardown_module(module):
+    """Nettoyage des mocks globaux pour éviter la pollution des tests E2E."""
+    sys.modules.pop("torch", None)
+
 import pytest
 import numpy as np
 from core.environment import TradingEnv, VALID_MODES

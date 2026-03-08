@@ -31,6 +31,24 @@ from core.ensemble import EnsemblePredictor
 # Désactiver HAS_RECURRENT par défaut pour éviter isinstance() crash.
 ensemble_module.HAS_RECURRENT = False
 
+def teardown_module(module):
+    """Nettoyage des mocks globaux pour éviter la pollution des tests E2E."""
+    for mod in [
+        "torch",
+        "torch.nn",
+        "torch.nn.functional",
+        "torch.optim",
+        "torch.utils",
+        "torch.utils.data",
+        "torch.distributions",
+        "stable_baselines3",
+        "stable_baselines3.common",
+        "stable_baselines3.common.vec_env",
+        "stable_baselines3.common.monitor",
+        "stable_baselines3.common.callbacks",
+        "sb3_contrib",
+    ]:
+        sys.modules.pop(mod, None)
 
 # ============================================================================
 # Fixtures

@@ -5,6 +5,10 @@ from unittest.mock import MagicMock
 mock_torch = MagicMock()
 sys.modules["torch"] = mock_torch
 
+def teardown_module(module):
+    """Nettoyage des mocks globaux pour éviter la pollution des tests E2E."""
+    sys.modules.pop("torch", None)
+
 import pytest
 from unittest.mock import patch
 from pathlib import Path
