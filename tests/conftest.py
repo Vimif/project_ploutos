@@ -9,7 +9,6 @@ import numpy as np
 import pandas as pd
 import pytest
 
-
 # ============================================================================
 # Shared data generators
 # ============================================================================
@@ -86,6 +85,46 @@ def make_ohlcv(ticker: str = "TEST", n_bars: int = 300, seed: int = 42) -> pd.Da
         },
         index=dates,
     )
+
+
+# ============================================================================
+# Setup / Teardown Hooks
+# ============================================================================
+
+
+def pytest_runtest_setup(item):
+    """
+    When mocking heavy dependencies like torch or stable_baselines3 via sys.modules
+    to avoid GPU imports in unit tests, teardown_module hooks may fail to prevent
+    cross-file test pollution during E2E runs. This resolves 'TypeError: isinstance()
+    arg 2 must be a type' during E2E tests by identifying and popping MagicMock
+    instances of these modules from sys.modules.
+    """
+    if "e2e" in str(item.fspath):
+        from unittest.mock import MagicMock
+
+        to_pop = []
+        for mod_name, mod in sys.modules.items():
+            if isinstance(mod, MagicMock) and any(
+                pkg in mod_name for pkg in ["torch", "stable_baselines3"]
+            ):
+                to_pop.append(mod_name)
+        for mod_name in to_pop:
+            sys.modules.pop(mod_name, None)
+
+
+def pytest_runtest_teardown(item):
+    if "e2e" in str(item.fspath):
+        from unittest.mock import MagicMock
+
+        to_pop = []
+        for mod_name, mod in sys.modules.items():
+            if isinstance(mod, MagicMock) and any(
+                pkg in mod_name for pkg in ["torch", "stable_baselines3"]
+            ):
+                to_pop.append(mod_name)
+        for mod_name in to_pop:
+            sys.modules.pop(mod_name, None)
 
 
 # ============================================================================
