@@ -109,3 +109,23 @@ def macro_data():
 def single_ohlcv():
     """Single ticker OHLCV for unit tests."""
     return make_ohlcv()
+
+
+def pytest_runtest_setup(item):
+    """Clean up sys.modules mocks before running E2E tests to prevent cross-file pollution."""
+    if "e2e" in str(item.fspath):
+        from unittest.mock import MagicMock
+
+        for mod in list(sys.modules.keys()):
+            if isinstance(sys.modules[mod], MagicMock):
+                sys.modules.pop(mod, None)
+
+
+def pytest_runtest_teardown(item):
+    """Clean up sys.modules mocks after running E2E tests to prevent cross-file pollution."""
+    if "e2e" in str(item.fspath):
+        from unittest.mock import MagicMock
+
+        for mod in list(sys.modules.keys()):
+            if isinstance(sys.modules[mod], MagicMock):
+                sys.modules.pop(mod, None)
