@@ -5,10 +5,11 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+import multiprocessing
+
 import numpy as np
 import pandas as pd
 import pytest
-
 
 # ============================================================================
 # Shared data generators
@@ -104,12 +105,33 @@ def pytest_runtest_setup(item):
     if "e2e" in str(item.fspath):
         from unittest.mock import MagicMock
 
+        # Set multiprocessing start method to fork to avoid PicklingError with mock objects
+        # SubprocVecEnv tries to use forkserver/spawn which fails if mock objects are in scope
+        try:
+            multiprocessing.set_start_method("fork", force=True)
+        except RuntimeError:
+            pass
+
         to_pop = []
-        for mod_name, mod in sys.modules.items():
+        for mod_name, mod in list(sys.modules.items()):
             if isinstance(mod, MagicMock) and any(
-                pkg in mod_name for pkg in ["torch", "stable_baselines3"]
+                pkg in mod_name for pkg in ["torch", "triton", "stable_baselines3", "sb3_contrib"]
             ):
                 to_pop.append(mod_name)
+
+        # In CI, testing modules might inadvertently inject real triton instances before mock replacements
+        # causing PyTorch initialization failures in e2e tests.
+        for mod_name in list(sys.modules.keys()):
+            if (
+                mod_name.startswith("torch")
+                or mod_name == "triton"
+                or mod_name.startswith("triton.")
+                or mod_name.startswith("stable_baselines3")
+                or mod_name.startswith("sb3_contrib")
+            ):
+                if mod_name not in to_pop:
+                    to_pop.append(mod_name)
+
         for mod_name in to_pop:
             sys.modules.pop(mod_name, None)
 
@@ -119,11 +141,25 @@ def pytest_runtest_teardown(item):
         from unittest.mock import MagicMock
 
         to_pop = []
-        for mod_name, mod in sys.modules.items():
+        for mod_name, mod in list(sys.modules.items()):
             if isinstance(mod, MagicMock) and any(
-                pkg in mod_name for pkg in ["torch", "stable_baselines3"]
+                pkg in mod_name for pkg in ["torch", "triton", "stable_baselines3", "sb3_contrib"]
             ):
                 to_pop.append(mod_name)
+
+        # In CI, testing modules might inadvertently inject real triton instances before mock replacements
+        # causing PyTorch initialization failures in e2e tests.
+        for mod_name in list(sys.modules.keys()):
+            if (
+                mod_name.startswith("torch")
+                or mod_name == "triton"
+                or mod_name.startswith("triton.")
+                or mod_name.startswith("stable_baselines3")
+                or mod_name.startswith("sb3_contrib")
+            ):
+                if mod_name not in to_pop:
+                    to_pop.append(mod_name)
+
         for mod_name in to_pop:
             sys.modules.pop(mod_name, None)
 
