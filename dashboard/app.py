@@ -26,6 +26,60 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(24))
 CORS(app)
 
+from flask import Response
+
+@app.before_request
+def require_auth():
+    """Enforce Basic Authentication on all routes except static, socket.io, and webhooks."""
+    # Skip preflight CORS requests
+    if request.method == 'OPTIONS':
+        return
+
+    # Skip testing mode
+    if app.config.get('TESTING'):
+        return
+
+    # Allowed paths without authentication
+    if request.path.startswith('/static') or request.path.startswith('/socket.io/') or request.path == '/api/webhook':
+        return
+
+    username = os.environ.get('DASHBOARD_USERNAME')
+    password = os.environ.get('DASHBOARD_PASSWORD')
+
+    # Fail securely if credentials are not configured
+    if not username or not password:
+        app.logger.error("🚨 CRITICAL: Dashboard credentials not configured in environment!")
+        return Response(
+            'Authentication configuration missing. Access denied.',
+            401,
+            {'WWW-Authenticate': 'Basic realm="Login Required"'}
+        )
+
+    auth = request.authorization
+    if not auth:
+        return Response(
+            'Could not verify your access level for that URL.\n'
+            'You have to login with proper credentials', 401,
+            {'WWW-Authenticate': 'Basic realm="Login Required"'}
+        )
+
+    req_username = getattr(auth, 'username', None)
+    req_password = getattr(auth, 'password', None)
+
+    if req_username is None or req_password is None:
+        return Response(
+            'Invalid authentication payload', 401,
+            {'WWW-Authenticate': 'Basic realm="Login Required"'}
+        )
+
+    if not (secrets.compare_digest(req_username, username) and secrets.compare_digest(req_password, password)):
+        return Response(
+            'Could not verify your access level for that URL.\n'
+            'You have to login with proper credentials', 401,
+            {'WWW-Authenticate': 'Basic realm="Login Required"'}
+        )
+
+
 # SocketIO avec gevent
 socketio = SocketIO(
     app, 
