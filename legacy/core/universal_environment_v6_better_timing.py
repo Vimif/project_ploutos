@@ -16,12 +16,11 @@ Améliorations Étage 1 (refactoring):
 - Reproductibilité via seed en mode backtest
 """
 
-from collections import deque
-from typing import Dict, Optional
-
 import gymnasium as gym
 import numpy as np
 import pandas as pd
+from typing import Dict, Optional
+from collections import deque
 
 from core.features import FeatureEngineer
 from core.transaction_costs import AdvancedTransactionModel
@@ -175,7 +174,7 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
 
     def _prepare_features_v2(self):
         """Préparer Features V2 optimisées."""
-        print("  🚀 Calcul Features V2 (optimisées pour timing)...")
+        print(f"  🚀 Calcul Features V2 (optimisées pour timing)...")
 
         self.processed_data = {}
         self.feature_engineer = FeatureEngineer()
@@ -192,7 +191,7 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
         ]
 
         print(f"  ✅ {len(self.feature_columns)} features calculées par ticker")
-        print("      Include: entry_score, support/resistance, divergences, etc.")
+        print(f"      Include: entry_score, support/resistance, divergences, etc.")
 
         # ⚡ OPTIMISATION: Convertir en numpy arrays pour accès rapide
         self.feature_arrays = {}

@@ -14,17 +14,15 @@ Usage:
 
 import sys
 from pathlib import Path
-
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import json
 import os
-from datetime import datetime
-
+import json
+import yaml
+import torch
 import numpy as np
 import pandas as pd
-import torch
-import yaml
+from datetime import datetime
 
 try:
     import optuna
@@ -33,15 +31,15 @@ except ImportError:
     sys.exit(1)
 
 from stable_baselines3 import PPO
-from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
+from stable_baselines3.common.monitor import Monitor
 
-from config.hardware import compute_optimal_params, detect_hardware
-from core.data_fetcher import download_data
-from core.data_pipeline import DataSplitter
 from core.environment import TradingEnv
 from core.macro_data import MacroDataFetcher
+from core.data_fetcher import download_data
+from core.data_pipeline import DataSplitter
 from core.utils import setup_logging
+from config.hardware import detect_hardware, compute_optimal_params
 
 logger = setup_logging(__name__, 'optimize_hyperparams.log')
 
@@ -264,7 +262,7 @@ def optimize(
     logger.info("OPTIMIZATION RESULTS")
     logger.info("=" * 70)
     logger.info(f"Best Score: {study.best_value:.4f}")
-    logger.info("Best Params:")
+    logger.info(f"Best Params:")
     for key, value in study.best_params.items():
         logger.info(f"  {key}: {value}")
 

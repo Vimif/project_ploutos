@@ -16,12 +16,12 @@ Usage:
     action = predictor.predict(observation)
 """
 
-from pathlib import Path
-from typing import List, Optional
-
 import numpy as np
+from typing import List, Optional
+from pathlib import Path
+
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+from stable_baselines3.common.vec_env import VecNormalize, DummyVecEnv
 
 try:
     from sb3_contrib import RecurrentPPO

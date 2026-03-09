@@ -14,11 +14,10 @@ Usage:
     # Returns: pd.DataFrame with columns [vix, tnx, dxy, vix_ma20, ...]
 """
 
-import warnings
-from datetime import datetime, timedelta
-
-import numpy as np
 import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+import warnings
 
 warnings.filterwarnings('ignore')
 

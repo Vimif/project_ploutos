@@ -19,7 +19,7 @@ for mod in [
     "stable_baselines3.common.callbacks",
     "sb3_contrib",
 ]:
-    sys.modules.setdefault(mod, MagicMock())
+    pass
 
 import numpy as np
 import pytest
@@ -123,7 +123,7 @@ class TestLSTMStatePropagation:
         # Activer HAS_RECURRENT et définir RecurrentPPO = MockRecurrentModel
         with (
             patch.object(ensemble_module, "HAS_RECURRENT", True),
-            patch.object(ensemble_module, "RecurrentPPO", MockRecurrentModel),
+            patch.object(ensemble_module, "RecurrentPPO", MockRecurrentModel, create=True),
         ):
             ens.predict(obs)
 
@@ -171,7 +171,7 @@ class TestConfidence:
 
         with (
             patch.object(ensemble_module, "HAS_RECURRENT", True),
-            patch.object(ensemble_module, "RecurrentPPO", MockRecurrentModel),
+            patch.object(ensemble_module, "RecurrentPPO", MockRecurrentModel, create=True),
         ):
             ens.predict_with_confidence(obs)
 

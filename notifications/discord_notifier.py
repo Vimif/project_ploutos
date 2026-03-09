@@ -8,12 +8,11 @@ Auteur: Ploutos AI Team
 Date: Dec 2025
 """
 
-import logging
 import os
-from datetime import datetime
-from typing import Dict, List, Optional
-
 import requests
+from datetime import datetime
+from typing import Optional, Dict, List
+import logging
 
 logger = logging.getLogger(__name__)
 

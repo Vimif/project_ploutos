@@ -16,10 +16,9 @@ Usage:
     test_data  = splits.test
 """
 
-from datetime import datetime
-from typing import Dict, NamedTuple, Optional
-
 import pandas as pd
+from typing import Dict, NamedTuple, Optional
+from datetime import datetime
 
 
 class DataSplit(NamedTuple):

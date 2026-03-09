@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-
 from core.reward_calculator import RewardCalculator
 
 

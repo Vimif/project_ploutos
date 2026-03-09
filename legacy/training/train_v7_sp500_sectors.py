@@ -13,30 +13,25 @@ Usage:
 
 import sys
 from pathlib import Path
-
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import warnings
-
 warnings.filterwarnings('ignore', message='.*Gym has been unmaintained.*')
 
-import json
 import os
-from datetime import datetime
-
-import numpy as np
-import torch
 import yaml
-from core.universal_environment_v6_better_timing import UniversalTradingEnvV6BetterTiming
+import json
+import torch
+import numpy as np
+from datetime import datetime
 from stable_baselines3 import PPO
+from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
 from stable_baselines3.common.callbacks import (
-    CheckpointCallback,
-    EvalCallback,
-    StopTrainingOnNoModelImprovement,
+    CheckpointCallback, EvalCallback, StopTrainingOnNoModelImprovement,
 )
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
 
+from core.universal_environment_v6_better_timing import UniversalTradingEnvV6BetterTiming
 from core.data_fetcher import download_data
 from core.data_pipeline import DataSplitter
 from core.sp500_scanner import SP500Scanner
@@ -138,12 +133,12 @@ def train_v7_model(config_path: str, force_rescan: bool = False):
     tickers, scan_results = run_sector_scan(config, force_rescan)
     config['data']['tickers'] = tickers
 
-    logger.info("\nTicker Selection:")
+    logger.info(f"\nTicker Selection:")
     logger.info(f"  Total: {len(tickers)}")
     logger.info(f"  Tickers: {', '.join(tickers)}")
 
     # 3. Telecharger donnees
-    logger.info("\nTelechargement des donnees...")
+    logger.info(f"\nTelechargement des donnees...")
     try:
         data = download_data(
             tickers=tickers,
@@ -220,7 +215,7 @@ def train_v7_model(config_path: str, force_rescan: bool = False):
         return
 
     # 5. Modele PPO
-    logger.info("\nCreation du modele PPO...")
+    logger.info(f"\nCreation du modele PPO...")
 
     policy_kwargs = {
         'net_arch': [
@@ -266,7 +261,7 @@ def train_v7_model(config_path: str, force_rescan: bool = False):
     logger.info(f"  Params: {sum(p.numel() for p in model.policy.parameters()):,}")
 
     # 6. Callbacks
-    logger.info("\nConfiguration des callbacks...")
+    logger.info(f"\nConfiguration des callbacks...")
 
     os.makedirs(config['checkpoint']['save_path'], exist_ok=True)
     os.makedirs(config['eval']['best_model_save_path'], exist_ok=True)
@@ -316,7 +311,7 @@ def train_v7_model(config_path: str, force_rescan: bool = False):
     logger.info("=" * 70)
     logger.info(f"Total timesteps: {config['training']['total_timesteps']:,}")
     logger.info(f"Tickers: {len(tickers)}")
-    logger.info("Duree estimee: ~10-14h sur RTX 3080")
+    logger.info(f"Duree estimee: ~10-14h sur RTX 3080")
     logger.info("=" * 70 + "\n")
 
     try:
@@ -380,7 +375,7 @@ def train_v7_model(config_path: str, force_rescan: bool = False):
     logger.info("=" * 70)
     logger.info(f"Modele: {final_model_path}")
     logger.info(f"Metadata: {metadata_path}")
-    logger.info("TensorBoard: tensorboard --logdir runs/v7_sp500/")
+    logger.info(f"TensorBoard: tensorboard --logdir runs/v7_sp500/")
     logger.info(f"\nBacktest: python scripts/backtest_v6.py --model {final_model_path}")
     logger.info(f"Paper: python scripts/run_trader_v6.py --model {final_model_path} --paper")
     logger.info("=" * 70)

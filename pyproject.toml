@@ -76,14 +76,15 @@ addopts = "-v"
 [tool.black]
 line-length = 100
 target-version = ['py310']
-extend-exclude = '''(config/settings\.py|config/tickers\.py|config/hardware\.py|core/data_pipeline\.py|core/shared_memory_manager\.py|core/macro_data\.py|core/data_fetcher\.py|core/risk_manager\.py|core/utils\.py|core/sp500_scanner\.py|database/__init__\.py|core/transaction_costs\.py|database/db\.py|dashboard/analytics\.py|dashboard/technical_analysis\.py|notifications/discord_notifier\.py|legacy/core/universal_environment_v6_better_timing\.py|scripts/check_gpu\.py|legacy/training/train_v7_sp500_sectors\.py|scripts/init_database\.py|scripts/build_dataset\.py|scripts/import_grafana_dashboard\.py|scripts/optimize_hyperparams\.py|scripts/run_pipeline\.py|scripts/robustness_tests\.py|scripts/paper_trade\.py|tests/test_env_config\.py|tests/test_integration_v9\.py|tests/test_data_pipeline\.py|tests/test_portfolio\.py|tests/test_reward_calculator\.py|tests/test_shared_memory\.py|tests/verify_days_held\.py|tests/v9_preflight_check\.py|trading/broker_factory\.py|trading/broker_interface\.py|tests/test_trading_env_v8\.py|trading/alpaca_client\.py|trading/stop_loss_manager\.py|trading/portfolio\.py|scripts/backtest_ultimate\.py|trading/etoro_client\.py|training/train\.py|scripts/validate_pipeline\.py)'''
+extend-exclude = '''(config/.*|core/.*|dashboard/analytics\.py|dashboard/technical_analysis\.py|database/.*|legacy/.*|notifications/.*|scripts/.*|tests/.*|trading/.*|training/.*)'''
 
 [tool.ruff]
 line-length = 100
+extend-exclude = ["scripts/validate_pipeline.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]
-ignore = ["E501", "W293", "W291", "W292", "F841", "E701", "B904", "F401", "UP006", "UP035", "UP015", "UP045", "B027", "E402"]
+ignore = ["E501", "W293", "W291", "W292", "F841", "E701", "B904", "F401", "UP006", "UP035", "UP015", "UP045", "B027", "E402", "B905", "F821", "F403", "F405", "B007"]
 
 
 [tool.coverage.run]

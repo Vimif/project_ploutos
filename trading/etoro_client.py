@@ -1,17 +1,16 @@
 # trading/etoro_client.py
 """Client pour l'API eToro avec logging JSON"""
 
-import json
 import os
+import json
 import time
+import requests
 from datetime import datetime
 from typing import Optional
-
-import requests
 from dotenv import load_dotenv
 
-from core.utils import setup_logging
 from trading.broker_interface import BrokerInterface
+from core.utils import setup_logging
 
 logger = setup_logging(__name__, 'etoro.log')
 

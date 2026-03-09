@@ -14,16 +14,14 @@ Usage :
 
 import sys
 from pathlib import Path
-
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import argparse
 import os
-from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta
-
+import argparse
 import pandas as pd
 import yfinance as yf
+from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor
 from dotenv import load_dotenv
 
 from core.utils import setup_logging
@@ -54,7 +52,7 @@ def get_alpaca_data(ticker: str, start_date: str, end_date: str, interval: str):
         from alpaca.data.requests import StockBarsRequest
         from alpaca.data.timeframe import TimeFrame
     except ImportError:
-        logger.warning("Alpaca-py non installé. `pip install alpaca-py` pour l'historique étendu.")
+        logger.warning(f"Alpaca-py non installé. `pip install alpaca-py` pour l'historique étendu.")
         return None
 
     client = StockHistoricalDataClient(api_key, api_secret)
@@ -179,9 +177,9 @@ def main():
     ask = os.getenv("ALPACA_SECRET_KEY") or os.getenv("ALPACA_PAPER_SECRET_KEY")
     
     if ak and ask:
-        logger.info("KEYS DETECTED: Alpaca keys found. Mode 'Full History' enabled.")
+        logger.info(f"KEYS DETECTED: Alpaca keys found. Mode 'Full History' enabled.")
     else:
-        logger.warning("NO KEYS: Alpaca keys not found. Mode 'Yahoo Limited' (Max 2y for 1h)")
+        logger.warning(f"NO KEYS: Alpaca keys not found. Mode 'Yahoo Limited' (Max 2y for 1h)")
 
     with ThreadPoolExecutor(max_workers=5) as executor:
         futures = [

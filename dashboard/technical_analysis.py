@@ -10,16 +10,14 @@ Version: 1.0.0
 
 import sys
 from pathlib import Path
-
 sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 import yfinance as yf
+from typing import Dict, List, Tuple, Optional
+from datetime import datetime, timedelta
+from dataclasses import dataclass, asdict
 
 from core.utils import setup_logging
 

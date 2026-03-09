@@ -1,7 +1,6 @@
 """Gestion des stop loss et take profit"""
 
 import logging
-
 logger = logging.getLogger(__name__)
 
 class StopLossManager:

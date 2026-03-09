@@ -1,11 +1,9 @@
 # core/risk_manager.py
 """Gestionnaire de risque avancé pour le trading"""
 
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
-
 import numpy as np
-
+from datetime import datetime, timedelta
+from typing import List, Dict, Tuple, Optional
 from core.utils import setup_logging
 
 logger = setup_logging(__name__)
@@ -38,7 +36,7 @@ class RiskManager:
         self.daily_wins = 0
         self.circuit_breaker_triggered = False
         
-        logger.info("🛡️ Risk Manager initialisé")
+        logger.info(f"🛡️ Risk Manager initialisé")
         logger.info(f"   Max risk/trade: {max_portfolio_risk*100:.1f}%")
         logger.info(f"   Max daily loss: {max_daily_loss*100:.1f}%")
         logger.info(f"   Max position: {max_position_size*100:.1f}%")
@@ -113,10 +111,10 @@ class RiskManager:
         if daily_pl_pct <= -self.max_daily_loss:
             if not self.circuit_breaker_triggered:
                 self.circuit_breaker_triggered = True
-                logger.error("🚨 CIRCUIT BREAKER ACTIVÉ!")
+                logger.error(f"🚨 CIRCUIT BREAKER ACTIVÉ!")
                 logger.error(f"   Perte quotidienne: ${daily_pl:,.2f} ({daily_pl_pct*100:.2f}%)")
                 logger.error(f"   Limite: {self.max_daily_loss*100:.0f}%")
-                logger.error("   🛑 TRADING SUSPENDU JUSQU'À DEMAIN")
+                logger.error(f"   🛑 TRADING SUSPENDU JUSQU'À DEMAIN")
             return False
         
         return True
@@ -414,10 +412,10 @@ class RiskManager:
         logger.info(f"Trades aujourd'hui: {report['daily_trades']} (W:{report['daily_wins']} L:{report['daily_losses']})")
         
         if report['circuit_breaker']:
-            logger.error("🚨 CIRCUIT BREAKER ACTIF - Trading suspendu")
+            logger.error(f"🚨 CIRCUIT BREAKER ACTIF - Trading suspendu")
         
         if report['risky_positions']:
-            logger.warning("\n⚠️  POSITIONS À RISQUE:")
+            logger.warning(f"\n⚠️  POSITIONS À RISQUE:")
             for pos in report['risky_positions']:
                 logger.warning(f"   {pos['symbol']}: {pos['risk_level']} - {pos['recommendation']}")
                 for warning in pos['warnings']:

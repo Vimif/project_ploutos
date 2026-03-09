@@ -1,10 +1,9 @@
 # core/utils.py
 """Fonctions utilitaires"""
 
-import gc
 import logging
+import gc
 from datetime import datetime
-
 
 def setup_logging(name: str, log_file: str = None):
     """

@@ -1,6 +1,6 @@
 import sys
-from datetime import datetime, timedelta
 from pathlib import Path
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
 # Mock numpy before it's imported by core.risk_manager
@@ -18,7 +18,6 @@ mock_utils.setup_logging.return_value = mock_logger
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.risk_manager import RiskManager
-
 
 def test_days_held_calculation():
     rm = RiskManager()

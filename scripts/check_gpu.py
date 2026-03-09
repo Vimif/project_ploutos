@@ -4,9 +4,9 @@
 Vérifie pourquoi le GPU n'est pas détecté
 """
 
-import os
-import subprocess
 import sys
+import subprocess
+import os
 
 print("\n" + "="*70)
 print("🔍 DIAGNOSTIC GPU CUDA")
@@ -142,7 +142,7 @@ try:
     import torch
     if torch.cuda.is_available():
         print("✅ GPU FONCTIONNEL - Prêt pour entraînement !")
-        print("\n   Utiliser: bash scripts/train_v4_optimal.sh")
+        print(f"\n   Utiliser: bash scripts/train_v4_optimal.sh")
     else:
         print("❌ GPU NON DÉTECTÉ par PyTorch")
         print("\n   🔧 Actions à faire:")

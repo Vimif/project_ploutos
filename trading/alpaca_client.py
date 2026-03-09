@@ -1,19 +1,18 @@
 # trading/alpaca_client.py
 """Client pour l'API Alpaca avec logging JSON"""
 
-import json
-import os
-import time
-from datetime import datetime, timedelta
-
-from alpaca.data.historical import StockHistoricalDataClient
-from alpaca.data.requests import StockBarsRequest, StockLatestQuoteRequest
-from alpaca.data.timeframe import TimeFrame
 from alpaca.trading.client import TradingClient
-from alpaca.trading.enums import OrderSide, OrderType, TimeInForce
-from alpaca.trading.requests import LimitOrderRequest, MarketOrderRequest
-from dotenv import load_dotenv
+from alpaca.trading.requests import MarketOrderRequest, LimitOrderRequest
+from alpaca.trading.enums import OrderSide, TimeInForce, OrderType
+from alpaca.data.historical import StockHistoricalDataClient
+from alpaca.data.requests import StockLatestQuoteRequest, StockBarsRequest
+from alpaca.data.timeframe import TimeFrame
 
+from datetime import datetime, timedelta
+import os
+import json
+import time
+from dotenv import load_dotenv
 from core.utils import setup_logging
 from trading.broker_interface import BrokerInterface
 
@@ -422,8 +421,8 @@ class AlpacaClient(BrokerInterface):
     def get_orders(self, status='open', limit=50):
         """Obtenir les ordres"""
         try:
-            from alpaca.trading.enums import QueryOrderStatus
             from alpaca.trading.requests import GetOrdersRequest
+            from alpaca.trading.enums import QueryOrderStatus
             
             status_map = {
                 'open': QueryOrderStatus.OPEN,

@@ -4,7 +4,7 @@ import sys
 from unittest.mock import MagicMock
 
 # Mock torch pour éviter l'import GPU
-sys.modules.setdefault("torch", MagicMock())
+pass
 
 import numpy as np
 import pandas as pd
