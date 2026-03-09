@@ -1,8 +1,8 @@
 # core/observation_builder.py
 """Observation vector construction for TradingEnv."""
 
-
 import numpy as np
+from typing import Dict, List, Optional
 
 from core.constants import EQUITY_EPSILON, OBSERVATION_CLIP_RANGE
 
@@ -12,10 +12,10 @@ class ObservationBuilder:
 
     def __init__(
         self,
-        tickers: list[str],
-        feature_columns: list[str],
-        feature_arrays: dict[str, np.ndarray],
-        macro_array: np.ndarray | None = None,
+        tickers: List[str],
+        feature_columns: List[str],
+        feature_arrays: Dict[str, np.ndarray],
+        macro_array: Optional[np.ndarray] = None,
         n_macro_features: int = 0,
     ):
         self.tickers = tickers
@@ -51,8 +51,8 @@ class ObservationBuilder:
     def build(
         self,
         current_step: int,
-        portfolio: dict[str, float],
-        prices: dict[str, float],
+        portfolio: Dict[str, float],
+        prices: Dict[str, float],
         equity: float,
         balance: float,
         initial_balance: float,
@@ -87,9 +87,9 @@ class ObservationBuilder:
         # Macro features (shared across tickers)
         if self.macro_array is not None:
             if current_step < len(self.macro_array):
-                obs[self.macro_start_idx : self.macro_end_idx] = self.macro_array[current_step]
+                obs[self.macro_start_idx:self.macro_end_idx] = self.macro_array[current_step]
             else:
-                obs[self.macro_start_idx : self.macro_end_idx] = 0.0
+                obs[self.macro_start_idx:self.macro_end_idx] = 0.0
 
         # Positions
         idx = self.pos_start_idx
