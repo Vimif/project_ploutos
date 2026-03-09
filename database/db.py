@@ -1,14 +1,16 @@
 # database/db.py
 """Gestionnaire de base de données PostgreSQL pour Ploutos"""
 
+import json
+import os
+from contextlib import contextmanager
+from datetime import date, datetime
+from typing import Any, Dict, List, Optional
+
 import psycopg2
 import psycopg2.extras
-import os
-import json
-from typing import List, Dict, Any, Optional
-from datetime import datetime, date
-from contextlib import contextmanager
 from dotenv import load_dotenv
+
 from core.utils import setup_logging
 
 load_dotenv()

@@ -21,32 +21,32 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import os
 import json
-import yaml
-import torch
-import numpy as np
-import pandas as pd
+import os
 from datetime import datetime
 from typing import Dict, List, Optional
 
+import numpy as np
+import pandas as pd
+import torch
+import yaml
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv, VecNormalize
 from stable_baselines3.common.callbacks import (
     CheckpointCallback,
     EvalCallback,
     StopTrainingOnNoModelImprovement,
 )
 from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
 
-from core.environment import TradingEnv
-from core.macro_data import MacroDataFetcher
-from core.data_fetcher import download_data
-from core.utils import setup_logging
-from config.hardware import auto_scale_config, detect_hardware, compute_optimal_params
+from config.hardware import auto_scale_config, compute_optimal_params, detect_hardware
 from config.schema import validate_config
+from core.data_fetcher import download_data
+from core.environment import TradingEnv
 from core.features import FeatureEngineer  # Turbo Init
+from core.macro_data import MacroDataFetcher
 from core.shared_memory_manager import SharedDataManager  # V9 Shared Memory
+from core.utils import setup_logging
 
 logger = setup_logging(__name__, "train.log")
 
@@ -296,8 +296,8 @@ def train_single_fold(
         # Entraîner
         logger.info(f"  Fold {fold_idx}: Training {timesteps:,} timesteps...")
         try:
-            import tqdm  # noqa: F401
             import rich  # noqa: F401
+            import tqdm  # noqa: F401
 
             _progress_bar = True
         except ImportError:
@@ -581,7 +581,7 @@ def run_walk_forward(
             f"Period: {m['test_period']}"
         )
 
-    logger.info(f"\nAGGREGATED:")
+    logger.info("\nAGGREGATED:")
     logger.info(f"  Avg Return:  {np.mean(returns):+.2%} (std: {np.std(returns):.2%})")
     logger.info(f"  Avg Sharpe:  {np.mean(sharpes):.2f} (std: {np.std(sharpes):.2f})")
     logger.info(f"  Avg MaxDD:   {np.mean(drawdowns):.2%}")

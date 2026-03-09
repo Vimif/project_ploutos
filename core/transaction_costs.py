@@ -4,9 +4,11 @@ Modèle Avancé de Coûts de Transaction
 Simule slippage, impact de marché, et latence
 """
 
+from typing import Dict, Tuple
+
 import numpy as np
 import pandas as pd
-from typing import Dict, Tuple
+
 
 class AdvancedTransactionModel:
     """

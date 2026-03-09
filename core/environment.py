@@ -12,11 +12,12 @@ Architecture:
 - State management optimisé.
 """
 
+from collections import deque
+from typing import Dict, Optional
+
 import gymnasium as gym
 import numpy as np
 import pandas as pd
-from typing import Dict, Optional
-from collections import deque
 
 from core.constants import (
     BANKRUPTCY_THRESHOLD,

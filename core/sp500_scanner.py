@@ -4,13 +4,14 @@ Selectionne les meilleures actions de chaque secteur GICS du S&P 500
 en se basant sur le Sharpe ratio annualise.
 """
 
-import os
 import json
+import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
+
 import numpy as np
 import pandas as pd
-from datetime import datetime, timedelta
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Dict, List, Optional, Any
 
 from core.data_fetcher import UniversalDataFetcher
 
@@ -44,8 +45,9 @@ class SP500Scanner:
     # ------------------------------------------------------------------
     def fetch_sp500_list(self) -> pd.DataFrame:
         """Recupere la liste des constituants S&P 500 depuis Wikipedia."""
-        import requests
         from io import StringIO
+
+        import requests
 
         url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
         headers = {

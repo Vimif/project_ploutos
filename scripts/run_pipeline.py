@@ -13,14 +13,15 @@ Usage:
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import argparse
 import glob
 import time
 
-from core.utils import setup_logging
 from config.hardware import detect_hardware
+from core.utils import setup_logging
 
 logger = setup_logging(__name__, 'pipeline.log')
 
@@ -96,17 +97,21 @@ def main():
             logger.warning("No model.zip found in folds, skipping robustness")
             return
 
-        from scripts.robustness_tests import (
-            load_model, monte_carlo_test, stress_test_crash,
-        )
+        import json
+        import os
+        from datetime import datetime
+
+        import yaml
+
         from config.hardware import compute_optimal_params
         from core.data_fetcher import download_data
         from core.data_pipeline import DataSplitter
         from core.macro_data import MacroDataFetcher
-        import yaml
-        import json
-        import os
-        from datetime import datetime
+        from scripts.robustness_tests import (
+            load_model,
+            monte_carlo_test,
+            stress_test_crash,
+        )
 
         # Charger config et données
         with open(args.config, 'r') as f:

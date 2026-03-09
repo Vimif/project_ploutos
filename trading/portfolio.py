@@ -1,10 +1,11 @@
 # trading/portfolio.py
 """Gestion du portefeuille de trading"""
 
-from datetime import datetime
-from typing import Dict, List
 import json
+from datetime import datetime
 from pathlib import Path
+from typing import Dict, List
+
 from config.settings import TRADES_DIR
 from core.utils import setup_logging
 

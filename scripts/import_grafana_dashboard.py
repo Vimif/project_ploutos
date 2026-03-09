@@ -3,11 +3,14 @@
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import json
-import requests
 import time
+
+import requests
+
 
 def wait_for_grafana(max_attempts=30):
     """Attendre que Grafana soit prêt"""
@@ -83,7 +86,7 @@ def import_dashboard():
         if response.status_code == 200:
             result = response.json()
             dashboard_url = f"http://localhost:3000{result.get('url', '')}"
-            print(f"✅ Dashboard importé avec succès!")
+            print("✅ Dashboard importé avec succès!")
             print(f"🔗 URL: {dashboard_url}")
             return True
         else:
