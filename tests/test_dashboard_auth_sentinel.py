@@ -1,7 +1,9 @@
-import pytest
 import base64
-import os
+
+import pytest
+
 from dashboard.app import app
+
 
 @pytest.fixture
 def client():
@@ -15,9 +17,9 @@ def client():
 
 @pytest.fixture
 def auth_headers():
-    credentials = f"admin:password"
-    encoded_credentials = base64.b64encode(credentials.encode()).decode('utf-8')
-    return {'Authorization': f'Basic {encoded_credentials}'}
+    credentials = "admin:password"
+    encoded_credentials = base64.b64encode(credentials.encode()).decode("utf-8")
+    return {"Authorization": f"Basic {encoded_credentials}"}
 
 def test_missing_credentials(client, monkeypatch):
     """If no environment variables are set, access should be denied securely."""
@@ -42,9 +44,9 @@ def test_invalid_auth_provided(client, monkeypatch):
     monkeypatch.setenv('DASHBOARD_USERNAME', 'admin')
     monkeypatch.setenv('DASHBOARD_PASSWORD', 'password')
 
-    credentials = f"admin:wrongpassword"
-    encoded_credentials = base64.b64encode(credentials.encode()).decode('utf-8')
-    headers = {'Authorization': f'Basic {encoded_credentials}'}
+    credentials = "admin:wrongpassword"
+    encoded_credentials = base64.b64encode(credentials.encode()).decode("utf-8")
+    headers = {"Authorization": f"Basic {encoded_credentials}"}
 
     response = client.get('/api/account', headers=headers)
     assert response.status_code == 401
@@ -56,8 +58,9 @@ def test_valid_auth_provided(client, monkeypatch, auth_headers):
     monkeypatch.setenv('DASHBOARD_PASSWORD', 'password')
 
     # Let's mock the alpaca_client since we don't have real credentials
-    import dashboard.app
     from unittest.mock import MagicMock
+
+    import dashboard.app
 
     dashboard.app.alpaca_client = MagicMock()
     dashboard.app.alpaca_client.get_account.return_value = {

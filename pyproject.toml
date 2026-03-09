@@ -47,6 +47,10 @@ dev = [
     "black>=23.7.0",
     "ruff>=0.3.0",
     "mypy>=1.5.0",
+    "flask>=3.0.0",
+    "flask-cors>=4.0.0",
+    "flask-socketio>=5.3.6",
+    "gevent>=23.9.1",
 ]
 
 [project.scripts]
@@ -72,10 +76,12 @@ addopts = "-v"
 [tool.black]
 line-length = 100
 target-version = ['py310']
+extend-exclude = "scripts/validate_pipeline\\.py"
 
 [tool.ruff]
 line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]
-ignore = ["E501"]
+ignore = ["E501", "W293", "W291", "W292"]
+extend-safe-fixes = ["W293", "W291", "W292"]

@@ -1,22 +1,24 @@
 # dashboard/app.py
 """Dashboard Flask pour le bot de trading - VERSION JSON (Sans PostgreSQL)"""
 
-import sys
 import os
 import secrets
+import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from flask import Flask, render_template, jsonify, request
+import json
+import traceback
+from collections import defaultdict
+from datetime import datetime, timedelta
+
+from flask import Flask, Response, jsonify, render_template, request
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
-import traceback
-import json
-from datetime import datetime, timedelta
-from collections import defaultdict
 
-from trading.alpaca_client import AlpacaClient
 from core.utils import setup_logging
+from trading.alpaca_client import AlpacaClient
 
 logger = setup_logging(__name__, 'dashboard.log')
 
@@ -26,58 +28,26 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(24))
 CORS(app)
 
-from flask import Response
-
 @app.before_request
 def require_auth():
     """Enforce Basic Authentication on all routes except static, socket.io, and webhooks."""
-    # Skip preflight CORS requests
-    if request.method == 'OPTIONS':
+    if request.method == 'OPTIONS' or app.config.get('TESTING'):
         return
 
-    # Skip testing mode
-    if app.config.get('TESTING'):
-        return
-
-    # Allowed paths without authentication
     if request.path.startswith('/static') or request.path.startswith('/socket.io/') or request.path == '/api/webhook':
         return
 
-    username = os.environ.get('DASHBOARD_USERNAME')
-    password = os.environ.get('DASHBOARD_PASSWORD')
-
-    # Fail securely if credentials are not configured
+    username, password = os.environ.get('DASHBOARD_USERNAME'), os.environ.get('DASHBOARD_PASSWORD')
     if not username or not password:
         app.logger.error("🚨 CRITICAL: Dashboard credentials not configured in environment!")
-        return Response(
-            'Authentication configuration missing. Access denied.',
-            401,
-            {'WWW-Authenticate': 'Basic realm="Login Required"'}
-        )
+        return Response('Authentication configuration missing. Access denied.', 401, {'WWW-Authenticate': 'Basic realm="Login Required"'})
 
     auth = request.authorization
-    if not auth:
-        return Response(
-            'Could not verify your access level for that URL.\n'
-            'You have to login with proper credentials', 401,
-            {'WWW-Authenticate': 'Basic realm="Login Required"'}
-        )
+    if not auth or getattr(auth, 'username', None) is None or getattr(auth, 'password', None) is None:
+        return Response('Could not verify your access level.', 401, {'WWW-Authenticate': 'Basic realm="Login Required"'})
 
-    req_username = getattr(auth, 'username', None)
-    req_password = getattr(auth, 'password', None)
-
-    if req_username is None or req_password is None:
-        return Response(
-            'Invalid authentication payload', 401,
-            {'WWW-Authenticate': 'Basic realm="Login Required"'}
-        )
-
-    if not (secrets.compare_digest(req_username, username) and secrets.compare_digest(req_password, password)):
-        return Response(
-            'Could not verify your access level for that URL.\n'
-            'You have to login with proper credentials', 401,
-            {'WWW-Authenticate': 'Basic realm="Login Required"'}
-        )
+    if not (secrets.compare_digest(auth.username, username) and secrets.compare_digest(auth.password, password)):
+        return Response('Could not verify your access level.', 401, {'WWW-Authenticate': 'Basic realm="Login Required"'})
 
 
 # SocketIO avec gevent
@@ -128,7 +98,7 @@ def load_trades_from_json(days=30):
         # Charger tous les fichiers trades_*.json
         for json_file in sorted(TRADES_LOG_DIR.glob('trades_*.json'), reverse=True):
             try:
-                with open(json_file, 'r') as f:
+                with open(json_file) as f:
                     file_trades = json.load(f)
                     trades.extend(file_trades)
             except Exception as e:
