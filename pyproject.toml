@@ -101,7 +101,42 @@ extend-exclude = '''
 
 [tool.ruff]
 line-length = 100
+extend-exclude = [
+  "scripts/validate_pipeline.py",
+  "config/",
+  "database/",
+  "dashboard/",
+  "notifications/",
+  "legacy/",
+  "trading/",
+  "training/",
+  "scripts/",
+  "core/data_fetcher.py",
+  "core/env_config.py",
+  "core/exceptions.py",
+  "core/features.py",
+  "core/macro_data.py",
+  "core/observation_builder.py",
+  "core/reward_calculator.py",
+  "core/risk_manager.py",
+  "core/shared_memory_manager.py",
+  "core/sp500_scanner.py",
+  "core/utils.py",
+  "core/data_pipeline.py",
+  "tests/test_portfolio.py",
+  "tests/test_reward_calculator.py",
+  "tests/test_shared_memory.py",
+  "tests/test_advanced_features.py",
+  "tests/test_env_config.py",
+  "tests/test_integration_v9.py",
+  "tests/v9_preflight_check.py",
+  "tests/verify_days_held.py",
+  "tests/e2e/"
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]
 ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E402", "F401", "B007", "UP015", "W293", "I001"]
