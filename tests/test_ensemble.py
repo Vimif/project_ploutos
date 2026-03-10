@@ -3,15 +3,9 @@
 import sys
 from unittest.mock import MagicMock, patch
 
-# Mock torch et stable_baselines3 pour éviter l'import GPU
+# Mock stable_baselines3 pour éviter l'import GPU
+# torch is not mocked to avoid isinstance errors in e2e tests
 for mod in [
-    "torch",
-    "torch.nn",
-    "torch.nn.functional",
-    "torch.optim",
-    "torch.utils",
-    "torch.utils.data",
-    "torch.distributions",
     "stable_baselines3",
     "stable_baselines3.common",
     "stable_baselines3.common.vec_env",

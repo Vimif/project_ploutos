@@ -4,6 +4,6 @@
 **Prevention:** When versioning applications (v1 -> v2), perform a security diff or review configuration files to ensure secrets are not carried over. Use environment variables for all sensitive configuration from the start.
 
 ## 2026-02-24 - Missing Authentication on Admin Dashboard
-**Vulnerability:** The dashboard API and UI (`dashboard/app.py`) had no authentication, exposing sensitive trading data and administrative actions (like closing positions).
-**Learning:** Even internal or local dashboards need authentication if they expose sensitive operations or data, especially if deployed to environments where access isn't strictly controlled by network policies. Failing to secure default configurations allows direct access.
-**Prevention:** Implement secure default authentication (e.g., HTTP Basic Auth) on all admin/dashboard endpoints. Use `secrets.compare_digest` to prevent timing attacks and ensure the application fails securely (deny access) if credentials are not configured in the environment.
+**Vulnerability:** The dashboard API, UI, and WebSockets (`dashboard/app.py`) had no authentication, exposing sensitive trading data and administrative actions (like closing positions).
+**Learning:** Even internal or local dashboards need authentication if they expose sensitive operations or data. Missing authentication on WebSocket connections was initially overlooked because standard `before_request` hooks do not automatically protect stateful upgrade connections reliably, leading to false sense of security.
+**Prevention:** Implement secure default authentication (e.g., HTTP Basic Auth) on all admin/dashboard endpoints. Always explicitly authenticate WebSocket connect events (`@socketio.on('connect')`) in addition to standard HTTP routing. Use `secrets.compare_digest` to prevent timing attacks and ensure the application fails securely (deny access) if credentials are not configured in the environment.

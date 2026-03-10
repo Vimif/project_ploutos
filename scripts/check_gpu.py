@@ -8,14 +8,14 @@ import sys
 import subprocess
 import os
 
-print("\n" + "=" * 70)
+print("\n" + "="*70)
 print("🔍 DIAGNOSTIC GPU CUDA")
-print("=" * 70 + "\n")
+print("="*70 + "\n")
 
 # 1. Vérifier nvidia-smi
 print("1️⃣  Vérification nvidia-smi...")
 try:
-    result = subprocess.run(["nvidia-smi"], capture_output=True, text=True)
+    result = subprocess.run(['nvidia-smi'], capture_output=True, text=True)
     if result.returncode == 0:
         print("✅ nvidia-smi fonctionne\n")
         print(result.stdout)
@@ -29,12 +29,12 @@ except FileNotFoundError:
     print("   sudo apt install nvidia-driver-535")
     sys.exit(1)
 
-print("\n" + "-" * 70 + "\n")
+print("\n" + "-"*70 + "\n")
 
 # 2. Vérifier CUDA
 print("2️⃣  Vérification CUDA...")
 try:
-    result = subprocess.run(["nvcc", "--version"], capture_output=True, text=True)
+    result = subprocess.run(['nvcc', '--version'], capture_output=True, text=True)
     if result.returncode == 0:
         print("✅ CUDA installé\n")
         print(result.stdout)
@@ -43,11 +43,11 @@ try:
 except FileNotFoundError:
     print("⚠️  nvcc non trouvé (normal si PyTorch pré-compilé avec CUDA)")
 
-print("\n" + "-" * 70 + "\n")
+print("\n" + "-"*70 + "\n")
 
 # 3. Vérifier variables d'environnement
 print("3️⃣  Variables d'environnement CUDA...")
-cuda_vars = ["CUDA_HOME", "CUDA_PATH", "LD_LIBRARY_PATH"]
+cuda_vars = ['CUDA_HOME', 'CUDA_PATH', 'LD_LIBRARY_PATH']
 for var in cuda_vars:
     value = os.environ.get(var)
     if value:
@@ -55,13 +55,12 @@ for var in cuda_vars:
     else:
         print(f"  ⚠️  {var} non défini")
 
-print("\n" + "-" * 70 + "\n")
+print("\n" + "-"*70 + "\n")
 
 # 4. Vérifier PyTorch
 print("4️⃣  Vérification PyTorch...")
 try:
     import torch
-
     print(f"✅ PyTorch installé: version {torch.__version__}")
     print(f"  • CUDA available: {torch.cuda.is_available()}")
 
@@ -91,9 +90,7 @@ try:
         print("\n    Option 1: Réinstaller PyTorch avec CUDA")
         print("    -----------------------------------------")
         print("    pip3 uninstall torch torchvision torchaudio")
-        print(
-            "    pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118"
-        )
+        print("    pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118")
 
         print("\n    Option 2: Vérifier compatibilité")
         print("    ------------------------------------")
@@ -103,27 +100,22 @@ try:
 except ImportError:
     print("❌ PyTorch non installé")
     print("\n💡 Installation:")
-    print(
-        "   pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118"
-    )
+    print("   pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118")
 
-print("\n" + "-" * 70 + "\n")
+print("\n" + "-"*70 + "\n")
 
 # 5. Vérifier version driver vs CUDA
 print("5️⃣  Compatibilité Driver <→ CUDA...")
 try:
-    result = subprocess.run(
-        ["nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader"],
-        capture_output=True,
-        text=True,
-    )
+    result = subprocess.run(['nvidia-smi', '--query-gpu=driver_version', '--format=csv,noheader'],
+                          capture_output=True, text=True)
     if result.returncode == 0:
         driver_version = result.stdout.strip()
         print(f"  • Driver NVIDIA: {driver_version}")
 
         # Extraire version majeure
         try:
-            driver_major = int(driver_version.split(".")[0])
+            driver_major = int(driver_version.split('.')[0])
 
             if driver_major >= 535:
                 print("  ✅ Driver compatible CUDA 12.x")
@@ -139,16 +131,15 @@ try:
 except Exception:
     print("  ⚠️  Impossible de vérifier version driver")
 
-print("\n" + "=" * 70)
+print("\n" + "="*70)
 print("🎉 DIAGNOSTIC TERMINÉ")
-print("=" * 70 + "\n")
+print("="*70 + "\n")
 
 # Résumé
 print("📊 RÉSUMÉ:\n")
 
 try:
     import torch
-
     if torch.cuda.is_available():
         print("✅ GPU FONCTIONNEL - Prêt pour entraînement !")
         print(f"\n   Utiliser: bash scripts/train_v4_optimal.sh")
@@ -159,9 +150,7 @@ try:
         print("   2. Réinstaller PyTorch avec CUDA")
         print("   3. Redémarrer terminal/session")
         print("\n   En attendant, utiliser config CPU:")
-        print(
-            "   bash scripts/train_v4_optimal.sh --config config/training_config_v4_optimal_cpu.yaml"
-        )
+        print("   bash scripts/train_v4_optimal.sh --config config/training_config_v4_optimal_cpu.yaml")
 except ImportError:
     print("❌ PyTorch non installé")
 

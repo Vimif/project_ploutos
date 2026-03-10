@@ -3,15 +3,14 @@
 
 import sys
 from pathlib import Path
-
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from database.db import init_database
 
-if __name__ == "__main__":
-    print("=" * 70)
+if __name__ == '__main__':
+    print("="*70)
     print("🗄️  INITIALISATION BASE DE DONNÉES PLOUTOS")
-    print("=" * 70)
+    print("="*70)
 
     try:
         init_database()
