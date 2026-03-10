@@ -35,8 +35,48 @@ socketio = SocketIO(
     engineio_logger=False
 )
 
+from werkzeug.wrappers import Response
+
 # Client Alpaca global
 alpaca_client = None
+
+@app.before_request
+def require_auth():
+    """Vérifier l'authentification Basic HTTP"""
+    if app.config.get('TESTING'):
+        return None
+
+    # Exclure les chemins non protégés
+    path = request.path
+    if path.startswith('/static') or path.startswith('/api/webhook'):
+        return None
+    if request.method == 'OPTIONS':
+        return None
+
+    # Récupérer les identifiants
+    username = os.environ.get('DASHBOARD_USERNAME')
+    password = os.environ.get('DASHBOARD_PASSWORD')
+
+    # Fail securely si les identifiants ne sont pas configurés
+    if not username or not password:
+        logger.error("🚨 Tentative d'accès mais DASHBOARD_USERNAME/PASSWORD non configurés")
+        return Response(
+            'Authentication required\n', 401,
+            {'WWW-Authenticate': 'Basic realm="Login Required"'}
+        )
+
+    # Récupérer les identifiants de la requête
+    auth = request.authorization
+    req_user = getattr(auth, 'username', None)
+    req_pass = getattr(auth, 'password', None)
+
+    if not req_user or not req_pass or \
+       not secrets.compare_digest(req_user, username) or \
+       not secrets.compare_digest(req_pass, password):
+        return Response(
+            'Authentication required\n', 401,
+            {'WWW-Authenticate': 'Basic realm="Login Required"'}
+        )
 
 # Dossier logs trades
 TRADES_LOG_DIR = Path('logs/trades')
@@ -430,7 +470,25 @@ def api_db_summary():
 # ========== WEBSOCKET ==========
 
 @socketio.on('connect')
-def handle_connect():
+def handle_connect(auth):
+    """Vérifier l'authentification pour les connexions WebSocket"""
+    if not app.config.get('TESTING'):
+        username = os.environ.get('DASHBOARD_USERNAME')
+        password = os.environ.get('DASHBOARD_PASSWORD')
+
+        # Deny access if auth credentials not configured
+        if not username or not password:
+            logger.error("🚨 Tentative d'accès WS mais DASHBOARD_USERNAME/PASSWORD non configurés")
+            return False
+
+        # Deny access if no auth provided or incorrect
+        if not auth or \
+           not auth.get('username') or not auth.get('password') or \
+           not secrets.compare_digest(auth.get('username'), username) or \
+           not secrets.compare_digest(auth.get('password'), password):
+            logger.error("🚨 Échec d'authentification WS")
+            return False
+
     logger.info("🔌 Client WebSocket connecté")
     emit('status', {'message': 'Connecté au serveur'})
 
