@@ -1,15 +1,9 @@
 """Tests unitaires pour TradingEnv."""
 
-import sys
-from unittest.mock import MagicMock
-
-sys.modules.setdefault("torch", MagicMock())
-
-import pytest
 import numpy as np
-from core.environment import TradingEnv, VALID_MODES
-from conftest import make_market_data, make_macro_data
+import pytest
 
+from core.environment import VALID_MODES, TradingEnv
 
 # ============================================================================
 # Fixtures (env-specific, using shared data generators from conftest)
@@ -127,9 +121,7 @@ class TestMacroData:
 
     def test_obs_size_differs_with_macro(self, market_data, macro_data):
         env_no_macro = TradingEnv(market_data, mode="train", seed=42)
-        env_macro = TradingEnv(
-            market_data, macro_data=macro_data, mode="train", seed=42
-        )
+        env_macro = TradingEnv(market_data, macro_data=macro_data, mode="train", seed=42)
         assert env_macro.observation_space.shape[0] > env_no_macro.observation_space.shape[0]
 
 
@@ -151,12 +143,8 @@ class TestFeaturesPrecomputed:
             ticker: fe.calculate_all_features(df.copy()) for ticker, df in market_data.items()
         }
 
-        env_raw = TradingEnv(
-            market_data, mode="train", seed=42, features_precomputed=False
-        )
-        env_pre = TradingEnv(
-            precomputed_data, mode="train", seed=42, features_precomputed=True
-        )
+        env_raw = TradingEnv(market_data, mode="train", seed=42, features_precomputed=False)
+        env_pre = TradingEnv(precomputed_data, mode="train", seed=42, features_precomputed=True)
 
         assert len(env_raw.feature_columns) == len(env_pre.feature_columns)
         assert set(env_raw.feature_columns) == set(env_pre.feature_columns)
@@ -200,8 +188,7 @@ class TestSlippage:
         env_train.reset()
         env_back.reset()
 
-        ticker = env_train.tickers[0]
-        price = 150.0
+        env_train.tickers[0]
 
         # Both modes should use the transaction model (not simple random)
         assert env_train.transaction_model is not None
