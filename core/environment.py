@@ -548,13 +548,13 @@ class TradingEnv(gym.Env):
             return float(volumes[-1])
         return float(volumes[self.current_step])
 
-    def _get_recent_prices(self, ticker: str) -> Optional[pd.Series]:
+    def _get_recent_prices(self, ticker: str) -> Optional[np.ndarray]:
         prices = self.close_prices[ticker]
         start = max(0, self.current_step - 20)
         end = min(self.current_step + 1, len(prices))
         if end - start < 5:
             return None
-        return pd.Series(prices[start:end])
+        return prices[start:end]
 
     def _update_equity(self):
         portfolio_value = 0.0

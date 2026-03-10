@@ -64,7 +64,7 @@ class AdvancedTransactionModel:
                                   order_size: float,
                                   current_volume: float,
                                   side: str = 'buy',
-                                  recent_prices: pd.Series = None) -> Tuple[float, Dict]:
+                                  recent_prices: np.ndarray = None) -> Tuple[float, Dict]:
         """
         Calcule le prix d'exécution réel tenant compte de tous les coûts
         
@@ -110,7 +110,7 @@ class AdvancedTransactionModel:
         
         return execution_price, costs_breakdown
     
-    def _calculate_slippage(self, ticker: str, recent_prices: pd.Series = None) -> float:
+    def _calculate_slippage(self, ticker: str, recent_prices: np.ndarray = None) -> float:
         """
         Calcule slippage dynamique basé sur volatilité récente
         
@@ -121,9 +121,16 @@ class AdvancedTransactionModel:
             # Valeur par défaut si pas de données
             return (self.min_slippage + self.max_slippage) / 2
         
-        # Calculer volatilité récente (20 périodes)
-        returns = recent_prices.pct_change().dropna()
-        volatility = returns.std()
+        # Calculer volatilité récente (20 périodes) avec numpy pour la performance
+        returns = np.diff(recent_prices) / recent_prices[:-1]
+
+        # Calculer l'écart-type avec ddof=1 pour correspondre à pandas.Series.std()
+        # En cas de division par zéro ou valeurs invalides, std() retournera nan ou 0
+        with np.errstate(divide='ignore', invalid='ignore'):
+            volatility = np.nanstd(np.where(np.isinf(returns), np.nan, returns), ddof=1)
+
+        if np.isnan(volatility):
+            volatility = 0.0
         
         # Normaliser volatilité (0-1)
         # Volatilité typique : 0.01-0.05 pour actions
@@ -187,7 +194,7 @@ class AdvancedTransactionModel:
                            order_size: float,
                            volume: float,
                            side: str = 'buy',
-                           recent_prices: pd.Series = None) -> Dict:
+                           recent_prices: np.ndarray = None) -> Dict:
         """
         Estime le coût total d'un trade AVANT exécution
         
