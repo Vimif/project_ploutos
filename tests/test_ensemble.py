@@ -3,18 +3,6 @@
 import sys
 from unittest.mock import MagicMock, patch
 
-# Mock stable_baselines3 pour éviter l'import GPU
-# torch is not mocked to avoid isinstance errors in e2e tests
-for mod in [
-    "stable_baselines3",
-    "stable_baselines3.common",
-    "stable_baselines3.common.vec_env",
-    "stable_baselines3.common.monitor",
-    "stable_baselines3.common.callbacks",
-    "sb3_contrib",
-]:
-    sys.modules.setdefault(mod, MagicMock())
-
 import pytest
 import numpy as np
 
