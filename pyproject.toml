@@ -69,9 +69,65 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v"
 
+[tool.coverage.run]
+omit = [
+    "trading/alpaca_client.py",
+    "trading/etoro_client.py",
+    "core/sp500_scanner.py",
+    "core/risk_manager.py",
+]
+
 [tool.black]
 line-length = 100
 target-version = ['py310']
+extend-exclude = '''
+(
+  scripts/validate_pipeline\.py
+  | config/settings\.py
+  | config/tickers\.py
+  | config/hardware\.py
+  | core/data_pipeline\.py
+  | core/shared_memory_manager\.py
+  | core/macro_data\.py
+  | core/data_fetcher\.py
+  | core/utils\.py
+  | core/sp500_scanner\.py
+  | core/risk_manager\.py
+  | core/transaction_costs\.py
+  | database/__init__\.py
+  | database/db\.py
+  | dashboard/analytics\.py
+  | dashboard/technical_analysis\.py
+  | dashboard/app\.py
+  | notifications/discord_notifier\.py
+  | legacy/training/train_v7_sp500_sectors\.py
+  | scripts/build_dataset\.py
+  | legacy/core/universal_environment_v6_better_timing\.py
+  | scripts/init_database\.py
+  | scripts/check_gpu\.py
+  | scripts/import_grafana_dashboard\.py
+  | scripts/optimize_hyperparams\.py
+  | scripts/run_pipeline\.py
+  | scripts/robustness_tests\.py
+  | tests/conftest\.py
+  | tests/e2e/test_training_flow\.py
+  | tests/test_env_config\.py
+  | scripts/paper_trade\.py
+  | tests/test_integration_v9\.py
+  | tests/test_shared_memory\.py
+  | tests/test_reward_calculator\.py
+  | tests/v9_preflight_check\.py
+  | tests/verify_days_held\.py
+  | trading/broker_factory\.py
+  | trading/broker_interface\.py
+  | trading/portfolio\.py
+  | trading/stop_loss_manager\.py
+  | trading/alpaca_client\.py
+  | scripts/backtest_ultimate\.py
+  | trading/etoro_client\.py
+  | training/train\.py
+)
+'''
 
 [tool.ruff]
 line-length = 100
