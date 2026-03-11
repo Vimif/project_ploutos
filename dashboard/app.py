@@ -7,7 +7,7 @@ import secrets
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, Response
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 import traceback
@@ -34,6 +34,27 @@ socketio = SocketIO(
     logger=False,
     engineio_logger=False
 )
+
+def check_auth(username, password):
+    """Vérifier les identifiants HTTP Basic Auth"""
+    expected_username = os.environ.get('DASHBOARD_USERNAME')
+    expected_password = os.environ.get('DASHBOARD_PASSWORD')
+    if not expected_username or not expected_password:
+        return False
+    return secrets.compare_digest(username, expected_username) and secrets.compare_digest(password, expected_password)
+
+def authenticate():
+    """Envoyer une réponse 401 pour demander l'authentification"""
+    return Response('Could not verify your access level for that URL.\nYou have to login with proper credentials', 401, {'WWW-Authenticate': 'Basic realm="Login Required"'})
+
+@app.before_request
+def require_auth():
+    if app.config.get('TESTING'): return
+    if request.path.startswith('/static') or request.path.startswith('/api/webhook'): return
+    if request.method == 'OPTIONS': return
+    auth = request.authorization
+    if not auth or not check_auth(getattr(auth, 'username', None) or '', getattr(auth, 'password', None) or ''):
+        return authenticate()
 
 # Client Alpaca global
 alpaca_client = None
@@ -431,6 +452,11 @@ def api_db_summary():
 
 @socketio.on('connect')
 def handle_connect():
+    if not app.config.get('TESTING'):
+        auth = request.authorization
+        if not auth or not check_auth(getattr(auth, 'username', None) or '', getattr(auth, 'password', None) or ''):
+            logger.warning("🚫 Rejet WebSocket (non authentifié)")
+            return False
     logger.info("🔌 Client WebSocket connecté")
     emit('status', {'message': 'Connecté au serveur'})
 
