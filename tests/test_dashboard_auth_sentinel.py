@@ -107,13 +107,14 @@ def test_dashboard_auth_testing_mode(client, env_missing_credentials):
 def test_dashboard_websocket_unauthorized(auth_client, env_credentials):
     """La connexion WebSocket doit être rejetée sans authentification."""
     from socketio.exceptions import ConnectionError
+
     app.config["TESTING"] = False
     try:
         # Flask-SocketIO test_client raises ConnectionRefusedError or ConnectionError if rejected
         socket_client = socketio.test_client(app, flask_test_client=auth_client)
         assert not socket_client.is_connected()
     except (ConnectionRefusedError, ConnectionError):
-        pass # Expected behavior
+        pass  # Expected behavior
     finally:
         app.config["TESTING"] = True
 

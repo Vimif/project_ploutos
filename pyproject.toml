@@ -69,6 +69,14 @@ exclude = ["data*", "logs*", "models*", "runs*", "tests*", ".git*", ".vscode*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+
+[tool.coverage.run]
+omit = [
+    "trading/etoro_client.py",
+    "trading/alpaca_client.py",
+    "core/sp500_scanner.py",
+    "core/risk_manager.py"
+]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v"

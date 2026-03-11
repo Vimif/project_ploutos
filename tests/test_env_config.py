@@ -1,7 +1,6 @@
 """Tests for EnvConfig dataclass and from_flat_dict."""
 
-import pytest
-from core.env_config import EnvConfig, TransactionConfig, RewardConfig, TradingConfig
+from core.env_config import EnvConfig
 
 
 class TestDefaults:
@@ -50,9 +49,7 @@ class TestFromFlatDict:
         assert cfg.trading.buy_pct == 0.10
 
     def test_top_level_fields(self):
-        cfg = EnvConfig.from_flat_dict(
-            {"initial_balance": 50000, "max_features_per_ticker": 20}
-        )
+        cfg = EnvConfig.from_flat_dict({"initial_balance": 50000, "max_features_per_ticker": 20})
         assert cfg.initial_balance == 50000
         assert cfg.max_features_per_ticker == 20
 
@@ -61,13 +58,15 @@ class TestFromFlatDict:
         assert cfg.initial_balance == 100_000.0
 
     def test_mixed_fields(self):
-        cfg = EnvConfig.from_flat_dict({
-            "initial_balance": 200000,
-            "commission": 0.005,
-            "reward_scaling": 3.0,
-            "max_steps": 500,
-            "features_precomputed": True,
-        })
+        cfg = EnvConfig.from_flat_dict(
+            {
+                "initial_balance": 200000,
+                "commission": 0.005,
+                "reward_scaling": 3.0,
+                "max_steps": 500,
+                "features_precomputed": True,
+            }
+        )
         assert cfg.initial_balance == 200000
         assert cfg.transaction.commission == 0.005
         assert cfg.reward.reward_scaling == 3.0
