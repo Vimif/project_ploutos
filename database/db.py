@@ -133,21 +133,22 @@ def log_trade(symbol: str, action: str, quantity: float, price: float,
 def get_trade_history(days: int = 30, symbol: str = None) -> List[Dict]:
     """Récupérer l'historique des trades"""
     try:
+        days = int(days)
         with get_connection() as conn:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             
             if symbol:
                 cur.execute("""
                     SELECT * FROM trades 
-                    WHERE timestamp > NOW() - INTERVAL %s AND symbol = %s
+                    WHERE timestamp > NOW() - INTERVAL '1 day' * %s AND symbol = %s
                     ORDER BY timestamp DESC
-                """, (f'{days} days', symbol))
+                """, (days, symbol))
             else:
                 cur.execute("""
                     SELECT * FROM trades 
-                    WHERE timestamp > NOW() - INTERVAL %s
+                    WHERE timestamp > NOW() - INTERVAL '1 day' * %s
                     ORDER BY timestamp DESC
-                """, (f'{days} days',))
+                """, (days,))
             
             return [dict(row) for row in cur.fetchall()]
     except Exception as e:
@@ -179,13 +180,14 @@ def log_position(symbol: str, quantity: float, avg_entry_price: float,
 def get_position_history(symbol: str, days: int = 30) -> List[Dict]:
     """Historique d'une position"""
     try:
+        days = int(days)
         with get_connection() as conn:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute("""
                 SELECT * FROM positions 
-                WHERE symbol = %s AND timestamp > NOW() - INTERVAL %s
+                WHERE symbol = %s AND timestamp > NOW() - INTERVAL '1 day' * %s
                 ORDER BY timestamp DESC
-            """, (symbol, f'{days} days'))
+            """, (symbol, days))
             
             return [dict(row) for row in cur.fetchall()]
     except Exception as e:
@@ -239,13 +241,14 @@ def save_daily_summary(date: date, portfolio_value: float, cash: float,
 def get_daily_summary(days: int = 30) -> List[Dict]:
     """Récupérer les résumés quotidiens"""
     try:
+        days = int(days)
         with get_connection() as conn:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute("""
                 SELECT * FROM daily_summary 
-                WHERE date > CURRENT_DATE - INTERVAL %s
+                WHERE date > CURRENT_DATE - INTERVAL '1 day' * %s
                 ORDER BY date DESC
-            """, (f'{days} days',))
+            """, (days,))
             
             return [dict(row) for row in cur.fetchall()]
     except Exception as e:
@@ -275,21 +278,22 @@ def log_prediction(symbol: str, sector: str, prediction: int, confidence: float,
 def get_prediction_history(symbol: str = None, days: int = 7) -> List[Dict]:
     """Récupérer l'historique des prédictions"""
     try:
+        days = int(days)
         with get_connection() as conn:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             
             if symbol:
                 cur.execute("""
                     SELECT * FROM predictions 
-                    WHERE symbol = %s AND timestamp > NOW() - INTERVAL %s
+                    WHERE symbol = %s AND timestamp > NOW() - INTERVAL '1 day' * %s
                     ORDER BY timestamp DESC
-                """, (symbol, f'{days} days'))
+                """, (symbol, days))
             else:
                 cur.execute("""
                     SELECT * FROM predictions 
-                    WHERE timestamp > NOW() - INTERVAL %s
+                    WHERE timestamp > NOW() - INTERVAL '1 day' * %s
                     ORDER BY timestamp DESC
-                """, (f'{days} days',))
+                """, (days,))
             
             return [dict(row) for row in cur.fetchall()]
     except Exception as e:
@@ -301,6 +305,7 @@ def get_prediction_history(symbol: str = None, days: int = 7) -> List[Dict]:
 def get_trade_statistics(days: int = 30) -> Dict:
     """Statistiques des trades"""
     try:
+        days = int(days)
         with get_connection() as conn:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute("""
@@ -313,8 +318,8 @@ def get_trade_statistics(days: int = 30) -> Dict:
                     MAX(amount) as max_trade_size,
                     MIN(amount) as min_trade_size
                 FROM trades
-                WHERE timestamp > NOW() - INTERVAL %s
-            """, (f'{days} days',))
+                WHERE timestamp > NOW() - INTERVAL '1 day' * %s
+            """, (days,))
             
             result = cur.fetchone()
             return dict(result) if result else {}
@@ -325,6 +330,8 @@ def get_trade_statistics(days: int = 30) -> Dict:
 def get_top_symbols(days: int = 30, limit: int = 10) -> List[Dict]:
     """Top symboles tradés"""
     try:
+        days = int(days)
+        limit = int(limit)
         with get_connection() as conn:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute("""
@@ -334,11 +341,11 @@ def get_top_symbols(days: int = 30, limit: int = 10) -> List[Dict]:
                     SUM(amount) as total_volume,
                     AVG(price) as avg_price
                 FROM trades
-                WHERE timestamp > NOW() - INTERVAL %s
+                WHERE timestamp > NOW() - INTERVAL '1 day' * %s
                 GROUP BY symbol
                 ORDER BY total_volume DESC
                 LIMIT %s
-            """, (f'{days} days', limit))
+            """, (days, limit))
             
             return [dict(row) for row in cur.fetchall()]
     except Exception as e:
@@ -348,14 +355,15 @@ def get_top_symbols(days: int = 30, limit: int = 10) -> List[Dict]:
 def get_portfolio_evolution(days: int = 30) -> List[Dict]:
     """Évolution du portfolio"""
     try:
+        days = int(days)
         with get_connection() as conn:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute("""
                 SELECT date, portfolio_value, total_pl, cash
                 FROM daily_summary
-                WHERE date > CURRENT_DATE - INTERVAL %s
+                WHERE date > CURRENT_DATE - INTERVAL '1 day' * %s
                 ORDER BY date ASC
-            """, (f'{days} days',))
+            """, (days,))
             
             return [dict(row) for row in cur.fetchall()]
     except Exception as e:
@@ -365,6 +373,7 @@ def get_portfolio_evolution(days: int = 30) -> List[Dict]:
 def get_win_loss_ratio(days: int = 30) -> Dict:
     """Calculer le ratio gains/pertes"""
     try:
+        days = int(days)
         with get_connection() as conn:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             
@@ -380,14 +389,14 @@ def get_win_loss_ratio(days: int = 30) -> Dict:
                         LAG(price) OVER (PARTITION BY symbol ORDER BY timestamp) as prev_price,
                         LAG(action) OVER (PARTITION BY symbol ORDER BY timestamp) as prev_action
                     FROM trades
-                    WHERE timestamp > NOW() - INTERVAL %s
+                    WHERE timestamp > NOW() - INTERVAL '1 day' * %s
                 )
                 SELECT 
                     COUNT(CASE WHEN action = 'SELL' AND price > prev_price THEN 1 END) as wins,
                     COUNT(CASE WHEN action = 'SELL' AND price <= prev_price THEN 1 END) as losses
                 FROM trade_pairs
                 WHERE action = 'SELL' AND prev_action = 'BUY'
-            """, (f'{days} days',))
+            """, (days,))
             
             result = cur.fetchone()
             if result:
