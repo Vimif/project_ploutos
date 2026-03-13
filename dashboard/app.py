@@ -7,9 +7,10 @@ import secrets
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, Response
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
+from socketio.exceptions import ConnectionRefusedError
 import traceback
 import json
 from datetime import datetime, timedelta
@@ -34,6 +35,45 @@ socketio = SocketIO(
     logger=False,
     engineio_logger=False
 )
+
+# Authentication Configuration
+DASHBOARD_USERNAME = os.environ.get('DASHBOARD_USERNAME')
+DASHBOARD_PASSWORD = os.environ.get('DASHBOARD_PASSWORD')
+
+def check_auth(username, password):
+    """Vérifier les identifiants"""
+    if not DASHBOARD_USERNAME or not DASHBOARD_PASSWORD:
+        return False
+    if not username or not password:
+        return False
+    return secrets.compare_digest(username, DASHBOARD_USERNAME) and \
+           secrets.compare_digest(password, DASHBOARD_PASSWORD)
+
+def authenticate():
+    """Envoyer une réponse 401 pour demander l'authentification"""
+    return Response(
+        'Veuillez vous connecter pour accéder au dashboard.\n', 401,
+        {'WWW-Authenticate': 'Basic realm="Login Required"'}
+    )
+
+@app.before_request
+def require_login():
+    """Vérifier l'authentification avant chaque requête"""
+    if request.method == 'OPTIONS':
+        return
+    if request.path.startswith('/static') or request.path == '/api/webhook':
+        return
+
+    # Bypassed by testing
+    if app.config.get('TESTING'):
+        return
+
+    auth = request.authorization
+    username = getattr(auth, 'username', None)
+    password = getattr(auth, 'password', None)
+
+    if not auth or not check_auth(username, password):
+        return authenticate()
 
 # Client Alpaca global
 alpaca_client = None
@@ -431,6 +471,15 @@ def api_db_summary():
 
 @socketio.on('connect')
 def handle_connect():
+    if not app.config.get('TESTING'):
+        auth = request.authorization
+        username = getattr(auth, 'username', None) if auth else None
+        password = getattr(auth, 'password', None) if auth else None
+
+        if not auth or not check_auth(username, password):
+            logger.warning("🔌 Tentative de connexion WebSocket rejetée (Non autorisé)")
+            raise ConnectionRefusedError('unauthorized')
+
     logger.info("🔌 Client WebSocket connecté")
     emit('status', {'message': 'Connecté au serveur'})
 
