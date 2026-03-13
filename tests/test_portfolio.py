@@ -3,7 +3,10 @@ from unittest.mock import MagicMock
 
 # Mock missing dependencies before importing Portfolio
 mock_torch = MagicMock()
-sys.modules["torch"] = mock_torch
+try:
+    import torch
+except ImportError:
+    sys.modules["torch"] = mock_torch
 
 import pytest
 from unittest.mock import patch

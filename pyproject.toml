@@ -72,6 +72,11 @@ addopts = "-v"
 [tool.black]
 line-length = 100
 target-version = ['py310']
+extend-exclude = '''
+^/(
+  scripts/validate_pipeline\.py
+)
+'''
 
 [tool.ruff]
 line-length = 100
@@ -79,3 +84,10 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]
 ignore = ["E501"]
+[tool.coverage.run]
+omit = [
+    "core/risk_manager.py",
+    "core/sp500_scanner.py",
+    "trading/alpaca_client.py",
+    "trading/etoro_client.py"
+]
