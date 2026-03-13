@@ -84,6 +84,7 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]
 ignore = ["E501"]
+
 [tool.coverage.run]
 omit = [
     "core/risk_manager.py",
