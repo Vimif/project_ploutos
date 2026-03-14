@@ -1,7 +1,7 @@
 # core/reward_calculator.py
 """Reward calculation using Differential Sharpe Ratio (DSR) with Welford online variance."""
 
-import numpy as np
+import math
 
 from core.constants import DSR_VARIANCE_FLOOR
 
@@ -73,9 +73,10 @@ class RewardCalculator:
         else:
             variance = self.variance_floor
 
-        std_dev = np.sqrt(variance)
+        std_dev = math.sqrt(variance)
         dsr = (ret - old_mean) / std_dev
-        reward = np.clip(dsr * 0.1, -1.0, 1.0)
+        # Fast scalar clip: math.sqrt and max/min are ~5x-10x faster than np.sqrt/np.clip for scalars
+        reward = max(-1.0, min(1.0, dsr * 0.1))
 
         # Drawdown penalty
         if self.use_drawdown_penalty and peak_value > 0:
