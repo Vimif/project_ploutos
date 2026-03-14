@@ -19,7 +19,10 @@ for mod in [
     "stable_baselines3.common.callbacks",
     "sb3_contrib",
 ]:
-    sys.modules.setdefault(mod, MagicMock())
+    try:
+        import torch
+    except ImportError:
+        sys.modules.setdefault(mod, MagicMock())
 
 import pytest
 import numpy as np
