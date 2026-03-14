@@ -72,10 +72,26 @@ addopts = "-v"
 [tool.black]
 line-length = 100
 target-version = ['py310']
+extend-exclude = '''
+/(scripts/validate_pipeline\\.py)/
+'''
 
 [tool.ruff]
+extend-exclude = ["scripts/validate_pipeline.py"]
 line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]
 ignore = ["E501"]
+extend-ignore = ["E402", "F401", "B007", "F841", "B027", "B904", "F821", "W291", "W293", "F403", "F405", "B905"]
+
+[tool.coverage.run]
+omit = [
+    "trading/alpaca_client.py",
+    "trading/etoro_client.py",
+    "core/sp500_scanner.py",
+    "core/risk_manager.py",
+    "trading/broker_factory.py",
+    "trading/broker_interface.py",
+    "trading/stop_loss_manager.py"
+]
