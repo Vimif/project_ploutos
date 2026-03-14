@@ -3,8 +3,11 @@
 import sys
 from unittest.mock import MagicMock
 
-# Mock torch pour éviter l'import GPU
-sys.modules.setdefault("torch", MagicMock())
+# Mock torch pour éviter l'import GPU uniquement si absent
+try:
+    import torch
+except ImportError:
+    sys.modules["torch"] = MagicMock()
 
 import pytest
 import numpy as np
