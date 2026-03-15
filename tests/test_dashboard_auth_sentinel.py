@@ -62,16 +62,16 @@ def test_dashboard_auth_invalid_credentials(client, env_vars):
 
 def test_dashboard_auth_missing_config(client, auth_headers):
     """Test that access is denied if environment variables are missing"""
-    original_user = os.environ.pop('DASHBOARD_USERNAME', None)
-    original_pass = os.environ.pop('DASHBOARD_PASSWORD', None)
+    original_user = os.environ.pop("DASHBOARD_USERNAME", None)
+    original_pass = os.environ.pop("DASHBOARD_PASSWORD", None)
     try:
-        response = client.get('/', headers=auth_headers)
+        response = client.get("/", headers=auth_headers)
         assert response.status_code == 401
     finally:
         if original_user is not None:
-            os.environ['DASHBOARD_USERNAME'] = original_user
+            os.environ["DASHBOARD_USERNAME"] = original_user
         if original_pass is not None:
-            os.environ['DASHBOARD_PASSWORD'] = original_pass
+            os.environ["DASHBOARD_PASSWORD"] = original_pass
 
 
 def test_dashboard_options_bypass(client):
