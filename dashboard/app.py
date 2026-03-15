@@ -43,41 +43,21 @@ TRADES_LOG_DIR = Path('logs/trades')
 
 def check_auth(username, password):
     """Vérifier si les identifiants sont corrects (Basic Auth)"""
-    expected_username = os.environ.get('DASHBOARD_USERNAME')
-    expected_password = os.environ.get('DASHBOARD_PASSWORD')
-
-    if not expected_username or not expected_password:
-        logger.error("🚨 Configuration d'authentification manquante (DASHBOARD_USERNAME/DASHBOARD_PASSWORD)")
+    expected_user = os.environ.get('DASHBOARD_USERNAME')
+    expected_pass = os.environ.get('DASHBOARD_PASSWORD')
+    if not expected_user or not expected_pass or not username or not password:
         return False
-
-    if not username or not password:
-        return False
-
-    return (secrets.compare_digest(username, expected_username) and
-            secrets.compare_digest(password, expected_password))
-
-def authenticate():
-    """Envoyer une réponse 401 demandant l'authentification"""
-    return Response(
-        'Accès non autorisé. Identifiants requis.\n', 401,
-        {'WWW-Authenticate': 'Basic realm="Dashboard Login Required"'}
-    )
+    return (secrets.compare_digest(username, expected_user) and
+            secrets.compare_digest(password, expected_pass))
 
 @app.before_request
 def require_auth():
     """Vérifier l'authentification avant chaque requête"""
-    if request.method == 'OPTIONS':
+    if request.method == 'OPTIONS' or app.config.get('TESTING'):
         return
-
-    if app.config.get('TESTING'):
-        return
-
     auth = request.authorization
-    username = getattr(auth, 'username', None)
-    password = getattr(auth, 'password', None)
-
-    if not auth or not check_auth(username, password):
-        return authenticate()
+    if not auth or not check_auth(getattr(auth, 'username', None), getattr(auth, 'password', None)):
+        return Response('Accès non autorisé.\n', 401, {'WWW-Authenticate': 'Basic realm="Login Required"'})
 
 def init_alpaca():
     """Initialiser le client Alpaca"""
@@ -468,18 +448,19 @@ def api_db_summary():
 # ========== WEBSOCKET ==========
 
 @socketio.on('connect')
-def handle_connect(auth_data=None):
+def handle_connect(auth=None):
     if not app.config.get('TESTING'):
-        # Allow passing auth via request for SocketIO connection
-        auth = request.authorization
-        username = getattr(auth, 'username', None) if auth else None
-        password = getattr(auth, 'password', None) if auth else None
+        # For WebSocket connections, we need to explicitly check auth
+        # as @app.before_request may not catch the Upgrade request depending on the WS wrapper
+        # The frontend/client should pass auth payload or headers. Let's do a basic check
+        http_auth = request.authorization
+        username = getattr(http_auth, 'username', None) if http_auth else None
+        password = getattr(http_auth, 'password', None) if http_auth else None
 
-        # Some SocketIO clients pass credentials in the query string or header differently,
-        # but basic auth should still be present in the initial HTTP request.
-        if not auth or not check_auth(username, password):
-            logger.warning("🚨 Refus de connexion WebSocket (authentification invalide)")
-            return False # Reject connection in Flask-SocketIO by returning False
+        # If no auth via standard header, fail connection
+        if not check_auth(username, password):
+            logger.warning("🚨 Refus de connexion WebSocket (non autorisé)")
+            return False # Returning False cleanly rejects the Socket.IO connection
 
     logger.info("🔌 Client WebSocket connecté")
     emit('status', {'message': 'Connecté au serveur'})
