@@ -194,18 +194,30 @@ def get_position_history(symbol: str, days: int = 30) -> List[Dict]:
 
 def log_all_positions(positions_list: List[Dict]):
     """Logger plusieurs positions en batch"""
+    if not positions_list:
+        return
+
     try:
         with get_connection() as conn:
             cur = conn.cursor()
-            for pos in positions_list:
-                cur.execute("""
-                    INSERT INTO positions (symbol, quantity, avg_entry_price, current_price,
-                                         market_value, unrealized_pl, unrealized_plpc)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                """, (pos['symbol'], pos['qty'], pos['avg_entry_price'], pos['current_price'],
-                      pos['market_value'], pos['unrealized_pl'], pos['unrealized_plpc']))
             
-            logger.info(f"✅ {len(positions_list)} positions loggées")
+            # Bolt: Optimized N+1 query problem by using batch inserts via execute_values
+            # This reduces database roundtrips from O(N) to O(1)
+            query = """
+                INSERT INTO positions (symbol, quantity, avg_entry_price, current_price,
+                                     market_value, unrealized_pl, unrealized_plpc)
+                VALUES %s
+            """
+
+            values = [
+                (pos['symbol'], pos['qty'], pos['avg_entry_price'], pos['current_price'],
+                 pos['market_value'], pos['unrealized_pl'], pos['unrealized_plpc'])
+                for pos in positions_list
+            ]
+
+            psycopg2.extras.execute_values(cur, query, values)
+
+            logger.info(f"✅ {len(positions_list)} positions loggées en batch")
     except Exception as e:
         logger.error(f"❌ Erreur log_all_positions: {e}")
 
