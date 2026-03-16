@@ -4,9 +4,10 @@ Modèle Avancé de Coûts de Transaction
 Simule slippage, impact de marché, et latence
 """
 
+import math
 import numpy as np
 import pandas as pd
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Optional
 
 class AdvancedTransactionModel:
     """
@@ -64,7 +65,7 @@ class AdvancedTransactionModel:
                                   order_size: float,
                                   current_volume: float,
                                   side: str = 'buy',
-                                  recent_prices: pd.Series = None) -> Tuple[float, Dict]:
+                                  recent_prices: Optional[np.ndarray] = None) -> Tuple[float, Dict]:
         """
         Calcule le prix d'exécution réel tenant compte de tous les coûts
         
@@ -110,7 +111,7 @@ class AdvancedTransactionModel:
         
         return execution_price, costs_breakdown
     
-    def _calculate_slippage(self, ticker: str, recent_prices: pd.Series = None) -> float:
+    def _calculate_slippage(self, ticker: str, recent_prices: Optional[np.ndarray] = None) -> float:
         """
         Calcule slippage dynamique basé sur volatilité récente
         
@@ -122,12 +123,18 @@ class AdvancedTransactionModel:
             return (self.min_slippage + self.max_slippage) / 2
         
         # Calculer volatilité récente (20 périodes)
-        returns = recent_prices.pct_change().dropna()
-        volatility = returns.std()
+        returns = np.diff(recent_prices) / recent_prices[:-1]
+
+        with np.errstate(divide='ignore', invalid='ignore'):
+            # Éviter les divisions par zéro
+            valid_returns = np.where(np.isinf(returns), np.nan, returns)
+            volatility = np.nanstd(valid_returns, ddof=1)
+            if np.isnan(volatility):
+                volatility = 0.0
         
         # Normaliser volatilité (0-1)
         # Volatilité typique : 0.01-0.05 pour actions
-        normalized_vol = np.clip(volatility / self.vol_ceiling, 0, 1)
+        normalized_vol = max(0.0, min(1.0, float(volatility / self.vol_ceiling)))
         
         # Slippage proportionnel à volatilité
         slippage = self.min_slippage + (self.max_slippage - self.min_slippage) * normalized_vol
@@ -156,10 +163,10 @@ class AdvancedTransactionModel:
         
         # Impact non-linéaire (racine carrée)
         # Gros ordres ont impact disproportionné
-        impact = self.market_impact_coef * np.sqrt(volume_ratio)
+        impact = self.market_impact_coef * math.sqrt(volume_ratio)
         
         # Clipper pour éviter valeurs absurdes
-        impact = np.clip(impact, 0, self.max_slippage)
+        impact = max(0.0, min(self.max_slippage, impact))
         
         return impact
     
@@ -187,7 +194,7 @@ class AdvancedTransactionModel:
                            order_size: float,
                            volume: float,
                            side: str = 'buy',
-                           recent_prices: pd.Series = None) -> Dict:
+                           recent_prices: Optional[np.ndarray] = None) -> Dict:
         """
         Estime le coût total d'un trade AVANT exécution
         
