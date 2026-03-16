@@ -1,14 +1,15 @@
 # database/db.py
 """Gestionnaire de base de données PostgreSQL pour Ploutos"""
 
+import json
+import os
+from contextlib import contextmanager
+from datetime import date
+
 import psycopg2
 import psycopg2.extras
-import os
-import json
-from typing import List, Dict, Any, Optional
-from datetime import datetime, date
-from contextlib import contextmanager
 from dotenv import load_dotenv
+
 from core.utils import setup_logging
 
 load_dotenv()
@@ -98,7 +99,7 @@ def init_database():
     CREATE INDEX IF NOT EXISTS idx_positions_symbol ON positions(symbol);
     CREATE INDEX IF NOT EXISTS idx_predictions_symbol ON predictions(symbol);
     """
-    
+
     try:
         with get_connection() as conn:
             cur = conn.cursor()
@@ -122,7 +123,7 @@ def log_trade(symbol: str, action: str, quantity: float, price: float,
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (symbol, action, quantity, price, amount, reason, portfolio_value, order_id))
-            
+
             trade_id = cur.fetchone()[0]
             logger.info(f"✅ Trade logged: {action} {quantity} {symbol} @ ${price:.2f}")
             return trade_id
@@ -130,25 +131,27 @@ def log_trade(symbol: str, action: str, quantity: float, price: float,
         logger.error(f"❌ Erreur log_trade: {e}")
         return None
 
-def get_trade_history(days: int = 30, symbol: str = None) -> List[Dict]:
+def get_trade_history(days: int = 30, symbol: str = None) -> list[dict]:
     """Récupérer l'historique des trades"""
     try:
+
+        days = int(days)
         with get_connection() as conn:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            
+
             if symbol:
                 cur.execute("""
                     SELECT * FROM trades 
-                    WHERE timestamp > NOW() - INTERVAL %s AND symbol = %s
+                    WHERE timestamp > NOW() - INTERVAL '1 day' * %s AND symbol = %s
                     ORDER BY timestamp DESC
-                """, (f'{days} days', symbol))
+                """, (days, symbol))
             else:
                 cur.execute("""
                     SELECT * FROM trades 
-                    WHERE timestamp > NOW() - INTERVAL %s
+                    WHERE timestamp > NOW() - INTERVAL '1 day' * %s
                     ORDER BY timestamp DESC
-                """, (f'{days} days',))
-            
+                """, (days,))
+
             return [dict(row) for row in cur.fetchall()]
     except Exception as e:
         logger.error(f"❌ Erreur get_trade_history: {e}")
@@ -170,29 +173,31 @@ def log_position(symbol: str, quantity: float, avg_entry_price: float,
                 RETURNING id
             """, (symbol, quantity, avg_entry_price, current_price,
                   market_value, unrealized_pl, unrealized_plpc))
-            
+
             return cur.fetchone()[0]
     except Exception as e:
         logger.error(f"❌ Erreur log_position: {e}")
         return None
 
-def get_position_history(symbol: str, days: int = 30) -> List[Dict]:
+def get_position_history(symbol: str, days: int = 30) -> list[dict]:
     """Historique d'une position"""
     try:
+
+        days = int(days)
         with get_connection() as conn:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute("""
                 SELECT * FROM positions 
-                WHERE symbol = %s AND timestamp > NOW() - INTERVAL %s
+                WHERE symbol = %s AND timestamp > NOW() - INTERVAL '1 day' * %s
                 ORDER BY timestamp DESC
-            """, (symbol, f'{days} days'))
-            
+            """, (symbol, days))
+
             return [dict(row) for row in cur.fetchall()]
     except Exception as e:
         logger.error(f"❌ Erreur get_position_history: {e}")
         return []
 
-def log_all_positions(positions_list: List[Dict]):
+def log_all_positions(positions_list: list[dict]):
     """Logger plusieurs positions en batch"""
     try:
         with get_connection() as conn:
@@ -204,7 +209,7 @@ def log_all_positions(positions_list: List[Dict]):
                     VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """, (pos['symbol'], pos['qty'], pos['avg_entry_price'], pos['current_price'],
                       pos['market_value'], pos['unrealized_pl'], pos['unrealized_plpc']))
-            
+
             logger.info(f"✅ {len(positions_list)} positions loggées")
     except Exception as e:
         logger.error(f"❌ Erreur log_all_positions: {e}")
@@ -231,22 +236,24 @@ def save_daily_summary(date: date, portfolio_value: float, cash: float,
                     trades_count = EXCLUDED.trades_count
             """, (date, portfolio_value, cash, buying_power, total_pl,
                   positions_count, trades_count))
-            
+
             logger.info(f"✅ Résumé quotidien sauvegardé: {date}")
     except Exception as e:
         logger.error(f"❌ Erreur save_daily_summary: {e}")
 
-def get_daily_summary(days: int = 30) -> List[Dict]:
+def get_daily_summary(days: int = 30) -> list[dict]:
     """Récupérer les résumés quotidiens"""
     try:
+
+        days = int(days)
         with get_connection() as conn:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute("""
                 SELECT * FROM daily_summary 
-                WHERE date > CURRENT_DATE - INTERVAL %s
+                WHERE date > CURRENT_DATE - INTERVAL '1 day' * %s
                 ORDER BY date DESC
-            """, (f'{days} days',))
-            
+            """, (days,))
+
             return [dict(row) for row in cur.fetchall()]
     except Exception as e:
         logger.error(f"❌ Erreur get_daily_summary: {e}")
@@ -266,31 +273,33 @@ def log_prediction(symbol: str, sector: str, prediction: int, confidence: float,
                 RETURNING id
             """, (symbol, sector, prediction, confidence, action,
                   json.dumps(features or {})))
-            
+
             return cur.fetchone()[0]
     except Exception as e:
         logger.error(f"❌ Erreur log_prediction: {e}")
         return None
 
-def get_prediction_history(symbol: str = None, days: int = 7) -> List[Dict]:
+def get_prediction_history(symbol: str = None, days: int = 7) -> list[dict]:
     """Récupérer l'historique des prédictions"""
     try:
+
+        days = int(days)
         with get_connection() as conn:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            
+
             if symbol:
                 cur.execute("""
                     SELECT * FROM predictions 
-                    WHERE symbol = %s AND timestamp > NOW() - INTERVAL %s
+                    WHERE symbol = %s AND timestamp > NOW() - INTERVAL '1 day' * %s
                     ORDER BY timestamp DESC
-                """, (symbol, f'{days} days'))
+                """, (symbol, days))
             else:
                 cur.execute("""
                     SELECT * FROM predictions 
-                    WHERE timestamp > NOW() - INTERVAL %s
+                    WHERE timestamp > NOW() - INTERVAL '1 day' * %s
                     ORDER BY timestamp DESC
-                """, (f'{days} days',))
-            
+                """, (days,))
+
             return [dict(row) for row in cur.fetchall()]
     except Exception as e:
         logger.error(f"❌ Erreur get_prediction_history: {e}")
@@ -298,9 +307,11 @@ def get_prediction_history(symbol: str = None, days: int = 7) -> List[Dict]:
 
 # ==================== ANALYTICS ====================
 
-def get_trade_statistics(days: int = 30) -> Dict:
+def get_trade_statistics(days: int = 30) -> dict:
     """Statistiques des trades"""
     try:
+
+        days = int(days)
         with get_connection() as conn:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute("""
@@ -313,18 +324,22 @@ def get_trade_statistics(days: int = 30) -> Dict:
                     MAX(amount) as max_trade_size,
                     MIN(amount) as min_trade_size
                 FROM trades
-                WHERE timestamp > NOW() - INTERVAL %s
-            """, (f'{days} days',))
-            
+                WHERE timestamp > NOW() - INTERVAL '1 day' * %s
+            """, (days,))
+
             result = cur.fetchone()
             return dict(result) if result else {}
     except Exception as e:
         logger.error(f"❌ Erreur get_trade_statistics: {e}")
         return {}
 
-def get_top_symbols(days: int = 30, limit: int = 10) -> List[Dict]:
+def get_top_symbols(days: int = 30, limit: int = 10) -> list[dict]:
     """Top symboles tradés"""
     try:
+
+        days = int(days)
+
+        limit = int(limit)
         with get_connection() as conn:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute("""
@@ -334,40 +349,44 @@ def get_top_symbols(days: int = 30, limit: int = 10) -> List[Dict]:
                     SUM(amount) as total_volume,
                     AVG(price) as avg_price
                 FROM trades
-                WHERE timestamp > NOW() - INTERVAL %s
+                WHERE timestamp > NOW() - INTERVAL '1 day' * %s
                 GROUP BY symbol
                 ORDER BY total_volume DESC
                 LIMIT %s
-            """, (f'{days} days', limit))
-            
+            """, (days, limit))
+
             return [dict(row) for row in cur.fetchall()]
     except Exception as e:
         logger.error(f"❌ Erreur get_top_symbols: {e}")
         return []
 
-def get_portfolio_evolution(days: int = 30) -> List[Dict]:
+def get_portfolio_evolution(days: int = 30) -> list[dict]:
     """Évolution du portfolio"""
     try:
+
+        days = int(days)
         with get_connection() as conn:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute("""
                 SELECT date, portfolio_value, total_pl, cash
                 FROM daily_summary
-                WHERE date > CURRENT_DATE - INTERVAL %s
+                WHERE date > CURRENT_DATE - INTERVAL '1 day' * %s
                 ORDER BY date ASC
-            """, (f'{days} days',))
-            
+            """, (days,))
+
             return [dict(row) for row in cur.fetchall()]
     except Exception as e:
         logger.error(f"❌ Erreur get_portfolio_evolution: {e}")
         return []
 
-def get_win_loss_ratio(days: int = 30) -> Dict:
+def get_win_loss_ratio(days: int = 30) -> dict:
     """Calculer le ratio gains/pertes"""
     try:
+
+        days = int(days)
         with get_connection() as conn:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            
+
             # Trouver les paires buy/sell
             cur.execute("""
                 WITH trade_pairs AS (
@@ -380,29 +399,29 @@ def get_win_loss_ratio(days: int = 30) -> Dict:
                         LAG(price) OVER (PARTITION BY symbol ORDER BY timestamp) as prev_price,
                         LAG(action) OVER (PARTITION BY symbol ORDER BY timestamp) as prev_action
                     FROM trades
-                    WHERE timestamp > NOW() - INTERVAL %s
+                    WHERE timestamp > NOW() - INTERVAL '1 day' * %s
                 )
                 SELECT 
                     COUNT(CASE WHEN action = 'SELL' AND price > prev_price THEN 1 END) as wins,
                     COUNT(CASE WHEN action = 'SELL' AND price <= prev_price THEN 1 END) as losses
                 FROM trade_pairs
                 WHERE action = 'SELL' AND prev_action = 'BUY'
-            """, (f'{days} days',))
-            
+            """, (days,))
+
             result = cur.fetchone()
             if result:
                 wins = int(result['wins'] or 0)
                 losses = int(result['losses'] or 0)
                 total = wins + losses
                 win_rate = (wins / total * 100) if total > 0 else 0
-                
+
                 return {
                     'wins': wins,
                     'losses': losses,
                     'total': total,
                     'win_rate': win_rate
                 }
-            
+
             return {'wins': 0, 'losses': 0, 'total': 0, 'win_rate': 0}
     except Exception as e:
         logger.error(f"❌ Erreur get_win_loss_ratio: {e}")
