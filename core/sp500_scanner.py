@@ -1,3 +1,4 @@
+from pathlib import Path
 """Scanner S&P 500 par secteur GICS
 
 Selectionne les meilleures actions de chaque secteur GICS du S&P 500
