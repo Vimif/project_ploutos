@@ -111,17 +111,17 @@ def run_validation(
     # ...
     # (Dans le bloc else pour training)
     # ...
-            from stable_baselines3 import PPO
-            from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
-            from stable_baselines3.common.monitor import Monitor
-
-            # Utiliser TradingEnv V9 avec features_precomputed=True
-            train_env = DummyVecEnv([
-                lambda: Monitor(TradingEnv(
-                    splits.train, mode='train', seed=seed, features_precomputed=True
-                ))
-            ])
-            # ...
+    #        from stable_baselines3 import PPO
+    #        from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+    #        from stable_baselines3.common.monitor import Monitor
+    #
+    #        # Utiliser TradingEnv V9 avec features_precomputed=True
+    #        train_env = DummyVecEnv([
+    #            lambda: Monitor(TradingEnv(
+    #                splits.train, mode='train', seed=seed, features_precomputed=True
+    #            ))
+    #        ])
+    #        # ...
     # ...
 
     # ================================================================
