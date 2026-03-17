@@ -79,9 +79,3 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]
 ignore = ["E501"]
-
-[tool.coverage.run]
-omit = [
-    "trading/alpaca_client.py",
-    "trading/etoro_client.py",
-]

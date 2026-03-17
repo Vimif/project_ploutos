@@ -14,7 +14,6 @@ Usage :
 
 import sys
 from pathlib import Path
-
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import os
@@ -27,31 +26,18 @@ from dotenv import load_dotenv
 
 from core.utils import setup_logging
 
-logger = setup_logging(__name__, "build_dataset.log")
+logger = setup_logging(__name__, 'build_dataset.log')
 load_dotenv()
 
 # Liste des tickers (Tech + Indices + Secteurs)
 TICKERS = [
-    "NVDA",
-    "MSFT",
-    "AAPL",
-    "GOOGL",
-    "AMZN",
-    "META",
-    "TSLA",  # Tech Giants
-    "SPY",
-    "QQQ",
-    "VOO",
-    "VTI",  # Indices
-    "XLE",
-    "XLF",
-    "XLK",
-    "XLV",  # Secteurs
+    "NVDA", "MSFT", "AAPL", "GOOGL", "AMZN", "META", "TSLA",  # Tech Giants
+    "SPY", "QQQ", "VOO", "VTI",                               # Indices
+    "XLE", "XLF", "XLK", "XLV"                                # Secteurs
 ]
 
 DATA_DIR = Path("data/dataset_v8")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
-
 
 def get_alpaca_data(ticker: str, start_date: str, end_date: str, interval: str):
     """Télécharge via Alpaca (Historique étendu)."""
@@ -71,14 +57,14 @@ def get_alpaca_data(ticker: str, start_date: str, end_date: str, interval: str):
 
     client = StockHistoricalDataClient(api_key, api_secret)
 
-    tf = TimeFrame.Hour if interval == "1h" else TimeFrame.Day
+    tf = TimeFrame.Hour if interval == '1h' else TimeFrame.Day
 
     req = StockBarsRequest(
         symbol_or_symbols=ticker,
         timeframe=tf,
         start=pd.Timestamp(start_date),
         end=pd.Timestamp(end_date),
-        adjustment="all",
+        adjustment='all'
     )
 
     logger.info(f"Downloading {ticker} via Alpaca ({start_date} -> {end_date})...")
@@ -89,23 +75,20 @@ def get_alpaca_data(ticker: str, start_date: str, end_date: str, interval: str):
 
         df = bars.df.reset_index()
         # Format standard : Date, Open, High, Low, Close, Volume
-        df = df.rename(
-            columns={
-                "timestamp": "Date",
-                "open": "Open",
-                "high": "High",
-                "low": "Low",
-                "close": "Close",
-                "volume": "Volume",
-            }
-        )
-        df["Date"] = pd.to_datetime(df["Date"], utc=True)
-        df = df.set_index("Date").sort_index()
-        return df[["Open", "High", "Low", "Close", "Volume"]]
+        df = df.rename(columns={
+            'timestamp': 'Date',
+            'open': 'Open',
+            'high': 'High',
+            'low': 'Low',
+            'close': 'Close',
+            'volume': 'Volume'
+        })
+        df['Date'] = pd.to_datetime(df['Date'], utc=True)
+        df = df.set_index('Date').sort_index()
+        return df[['Open', 'High', 'Low', 'Close', 'Volume']]
     except Exception as e:
         logger.error(f"Alpaca error {ticker}: {e}")
         return None
-
 
 def get_yahoo_data(ticker: str, period: str, interval: str):
     """Télécharge via Yahoo Finance (Max 2 ans 1h)."""
@@ -113,7 +96,11 @@ def get_yahoo_data(ticker: str, period: str, interval: str):
     try:
         # Yahoo gère ses limitations 'period' lui-même
         df = yf.download(
-            tickers=ticker, period=period, interval=interval, progress=False, auto_adjust=True
+            tickers=ticker,
+            period=period,
+            interval=interval,
+            progress=False,
+            auto_adjust=True
         )
         if df.empty:
             return None
@@ -122,13 +109,12 @@ def get_yahoo_data(ticker: str, period: str, interval: str):
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.droplevel(1)
 
-        df = df[["Open", "High", "Low", "Close", "Volume"]]
+        df = df[['Open', 'High', 'Low', 'Close', 'Volume']]
         df.index = pd.to_datetime(df.index, utc=True)
         return df
     except Exception as e:
         logger.error(f"Yahoo error {ticker}: {e}")
         return None
-
 
 def process_ticker(ticker, period, interval):
     """Traite un ticker : Alpaca -> Yahoo -> Sauvegarde."""
@@ -136,12 +122,12 @@ def process_ticker(ticker, period, interval):
     # Calcul des dates (pour Alpaca)
     end_date = datetime.now()
     years = 2
-    if period.endswith("y"):
+    if period.endswith('y'):
         years = int(period[:-1])
 
     start_date = end_date - timedelta(days=365 * years)
-    start_str = start_date.strftime("%Y-%m-%d")
-    end_str = end_date.strftime("%Y-%m-%d")
+    start_str = start_date.strftime('%Y-%m-%d')
+    end_str = end_date.strftime('%Y-%m-%d')
 
     # 1. Essayer Alpaca (Meilleur historique)
     df = get_alpaca_data(ticker, start_str, end_str, interval)
@@ -152,9 +138,9 @@ def process_ticker(ticker, period, interval):
         source = "Yahoo"
         # Ajuster period si 1h
         adjusted_period = period
-        if interval == "1h" and years > 2:
+        if interval == '1h' and years > 2:
             logger.warning(f"Yahoo limite 1h à 2 ans. Ajustement {period} -> 2y.")
-            adjusted_period = "2y"
+            adjusted_period = '2y'
 
         df = get_yahoo_data(ticker, adjusted_period, interval)
 
@@ -166,7 +152,7 @@ def process_ticker(ticker, period, interval):
     df = df.ffill().bfill()  # Remplir trous
 
     # Validation basique
-    if interval == "1h" and len(df) < 1000:
+    if interval == '1h' and len(df) < 1000:
         logger.warning(f"⚠️  {ticker}: Peu de données ({len(df)} lignes) via {source}")
 
     # Sauvegarde
@@ -174,11 +160,10 @@ def process_ticker(ticker, period, interval):
     df.to_csv(filename)
     logger.info(f"✅ Saved {ticker} into {filename} via {source} ({len(df)} rows)")
 
-
 def main():
     parser = argparse.ArgumentParser(description="Ploutos Dataset Builder")
-    parser.add_argument("--period", type=str, default="2y", help="Ex: 2y, 5y, 10y")
-    parser.add_argument("--interval", type=str, default="1h", help="Ex: 1h, 1d")
+    parser.add_argument('--period', type=str, default='2y', help="Ex: 2y, 5y, 10y")
+    parser.add_argument('--interval', type=str, default='1h', help="Ex: 1h, 1d")
     args = parser.parse_args()
 
     # Créer dossier
@@ -206,7 +191,6 @@ def main():
             f.result()
 
     logger.info("Dataset generation complete.")
-
 
 if __name__ == "__main__":
     main()
