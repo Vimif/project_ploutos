@@ -3,7 +3,7 @@
 import sys
 from unittest.mock import MagicMock, patch
 
-# Mock torch et stable_baselines3 pour éviter l'import GPU
+# Mock torch et stable_baselines3 pour éviter l'import GPU seulement si absents
 for mod in [
     "torch",
     "torch.nn",
@@ -19,7 +19,10 @@ for mod in [
     "stable_baselines3.common.callbacks",
     "sb3_contrib",
 ]:
-    sys.modules.setdefault(mod, MagicMock())
+    try:
+        __import__(mod)
+    except ImportError:
+        sys.modules.setdefault(mod, MagicMock())
 
 import pytest
 import numpy as np
