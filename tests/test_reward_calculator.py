@@ -23,8 +23,15 @@ class TestBasicReward:
         reward = calc.calculate(0.0, 100000, 100000, 0)
         assert reward == 0.0
 
+    def test_array_fallback(self, calc):
+        # Numpy arrays should trigger the fallback branch without crashing
+        for _ in range(5):
+            calc.calculate(np.array([100000.0]), np.array([100100.0]), np.array([100100.0]), 0)
+        reward = calc.calculate(np.array([100000.0]), np.array([100500.0]), np.array([100500.0]), 0)
+        assert isinstance(reward, np.ndarray)
+
     def test_reward_not_nan(self, calc):
-        for i in range(50):
+        for _ in range(50):
             equity = 100000 + np.random.randn() * 100
             reward = calc.calculate(100000, equity, max(100000, equity), 0)
             assert not np.isnan(reward)
@@ -68,9 +75,7 @@ class TestPenalties:
             calc.calculate(100000, 100100, 100100, 0)
         r_no_dd = calc.calculate(100000, 80000, 100000, 0)
 
-        calc2 = RewardCalculator(
-            use_drawdown_penalty=True, drawdown_penalty_factor=10.0
-        )
+        calc2 = RewardCalculator(use_drawdown_penalty=True, drawdown_penalty_factor=10.0)
         for _ in range(5):
             calc2.calculate(100000, 100100, 100100, 0)
         r_dd = calc2.calculate(100000, 80000, 100000, 0)
