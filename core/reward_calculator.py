@@ -3,6 +3,8 @@
 
 import math
 
+import numpy as np
+
 from core.constants import DSR_VARIANCE_FLOOR
 
 
@@ -77,9 +79,15 @@ class RewardCalculator:
         # Replaced `np.sqrt` with `math.sqrt` (~5x faster for scalars)
         # Replaced `np.clip` with `max(min(...))` (~10x faster for scalars)
         # In a hot RL simulation loop, avoiding NumPy overhead on scalars is crucial.
-        std_dev = math.sqrt(variance)
-        dsr = (ret - old_mean) / std_dev
-        reward = max(-1.0, min(1.0, dsr * 0.1))
+        # Fallback to numpy if arrays/tensors are passed (e.g. vectorized envs).
+        if isinstance(variance, (int, float, np.number)):
+            std_dev = math.sqrt(variance)
+            dsr = (ret - old_mean) / std_dev
+            reward = max(-1.0, min(1.0, dsr * 0.1))
+        else:
+            std_dev = np.sqrt(variance)
+            dsr = (ret - old_mean) / std_dev
+            reward = np.clip(dsr * 0.1, -1.0, 1.0)
 
         # Drawdown penalty
         if self.use_drawdown_penalty and peak_value > 0:

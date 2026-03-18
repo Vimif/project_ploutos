@@ -1,19 +1,18 @@
 """Tests du pipeline de données avec split temporel."""
 
+# Mock torch pour éviter l'import GPU
+import importlib.util
 import sys
 from unittest.mock import MagicMock
 
-# Mock torch pour éviter l'import GPU
-try:
-    import torch
-except ImportError:
+if importlib.util.find_spec("torch") is None:
     sys.modules["torch"] = MagicMock()
 
-import pytest
 import numpy as np
 import pandas as pd
-from core.data_pipeline import DataSplitter, DataSplit
+import pytest
 
+from core.data_pipeline import DataSplitter
 
 # ============================================================================
 # Fixtures
