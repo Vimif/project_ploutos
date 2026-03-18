@@ -4,22 +4,24 @@ import sys
 from unittest.mock import MagicMock, patch
 
 # Mock torch et stable_baselines3 pour éviter l'import GPU
-for mod in [
-    "torch",
-    "torch.nn",
-    "torch.nn.functional",
-    "torch.optim",
-    "torch.utils",
-    "torch.utils.data",
-    "torch.distributions",
-    "stable_baselines3",
-    "stable_baselines3.common",
-    "stable_baselines3.common.vec_env",
-    "stable_baselines3.common.monitor",
-    "stable_baselines3.common.callbacks",
-    "sb3_contrib",
-]:
-    sys.modules.setdefault(mod, MagicMock())
+try:
+    import torch
+    import stable_baselines3
+except ImportError:
+    for mod in [
+        "torch",
+        "torch.nn",
+        "torch.nn.functional",
+        "torch.optim",
+        "torch.utils",
+        "torch.utils.data",
+        "torch.distributions",
+        "stable_baselines3",
+        "stable_baselines3.ppo",
+        "sb3_contrib",
+        "sb3_contrib.ppo_recurrent",
+    ]:
+        sys.modules.setdefault(mod, MagicMock())
 
 import pytest
 import numpy as np
@@ -123,7 +125,7 @@ class TestLSTMStatePropagation:
         # Activer HAS_RECURRENT et définir RecurrentPPO = MockRecurrentModel
         with (
             patch.object(ensemble_module, "HAS_RECURRENT", True),
-            patch.object(ensemble_module, "RecurrentPPO", MockRecurrentModel),
+            patch.object(ensemble_module, "RecurrentPPO", MockRecurrentModel, create=True),
         ):
             ens.predict(obs)
 
@@ -171,7 +173,7 @@ class TestConfidence:
 
         with (
             patch.object(ensemble_module, "HAS_RECURRENT", True),
-            patch.object(ensemble_module, "RecurrentPPO", MockRecurrentModel),
+            patch.object(ensemble_module, "RecurrentPPO", MockRecurrentModel, create=True),
         ):
             ens.predict_with_confidence(obs)
 
