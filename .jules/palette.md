@@ -1,0 +1,3 @@
+## 2026-03-19 - Missing 'for' Attributes in Dashboard Form Elements
+**Learning:** Dashboard form elements within `filter-group` containers must explicitly use `for` attributes on `<label>` tags linked to the `id` of their respective `input` or `select` elements, and include `cursor: pointer` to indicate interactivity. Elements without explicit text (like icon buttons) must use `aria-label` to ensure screen reader accessibility.
+**Action:** When adding or modifying form inputs inside `filter-group` containers, always add matching `for` and `id` tags. Ensure the `<label>` provides a visual cue of interactivity via `cursor: pointer`.
