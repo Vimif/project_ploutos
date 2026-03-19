@@ -1,9 +1,11 @@
 """Tests unitaires pour TradingEnv."""
 
 import sys
+import importlib.util
 from unittest.mock import MagicMock
 
-sys.modules.setdefault("torch", MagicMock())
+if importlib.util.find_spec("torch") is None:
+    sys.modules["torch"] = MagicMock()
 
 import pytest
 import numpy as np
