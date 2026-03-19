@@ -20,7 +20,7 @@ for mod in [
     "stable_baselines3.common.callbacks",
     "sb3_contrib",
 ]:
-    if importlib.util.find_spec(mod) is None:
+    if mod not in sys.modules and importlib.util.find_spec(mod) is None:
         sys.modules[mod] = MagicMock()
 
 import pytest

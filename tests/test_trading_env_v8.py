@@ -4,7 +4,7 @@ import sys
 import importlib.util
 from unittest.mock import MagicMock
 
-if importlib.util.find_spec("torch") is None:
+if "torch" not in sys.modules and importlib.util.find_spec("torch") is None:
     sys.modules["torch"] = MagicMock()
 
 import pytest
