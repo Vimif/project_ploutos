@@ -5,8 +5,12 @@ import importlib.util
 from unittest.mock import MagicMock
 
 # Mock torch pour éviter l'import GPU sans polluer l'espace de noms E2E
-if "torch" not in sys.modules and importlib.util.find_spec("torch") is None:
-    sys.modules["torch"] = MagicMock()
+if "torch" not in sys.modules:
+    try:
+        if importlib.util.find_spec("torch") is None:
+            sys.modules["torch"] = MagicMock()
+    except (ValueError, ModuleNotFoundError):
+        sys.modules["torch"] = MagicMock()
 
 import pytest
 import numpy as np
