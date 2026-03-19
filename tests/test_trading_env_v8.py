@@ -2,9 +2,10 @@
 
 import sys
 from unittest.mock import MagicMock
-import importlib.util
 
-if importlib.util.find_spec("torch") is None:
+try:
+    import torch
+except ModuleNotFoundError:
     sys.modules["torch"] = MagicMock()
 
 import pytest
