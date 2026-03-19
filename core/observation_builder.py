@@ -2,6 +2,7 @@
 """Observation vector construction for TradingEnv."""
 
 import numpy as np
+from typing import Dict, List, Optional
 
 from core.constants import EQUITY_EPSILON, OBSERVATION_CLIP_RANGE
 
@@ -11,10 +12,10 @@ class ObservationBuilder:
 
     def __init__(
         self,
-        tickers: list[str],
-        feature_columns: list[str],
-        feature_arrays: dict[str, np.ndarray],
-        macro_array: np.ndarray | None = None,
+        tickers: List[str],
+        feature_columns: List[str],
+        feature_arrays: Dict[str, np.ndarray],
+        macro_array: Optional[np.ndarray] = None,
         n_macro_features: int = 0,
     ):
         self.tickers = tickers
@@ -52,8 +53,8 @@ class ObservationBuilder:
     def build(
         self,
         current_step: int,
-        portfolio: dict[str, float],
-        prices: dict[str, float],
+        portfolio: Dict[str, float],
+        prices: Dict[str, float],
         equity: float,
         balance: float,
         initial_balance: float,

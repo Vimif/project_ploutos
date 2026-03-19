@@ -3,10 +3,7 @@
 import sys
 from unittest.mock import MagicMock
 
-try:
-    import torch
-except ModuleNotFoundError:
-    sys.modules["torch"] = MagicMock()
+sys.modules.setdefault("torch", MagicMock())
 
 import pytest
 import numpy as np
