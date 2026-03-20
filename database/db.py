@@ -139,15 +139,15 @@ def get_trade_history(days: int = 30, symbol: str = None) -> List[Dict]:
             if symbol:
                 cur.execute("""
                     SELECT * FROM trades 
-                    WHERE timestamp > NOW() - INTERVAL '1 day' * %s AND symbol = %s
+                    WHERE timestamp > NOW() - INTERVAL %s AND symbol = %s
                     ORDER BY timestamp DESC
-                """, (int(days), symbol))
+                """, (f'{days} days', symbol))
             else:
                 cur.execute("""
                     SELECT * FROM trades 
-                    WHERE timestamp > NOW() - INTERVAL '1 day' * %s
+                    WHERE timestamp > NOW() - INTERVAL %s
                     ORDER BY timestamp DESC
-                """, (int(days),))
+                """, (f'{days} days',))
             
             return [dict(row) for row in cur.fetchall()]
     except Exception as e:
@@ -183,9 +183,9 @@ def get_position_history(symbol: str, days: int = 30) -> List[Dict]:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute("""
                 SELECT * FROM positions 
-                WHERE symbol = %s AND timestamp > NOW() - INTERVAL '1 day' * %s
+                WHERE symbol = %s AND timestamp > NOW() - INTERVAL %s
                 ORDER BY timestamp DESC
-            """, (symbol, int(days)))
+            """, (symbol, f'{days} days'))
             
             return [dict(row) for row in cur.fetchall()]
     except Exception as e:
@@ -243,9 +243,9 @@ def get_daily_summary(days: int = 30) -> List[Dict]:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute("""
                 SELECT * FROM daily_summary 
-                WHERE date > CURRENT_DATE - INTERVAL '1 day' * %s
+                WHERE date > CURRENT_DATE - INTERVAL %s
                 ORDER BY date DESC
-            """, (int(days),))
+            """, (f'{days} days',))
             
             return [dict(row) for row in cur.fetchall()]
     except Exception as e:
@@ -281,15 +281,15 @@ def get_prediction_history(symbol: str = None, days: int = 7) -> List[Dict]:
             if symbol:
                 cur.execute("""
                     SELECT * FROM predictions 
-                    WHERE symbol = %s AND timestamp > NOW() - INTERVAL '1 day' * %s
+                    WHERE symbol = %s AND timestamp > NOW() - INTERVAL %s
                     ORDER BY timestamp DESC
-                """, (symbol, int(days)))
+                """, (symbol, f'{days} days'))
             else:
                 cur.execute("""
                     SELECT * FROM predictions 
-                    WHERE timestamp > NOW() - INTERVAL '1 day' * %s
+                    WHERE timestamp > NOW() - INTERVAL %s
                     ORDER BY timestamp DESC
-                """, (int(days),))
+                """, (f'{days} days',))
             
             return [dict(row) for row in cur.fetchall()]
     except Exception as e:
@@ -313,8 +313,8 @@ def get_trade_statistics(days: int = 30) -> Dict:
                     MAX(amount) as max_trade_size,
                     MIN(amount) as min_trade_size
                 FROM trades
-                WHERE timestamp > NOW() - INTERVAL '1 day' * %s
-            """, (int(days),))
+                WHERE timestamp > NOW() - INTERVAL %s
+            """, (f'{days} days',))
             
             result = cur.fetchone()
             return dict(result) if result else {}
@@ -334,11 +334,11 @@ def get_top_symbols(days: int = 30, limit: int = 10) -> List[Dict]:
                     SUM(amount) as total_volume,
                     AVG(price) as avg_price
                 FROM trades
-                WHERE timestamp > NOW() - INTERVAL '1 day' * %s
+                WHERE timestamp > NOW() - INTERVAL %s
                 GROUP BY symbol
                 ORDER BY total_volume DESC
                 LIMIT %s
-            """, (int(days), int(limit)))
+            """, (f'{days} days', limit))
             
             return [dict(row) for row in cur.fetchall()]
     except Exception as e:
@@ -353,9 +353,9 @@ def get_portfolio_evolution(days: int = 30) -> List[Dict]:
             cur.execute("""
                 SELECT date, portfolio_value, total_pl, cash
                 FROM daily_summary
-                WHERE date > CURRENT_DATE - INTERVAL '1 day' * %s
+                WHERE date > CURRENT_DATE - INTERVAL %s
                 ORDER BY date ASC
-            """, (int(days),))
+            """, (f'{days} days',))
             
             return [dict(row) for row in cur.fetchall()]
     except Exception as e:
@@ -380,14 +380,14 @@ def get_win_loss_ratio(days: int = 30) -> Dict:
                         LAG(price) OVER (PARTITION BY symbol ORDER BY timestamp) as prev_price,
                         LAG(action) OVER (PARTITION BY symbol ORDER BY timestamp) as prev_action
                     FROM trades
-                    WHERE timestamp > NOW() - INTERVAL '1 day' * %s
+                    WHERE timestamp > NOW() - INTERVAL %s
                 )
                 SELECT 
                     COUNT(CASE WHEN action = 'SELL' AND price > prev_price THEN 1 END) as wins,
                     COUNT(CASE WHEN action = 'SELL' AND price <= prev_price THEN 1 END) as losses
                 FROM trade_pairs
                 WHERE action = 'SELL' AND prev_action = 'BUY'
-            """, (int(days),))
+            """, (f'{days} days',))
             
             result = cur.fetchone()
             if result:

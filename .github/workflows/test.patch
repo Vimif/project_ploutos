@@ -1,0 +1,8 @@
+diff --git a/.github/workflows/tests.yml b/.github/workflows/tests.yml
+--- a/.github/workflows/tests.yml
++++ b/.github/workflows/tests.yml
+@@ -10,7 +10,7 @@ jobs:
+     strategy:
+       matrix:
+-        python-version: ["3.10", "3.11"]
++        python-version: ["3.10", "3.11", "3.12"]
