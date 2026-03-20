@@ -20,6 +20,7 @@ for mod in [
     "sb3_contrib",
 ]:
     import importlib.util
+
     try:
         __import__(mod)
     except ImportError:
