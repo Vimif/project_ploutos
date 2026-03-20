@@ -3,30 +3,8 @@ import pandas as pd
 import numpy as np
 import yaml
 import shutil
-import sys
-import importlib.util
 from pathlib import Path
 from unittest.mock import patch, MagicMock
-
-# Mock torch for tests in environments where it fails to load completely
-for mod in ["torch", "torch.nn", "torch.optim", "torch.utils.data", "stable_baselines3", "sb3_contrib"]:
-    try:
-        importlib.util.find_spec(mod)
-    except Exception:
-        sys.modules[mod] = MagicMock()
-    else:
-        if importlib.util.find_spec(mod) is None:
-            sys.modules[mod] = MagicMock()
-
-try:
-    import torch
-    torch_available = True
-except Exception:
-    torch_available = False
-
-if not torch_available:
-    pytest.skip("Skipping training flow test because PyTorch is not fully available.", allow_module_level=True)
-
 from training.train import run_walk_forward
 
 # Setup paths
