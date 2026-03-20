@@ -3,7 +3,14 @@
 import sys
 from unittest.mock import MagicMock
 
-sys.modules.setdefault("torch", MagicMock())
+import importlib.util
+try:
+    importlib.util.find_spec("torch")
+except Exception:
+    sys.modules["torch"] = MagicMock()
+else:
+    if importlib.util.find_spec("torch") is None:
+        sys.modules["torch"] = MagicMock()
 
 import pytest
 import numpy as np
