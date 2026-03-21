@@ -1,7 +1,6 @@
 # core/observation_builder.py
 """Observation vector construction for TradingEnv."""
 
-
 import numpy as np
 
 from core.constants import EQUITY_EPSILON, OBSERVATION_CLIP_RANGE
