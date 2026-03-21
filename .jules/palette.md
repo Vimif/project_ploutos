@@ -1,3 +1,3 @@
-## 2024-03-20 - Adding interactive cursor and for attribute to filters
-**Learning:** Found an accessibility issue pattern where `filter-group` input and select elements lacked `for` attributes on their `<label>`s, and did not have `cursor: pointer` to indicate they are interactive.
-**Action:** Always link `<label>` elements to their associated inputs using the `for` attribute and ensure interactive elements indicate their state using `cursor: pointer`.
+## 2024-03-21 - Adding for attribute to form filters
+**Learning:** Found an accessibility issue pattern where `filter-group` input and select elements lacked `for` attributes on their `<label>`s.
+**Action:** Always link `<label>` elements to their associated inputs using the `for` attribute for screen reader compatibility and click-to-focus functionality.
