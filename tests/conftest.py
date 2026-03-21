@@ -1,13 +1,14 @@
+# ruff: noqa: E402
 import sys
-from pathlib import Path
+from pathlib import Path  # noqa: E402
 
 # Ajouter la racine du projet au PYTHONPATH
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-import numpy as np
-import pandas as pd
-import pytest
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
+import pytest  # noqa: E402
 
 # ============================================================================
 # Shared data generators

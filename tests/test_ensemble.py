@@ -1,7 +1,8 @@
+# ruff: noqa: E402
 """Tests unitaires pour EnsemblePredictor."""
 
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch  # noqa: E402
 
 # Mock torch et stable_baselines3 pour éviter l'import GPU
 for mod in [
@@ -22,11 +23,11 @@ for mod in [
     if mod not in sys.modules:
         sys.modules[mod] = MagicMock()
 
-import pytest
-import numpy as np
+import numpy as np  # noqa: E402
+import pytest  # noqa: E402
 
-import core.ensemble as ensemble_module
-from core.ensemble import EnsemblePredictor
+import core.ensemble as ensemble_module  # noqa: E402
+from core.ensemble import EnsemblePredictor  # noqa: E402
 
 # sb3_contrib est mocké → RecurrentPPO est un MagicMock (pas un type).
 # Désactiver HAS_RECURRENT par défaut pour éviter isinstance() crash.

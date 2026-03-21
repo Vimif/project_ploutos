@@ -6,10 +6,10 @@ from unittest.mock import MagicMock
 if "torch" not in sys.modules:
     sys.modules["torch"] = MagicMock()
 
-import pytest
 import numpy as np
-from core.environment import TradingEnv, VALID_MODES
-from conftest import make_market_data, make_macro_data
+import pytest
+
+from core.environment import VALID_MODES, TradingEnv
 
 # ============================================================================
 # Fixtures (env-specific, using shared data generators from conftest)
@@ -193,9 +193,6 @@ class TestSlippage:
         env_back = TradingEnv(market_data, mode="backtest", seed=42)
         env_train.reset()
         env_back.reset()
-
-        ticker = env_train.tickers[0]
-        price = 150.0
 
         # Both modes should use the transaction model (not simple random)
         assert env_train.transaction_model is not None
