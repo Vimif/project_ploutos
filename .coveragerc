@@ -1,0 +1,4 @@
+[run]
+omit =
+    trading/alpaca_client.py
+    trading/etoro_client.py
