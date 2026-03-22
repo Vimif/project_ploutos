@@ -19,10 +19,8 @@ for mod in [
     "stable_baselines3.common.callbacks",
     "sb3_contrib",
 ]:
-    if mod not in sys.modules:
-        sys.modules[mod] = MagicMock()
+    sys.modules.setdefault(mod, MagicMock())
 
-# ruff: noqa: E402
 import pytest
 import numpy as np
 
