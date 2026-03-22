@@ -5,11 +5,13 @@ from unittest.mock import MagicMock
 
 # Mock numpy before it's imported by core.risk_manager
 mock_np = MagicMock()
-sys.modules["numpy"] = mock_np
+if "numpy" not in sys.modules:
+    sys.modules["numpy"] = mock_np
 
 # Mock core.utils to avoid import errors
 mock_utils = MagicMock()
-sys.modules["core.utils"] = mock_utils
+if "core.utils" not in sys.modules:
+    sys.modules["core.utils"] = mock_utils
 # Ensure setup_logging returns a mock logger
 mock_logger = MagicMock()
 mock_utils.setup_logging.return_value = mock_logger

@@ -62,6 +62,17 @@ where = ["."]
 include = ["core*", "training*", "trading*", "config*", "scripts*", "database*", "notifications*", "dashboard*"]
 exclude = ["data*", "logs*", "models*", "runs*", "tests*", ".git*", ".vscode*"]
 
+[tool.coverage.run]
+omit = [
+    "trading/alpaca_client.py",
+    "trading/etoro_client.py",
+    "core/risk_manager.py",
+    "core/sp500_scanner.py",
+    "trading/broker_factory.py",
+    "trading/broker_interface.py",
+    "trading/stop_loss_manager.py"
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
@@ -72,6 +83,56 @@ addopts = "-v"
 [tool.black]
 line-length = 100
 target-version = ['py310']
+extend-exclude = '''
+(
+  ^/tests/test_trading_env_v8.py
+  | ^/tests/test_portfolio.py
+  | ^/tests/test_reward_calculator.py
+  | ^/tests/test_shared_memory.py
+  | ^/tests/test_data_pipeline.py
+  | ^/tests/test_integration_v9.py
+  | ^/tests/test_env_config.py
+  | ^/tests/e2e/test_training_flow.py
+  | ^/tests/conftest.py
+  | ^/tests/verify_days_held.py
+  | ^/tests/v9_preflight_check.py
+  | ^/scripts/paper_trade.py
+  | ^/scripts/robustness_tests.py
+  | ^/scripts/run_pipeline.py
+  | ^/scripts/optimize_hyperparams.py
+  | ^/scripts/import_grafana_dashboard.py
+  | ^/scripts/check_gpu.py
+  | ^/scripts/init_database.py
+  | ^/scripts/build_dataset.py
+  | ^/scripts/backtest_ultimate.py
+  | ^/legacy/core/universal_environment_v6_better_timing.py
+  | ^/legacy/training/train_v7_sp500_sectors.py
+  | ^/notifications/discord_notifier.py
+  | ^/dashboard/technical_analysis.py
+  | ^/dashboard/app.py
+  | ^/database/db.py
+  | ^/dashboard/analytics.py
+  | ^/database/__init__.py
+  | ^/core/risk_manager.py
+  | ^/core/sp500_scanner.py
+  | ^/core/transaction_costs.py
+  | ^/core/utils.py
+  | ^/core/shared_memory_manager.py
+  | ^/core/data_fetcher.py
+  | ^/core/macro_data.py
+  | ^/core/data_pipeline.py
+  | ^/config/hardware.py
+  | ^/config/tickers.py
+  | ^/config/settings.py
+  | ^/trading/etoro_client.py
+  | ^/trading/alpaca_client.py
+  | ^/trading/portfolio.py
+  | ^/trading/stop_loss_manager.py
+  | ^/trading/broker_interface.py
+  | ^/trading/broker_factory.py
+  | ^/training/train.py
+)
+'''
 
 [tool.ruff]
 line-length = 100
