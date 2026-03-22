@@ -3,8 +3,7 @@
 import sys
 from unittest.mock import MagicMock
 
-if 'torch' not in sys.modules:
-    sys.modules['torch'] = MagicMock()
+
 
 import pytest
 import numpy as np
