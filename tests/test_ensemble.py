@@ -3,6 +3,7 @@
 import sys
 from unittest.mock import MagicMock, patch
 
+# ruff: noqa: E402
 # Mock torch et stable_baselines3 pour éviter l'import GPU
 for mod in [
     "torch",
@@ -19,7 +20,8 @@ for mod in [
     "stable_baselines3.common.callbacks",
     "sb3_contrib",
 ]:
-    sys.modules.setdefault(mod, MagicMock())
+    if mod not in sys.modules:
+        sys.modules[mod] = MagicMock()
 
 import pytest
 import numpy as np
