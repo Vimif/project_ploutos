@@ -1,10 +1,14 @@
-import pytest
-import pandas as pd
-import numpy as np
-import yaml
+# ruff: noqa: E402
+
 import shutil
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
+
+import numpy as np
+import pandas as pd
+import pytest
+import yaml
+
 from training.train import run_walk_forward
 
 # Setup paths

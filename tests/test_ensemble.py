@@ -23,8 +23,8 @@ for mod in [
     if mod not in sys.modules:
         sys.modules[mod] = MagicMock()
 
-import pytest
 import numpy as np
+import pytest
 
 import core.ensemble as ensemble_module
 from core.ensemble import EnsemblePredictor

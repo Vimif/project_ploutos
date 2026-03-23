@@ -1,3 +1,5 @@
+# ruff: noqa: E402
+
 # core/macro_data.py
 """Récupération des données macroéconomiques (VIX, TNX, DXY).
 
@@ -14,10 +16,11 @@ Usage:
     # Returns: pd.DataFrame with columns [vix, tnx, dxy, vix_ma20, ...]
 """
 
-import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
 import warnings
+from datetime import datetime, timedelta
+
+import numpy as np
+import pandas as pd
 
 warnings.filterwarnings("ignore")
 
