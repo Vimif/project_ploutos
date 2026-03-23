@@ -1,0 +1,3 @@
+## 2024-05-14 - Pre-allocating Observation Arrays in TradingEnv
+**Learning:** In high-frequency reinforcement learning environments (like the core `ObservationBuilder`), creating lists of arrays (`obs_parts`), converting them to numpy arrays in a list comprehension, and concatenating them every `step()` is a major performance bottleneck due to continuous memory allocations.
+**Action:** Pre-allocate a contiguous numpy buffer (`np.zeros`) and pre-compute slice indices in `__init__`. Populate this buffer directly during `build()`, and apply global element-wise operations (`np.nan_to_num`, `np.clip`) once over the entire array (using `copy=False` or `out=`). This avoids repetitive allocations and speeds up observation building significantly (up to ~3-4x faster).
