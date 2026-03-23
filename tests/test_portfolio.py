@@ -2,10 +2,10 @@ import sys
 from unittest.mock import MagicMock
 
 # Mock missing dependencies before importing Portfolio
-if 'torch' not in sys.modules:
-    sys.modules['torch'] = MagicMock()
+mock_torch = MagicMock()
+sys.modules["torch"] = mock_torch
 
-import pytest # ruff: noqa: E402
+import pytest
 from unittest.mock import patch
 from pathlib import Path
 from trading.portfolio import Portfolio

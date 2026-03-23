@@ -3,10 +3,9 @@
 import sys
 from unittest.mock import MagicMock
 
-if 'torch' not in sys.modules:
-    sys.modules['torch'] = MagicMock()
+sys.modules.setdefault("torch", MagicMock())
 
-import pytest # ruff: noqa: E402
+import pytest
 import numpy as np
 from core.environment import TradingEnv, VALID_MODES
 from conftest import make_market_data, make_macro_data
