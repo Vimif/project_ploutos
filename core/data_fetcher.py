@@ -3,11 +3,11 @@ Data Fetcher Multi-Sources avec Fallback Automatique
 Priorise Alpaca → yfinance → Polygon.io
 """
 
-import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
 import os
 import warnings
+from datetime import datetime, timedelta
+
+import pandas as pd
 
 warnings.filterwarnings("ignore")
 
@@ -45,10 +45,11 @@ class UniversalDataFetcher:
     def _init_alpaca(self):
         """Initialise Alpaca avec la nouvelle API alpaca-py"""
         try:
+            from datetime import datetime, timedelta
+
             from alpaca.data.historical import StockHistoricalDataClient
             from alpaca.data.requests import StockBarsRequest
             from alpaca.data.timeframe import TimeFrame
-            from datetime import datetime, timedelta
 
             # ✅ FIX : Nom correct des variables
             api_key = os.getenv("ALPACA_API_KEY")
@@ -175,9 +176,10 @@ class UniversalDataFetcher:
 
     def _fetch_alpaca(self, ticker, start_date, end_date, interval):
         """Récupère depuis Alpaca (nouvelle API alpaca-py)"""
+        from datetime import datetime
+
         from alpaca.data.requests import StockBarsRequest
         from alpaca.data.timeframe import TimeFrame
-        from datetime import datetime
 
         # Mapping interval
         timeframe_map = {
@@ -476,14 +478,15 @@ def download_data(tickers, period="2y", interval="1h", max_workers=3, dataset_pa
     Returns:
         dict: {ticker: DataFrame} ou DataFrame si ticker unique
     """
-    import os
     import glob
-    import pandas as pd
+    import os
     from datetime import datetime, timedelta
+
+    import pandas as pd
+
     from core.data_fetcher import UniversalDataFetcher, logger  # Réutiliser logger existant
 
     # 1. Chargement LOCAL (Priorité absolue si dataset_path fourni)
-    import glob
 
     if dataset_path:
         print(f"DEBUG DATASET_PATH: {dataset_path} (Exists: {os.path.exists(dataset_path)})")

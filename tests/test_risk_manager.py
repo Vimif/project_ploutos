@@ -9,8 +9,9 @@ if "core.utils" not in sys.modules:
     mock_utils.setup_logging.return_value = mock_logger
     sys.modules["core.utils"] = mock_utils
 
-from core.risk_manager import RiskManager
 from datetime import datetime, timedelta
+
+from core.risk_manager import RiskManager
 
 
 def test_risk_manager_basic():

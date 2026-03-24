@@ -7,7 +7,6 @@ if "core.utils" not in sys.modules:
     mock_utils.setup_logging.return_value = mock_logger
     sys.modules["core.utils"] = mock_utils
 
-import pytest
 from trading.stop_loss_manager import StopLossManager
 
 
