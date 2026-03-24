@@ -1,7 +1,6 @@
 # core/observation_builder.py
 """Observation vector construction for TradingEnv."""
 
-
 import numpy as np
 
 from core.constants import EQUITY_EPSILON, OBSERVATION_CLIP_RANGE
@@ -121,8 +120,8 @@ class ObservationBuilder:
             buf[idx] = max(0.0, min(1.0, buf[idx]))
 
         ps_start = self._portfolio_slice.start
-        buf[ps_start] = max(0.0, min(1.0, buf[ps_start]))          # cash_pct
-        buf[ps_start + 1] = max(-1.0, min(5.0, buf[ps_start + 1])) # total_return
+        buf[ps_start] = max(0.0, min(1.0, buf[ps_start]))  # cash_pct
+        buf[ps_start + 1] = max(-1.0, min(5.0, buf[ps_start + 1]))  # total_return
         buf[ps_start + 2] = max(0.0, min(1.0, buf[ps_start + 2]))  # drawdown
 
         return buf.copy()  # Return copy to prevent environment mutating internal buffer
