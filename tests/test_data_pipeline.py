@@ -4,8 +4,10 @@ import sys
 from unittest.mock import MagicMock
 
 # Mock torch pour éviter l'import GPU
-sys.modules.setdefault("torch", MagicMock())
+if "torch" not in sys.modules:
+    sys.modules["torch"] = MagicMock()
 
+# ruff: noqa: E402
 import pytest
 import numpy as np
 import pandas as pd
