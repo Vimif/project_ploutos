@@ -1,0 +1,3 @@
+## 2026-02-15 - [Form Label Accessibility in Custom Filters]
+**Learning:** In the custom dashboard filter components (`.filter-group`), explicitly defining the `for` attribute on labels and setting `cursor: pointer` significantly improves the form's usability. This ensures click-to-focus on mobile devices and associates context for screen readers navigating the dashboard.
+**Action:** Always verify that every custom form input has an explicitly associated `<label>` using the `for` attribute that points to the input's `id`. Add `cursor: pointer` to interactive labels visually grouping form elements.
