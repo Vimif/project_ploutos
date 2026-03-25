@@ -14,7 +14,7 @@ def model():
 @pytest.fixture
 def recent_prices():
     np.random.seed(42)
-    return (100 + np.cumsum(np.random.randn(30) * 0.5))
+    return 100 + np.cumsum(np.random.randn(30) * 0.5)
 
 
 class TestSlippage:
@@ -31,12 +31,12 @@ class TestSlippage:
 
     def test_slippage_increases_with_volatility(self, model):
         # Calm market
-        calm = (100 + np.arange(30) * 0.01)
+        calm = 100 + np.arange(30) * 0.01
         slippage_calm = model._calculate_slippage("AAPL", calm)
 
         # Volatile market
         np.random.seed(99)
-        volatile = (100 + np.cumsum(np.random.randn(30) * 5))
+        volatile = 100 + np.cumsum(np.random.randn(30) * 5)
         slippage_volatile = model._calculate_slippage("NVDA", volatile)
 
         assert slippage_volatile > slippage_calm
