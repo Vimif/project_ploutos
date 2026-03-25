@@ -1,7 +1,6 @@
 """Tests for AdvancedTransactionModel."""
 
 import numpy as np
-import pandas as pd
 import pytest
 
 from core.transaction_costs import AdvancedTransactionModel
@@ -15,7 +14,7 @@ def model():
 @pytest.fixture
 def recent_prices():
     np.random.seed(42)
-    return pd.Series(100 + np.cumsum(np.random.randn(30) * 0.5))
+    return (100 + np.cumsum(np.random.randn(30) * 0.5))
 
 
 class TestSlippage:
@@ -25,19 +24,19 @@ class TestSlippage:
         assert slippage == expected
 
     def test_slippage_with_short_series_returns_midpoint(self, model):
-        short = pd.Series([100, 101, 102])
+        short = np.array([100, 101, 102])
         slippage = model._calculate_slippage("AAPL", short)
         expected = (model.min_slippage + model.max_slippage) / 2
         assert slippage == expected
 
     def test_slippage_increases_with_volatility(self, model):
         # Calm market
-        calm = pd.Series(100 + np.arange(30) * 0.01)
+        calm = (100 + np.arange(30) * 0.01)
         slippage_calm = model._calculate_slippage("AAPL", calm)
 
         # Volatile market
         np.random.seed(99)
-        volatile = pd.Series(100 + np.cumsum(np.random.randn(30) * 5))
+        volatile = (100 + np.cumsum(np.random.randn(30) * 5))
         slippage_volatile = model._calculate_slippage("NVDA", volatile)
 
         assert slippage_volatile > slippage_calm
@@ -102,7 +101,7 @@ class TestExecutionPrice:
     def test_deterministic_with_seed(self):
         m1 = AdvancedTransactionModel(rng=np.random.RandomState(42))
         m2 = AdvancedTransactionModel(rng=np.random.RandomState(42))
-        prices = pd.Series(np.linspace(100, 110, 30))
+        prices = np.linspace(100, 110, 30)
         p1, _ = m1.calculate_execution_price("X", 100.0, 50, 1_000_000, "buy", prices)
         p2, _ = m2.calculate_execution_price("X", 100.0, 50, 1_000_000, "buy", prices)
         assert p1 == p2
