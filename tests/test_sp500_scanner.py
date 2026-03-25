@@ -14,37 +14,21 @@ def mock_scanner(tmp_path):
 
 
 def test_fetch_sp500_list(mock_scanner):
-    # Create dummy HTML string for pandas read_html
-    html_content = """
-    <table>
-      <thead>
-        <tr>
-          <th>Symbol</th>
-          <th>Security</th>
-          <th>GICS Sector</th>
-          <th>GICS Sub-Industry</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>AAPL</td>
-          <td>Apple Inc.</td>
-          <td>Information Technology</td>
-          <td>Technology Hardware, Storage & Peripherals</td>
-        </tr>
-        <tr>
-          <td>BRK.B</td>
-          <td>Berkshire Hathaway</td>
-          <td>Financials</td>
-          <td>Multi-Sector Holdings</td>
-        </tr>
-      </tbody>
-    </table>
-    """
+    dummy_df = pd.DataFrame(
+        {
+            "Symbol": ["AAPL", "BRK.B"],
+            "Security": ["Apple Inc.", "Berkshire Hathaway"],
+            "GICS Sector": ["Information Technology", "Financials"],
+            "GICS Sub-Industry": [
+                "Technology Hardware, Storage & Peripherals",
+                "Multi-Sector Holdings",
+            ],
+        }
+    )
 
-    with patch("requests.get") as mock_get:
+    with patch("requests.get") as mock_get, patch("pandas.read_html", return_value=[dummy_df]):
         mock_response = MagicMock()
-        mock_response.text = html_content
+        mock_response.text = "<html></html>"
         mock_response.raise_for_status = MagicMock()
         mock_get.return_value = mock_response
 
