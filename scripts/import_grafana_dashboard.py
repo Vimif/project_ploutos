@@ -3,14 +3,11 @@
 
 import sys
 from pathlib import Path
-
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import json
-import time
-
 import requests
-
+import time
 
 def wait_for_grafana(max_attempts=30):
     """Attendre que Grafana soit prêt"""
@@ -18,7 +15,7 @@ def wait_for_grafana(max_attempts=30):
 
     for i in range(max_attempts):
         try:
-            response = requests.get("http://localhost:3000/api/health", timeout=2)
+            response = requests.get('http://localhost:3000/api/health', timeout=2)
             if response.status_code == 200:
                 print("✅ Grafana est prêt!")
                 return True
@@ -30,7 +27,6 @@ def wait_for_grafana(max_attempts=30):
 
     return False
 
-
 def create_datasource():
     """Créer la datasource Prometheus"""
     print("\n📊 Configuration datasource Prometheus...")
@@ -41,14 +37,16 @@ def create_datasource():
         "url": "http://localhost:9090",
         "access": "proxy",
         "isDefault": True,
-        "jsonData": {"httpMethod": "POST"},
+        "jsonData": {
+            "httpMethod": "POST"
+        }
     }
 
     try:
         response = requests.post(
-            "http://admin:admin@localhost:3000/api/datasources",
+            'http://admin:admin@localhost:3000/api/datasources',
             json=datasource,
-            headers={"Content-Type": "application/json"},
+            headers={'Content-Type': 'application/json'}
         )
 
         if response.status_code in [200, 409]:  # 409 = déjà existe
@@ -62,12 +60,11 @@ def create_datasource():
         print(f"❌ Erreur: {e}")
         return False
 
-
 def import_dashboard():
     """Importer le dashboard"""
     print("\n📊 Import du dashboard...")
 
-    dashboard_path = Path(__file__).parent.parent / "config" / "grafana_dashboard.json"
+    dashboard_path = Path(__file__).parent.parent / 'config' / 'grafana_dashboard.json'
 
     if not dashboard_path.exists():
         print(f"❌ Dashboard non trouvé: {dashboard_path}")
@@ -78,15 +75,15 @@ def import_dashboard():
 
     try:
         response = requests.post(
-            "http://admin:admin@localhost:3000/api/dashboards/db",
+            'http://admin:admin@localhost:3000/api/dashboards/db',
             json=dashboard_json,
-            headers={"Content-Type": "application/json"},
+            headers={'Content-Type': 'application/json'}
         )
 
         if response.status_code == 200:
             result = response.json()
             dashboard_url = f"http://localhost:3000{result.get('url', '')}"
-            print("✅ Dashboard importé avec succès!")
+            print(f"✅ Dashboard importé avec succès!")
             print(f"🔗 URL: {dashboard_url}")
             return True
         else:
@@ -97,12 +94,11 @@ def import_dashboard():
         print(f"❌ Erreur: {e}")
         return False
 
-
 def main():
     """Fonction principale"""
-    print("=" * 70)
+    print("="*70)
     print("📊 IMPORT DASHBOARD GRAFANA PLOUTOS")
-    print("=" * 70)
+    print("="*70)
 
     # Attendre Grafana
     if not wait_for_grafana():
@@ -117,21 +113,20 @@ def main():
     # Importer dashboard
     time.sleep(2)
     if import_dashboard():
-        print("\n" + "=" * 70)
+        print("\n" + "="*70)
         print("✅ CONFIGURATION TERMINÉE")
-        print("=" * 70)
+        print("="*70)
         print("\n📊 Accédez à Grafana:")
         print("   URL: http://localhost:3000")
         print("   Username: admin")
         print("   Password: admin")
         print("\n🔥 Dashboard: Ploutos Trading Bot - Live Monitoring")
         print("\n⚠️  Changez le mot de passe admin au premier login!")
-        print("=" * 70)
+        print("="*70)
     else:
         print("\n❌ Échec import dashboard")
         print("   Vous pouvez l'importer manuellement depuis:")
         print(f"   {Path(__file__).parent.parent / 'config' / 'grafana_dashboard.json'}")
 
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

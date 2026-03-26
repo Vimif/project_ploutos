@@ -1,10 +1,9 @@
 # core/utils.py
 """Fonctions utilitaires"""
 
-import gc
 import logging
+import gc
 from datetime import datetime
-
 
 def setup_logging(name: str, log_file: str = None):
     """
@@ -19,7 +18,8 @@ def setup_logging(name: str, log_file: str = None):
 
     # Format
     formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
     )
 
     # Console handler
@@ -30,7 +30,6 @@ def setup_logging(name: str, log_file: str = None):
     # File handler
     if log_file:
         from config.settings import LOGS_DIR
-
         log_path = LOGS_DIR / log_file
         file_handler = logging.FileHandler(log_path)
         file_handler.setFormatter(formatter)
@@ -38,12 +37,11 @@ def setup_logging(name: str, log_file: str = None):
 
     return logger
 
-
 def cleanup_resources(*objects):
     """Nettoyer des ressources"""
     for obj in objects:
         if obj is not None:
-            if hasattr(obj, "close"):
+            if hasattr(obj, 'close'):
                 try:
                     obj.close()
                 except Exception:
@@ -51,7 +49,6 @@ def cleanup_resources(*objects):
 
     try:
         import torch
-
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
     except ImportError:
@@ -59,25 +56,23 @@ def cleanup_resources(*objects):
 
     gc.collect()
 
-
 def get_gpu_info():
     """Obtenir infos GPU"""
     try:
         import torch
     except ImportError:
-        return {"available": False}
+        return {'available': False}
 
     if not torch.cuda.is_available():
-        return {"available": False}
+        return {'available': False}
 
     return {
-        "available": True,
-        "name": torch.cuda.get_device_name(0),
-        "memory_allocated_gb": torch.cuda.memory_allocated() / 1e9,
-        "memory_reserved_gb": torch.cuda.memory_reserved() / 1e9,
-        "memory_total_gb": torch.cuda.get_device_properties(0).total_memory / 1e9,
+        'available': True,
+        'name': torch.cuda.get_device_name(0),
+        'memory_allocated_gb': torch.cuda.memory_allocated() / 1e9,
+        'memory_reserved_gb': torch.cuda.memory_reserved() / 1e9,
+        'memory_total_gb': torch.cuda.get_device_properties(0).total_memory / 1e9
     }
-
 
 def format_duration(seconds: float):
     """Formater une durée en secondes"""
@@ -86,7 +81,6 @@ def format_duration(seconds: float):
     secs = int(seconds % 60)
     return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
-
 def timestamp():
     """Timestamp formaté"""
-    return datetime.now().strftime("%Y%m%d_%H%M%S")
+    return datetime.now().strftime('%Y%m%d_%H%M%S')
