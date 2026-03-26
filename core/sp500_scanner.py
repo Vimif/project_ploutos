@@ -6,6 +6,8 @@ en se basant sur le Sharpe ratio annualise.
 
 import os
 import json
+import sys
+from pathlib import Path
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
