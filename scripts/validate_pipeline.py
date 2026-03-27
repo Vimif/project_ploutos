@@ -108,21 +108,21 @@ def run_validation(
     # ================================================================
     # Stage 3: Training (ou chargement modèle)
     # ================================================================
-    # ...
-    # (Dans le bloc else pour training)
-    # ...
-            from stable_baselines3 import PPO
-            from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
-            from stable_baselines3.common.monitor import Monitor
+    def _example_training_usage():
+        # ...
+        # (Dans le bloc else pour training)
+        # ...
+        from stable_baselines3 import PPO
+        from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+        from stable_baselines3.common.monitor import Monitor
 
-            # Utiliser TradingEnv V9 avec features_precomputed=True
-            train_env = DummyVecEnv([
-                lambda: Monitor(TradingEnv(
-                    splits.train, mode='train', seed=seed, features_precomputed=True
-                ))
-            ])
-            # ...
-    # ...
+        # Utiliser TradingEnv V9 avec features_precomputed=True
+        train_env = DummyVecEnv([
+            lambda: Monitor(TradingEnv(
+                splits.train, mode='train', seed=seed, features_precomputed=True
+            ))
+        ])
+        # ...
 
     # ================================================================
     # Stage 4: Evaluation (val data)
