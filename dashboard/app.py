@@ -24,12 +24,16 @@ logger = setup_logging(__name__, 'dashboard.log')
 app = Flask(__name__)
 # SECURE: Use environment variable or generate random key
 app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(24))
-CORS(app)
+
+# SECURE: Restrict CORS origins via environment variable
+allowed_origins_env = os.environ.get('ALLOWED_ORIGINS', 'http://localhost:5000')
+allowed_origins = [origin.strip() for origin in allowed_origins_env.split(',')]
+CORS(app, resources={r"/api/*": {"origins": allowed_origins}})
 
 # SocketIO avec gevent
 socketio = SocketIO(
     app, 
-    cors_allowed_origins="*",
+    cors_allowed_origins=allowed_origins,
     async_mode='gevent',
     logger=False,
     engineio_logger=False
