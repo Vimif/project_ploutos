@@ -1,3 +1,0 @@
-## 2026-02-15 - Enhancing Form Accessibility with Strict Constraints
-**Learning:** In constrained environments where global custom CSS blocks are prohibited (like strict scoped personas or specific component styling limits), applying inline visual feedback (`style="cursor: pointer;"`) alongside correct semantic HTML (`<label for="...">`) provides an immediate, zero-risk accessibility and UX win by ensuring both screen readers and mouse users understand the clickable association between labels and form inputs.
-**Action:** Always verify `for` attributes match the corresponding input `id` when encountering `<label>` elements, and apply inline cursor pointers if custom CSS rules cannot be added.
