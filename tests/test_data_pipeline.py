@@ -7,11 +7,10 @@ from unittest.mock import MagicMock
 if "torch" not in sys.modules:
     sys.modules["torch"] = MagicMock()
 
-import pytest # ruff: noqa: E402
+import pytest  # ruff: noqa: E402
 import numpy as np
 import pandas as pd
 from core.data_pipeline import DataSplitter, DataSplit
-
 
 # ============================================================================
 # Fixtures
@@ -65,11 +64,7 @@ class TestDataSplitter:
     def test_default_ratios(self, sample_data):
         """Vérifie les ratios par défaut 60/20/20."""
         splits = DataSplitter.split(sample_data)
-        total = (
-            len(splits.train["TICK0"])
-            + len(splits.val["TICK0"])
-            + len(splits.test["TICK0"])
-        )
+        total = len(splits.train["TICK0"]) + len(splits.val["TICK0"]) + len(splits.test["TICK0"])
         assert total == 1000
 
     def test_no_temporal_overlap(self, sample_data):
@@ -149,12 +144,8 @@ class TestDataSplitter:
         dates_short = pd.date_range("2023-01-01", periods=800, freq="h")
 
         data = {
-            "LONG": pd.DataFrame(
-                {"Close": np.random.randn(1000)}, index=dates_long
-            ),
-            "SHORT": pd.DataFrame(
-                {"Close": np.random.randn(800)}, index=dates_short
-            ),
+            "LONG": pd.DataFrame({"Close": np.random.randn(1000)}, index=dates_long),
+            "SHORT": pd.DataFrame({"Close": np.random.randn(800)}, index=dates_short),
         }
 
         splits = DataSplitter.split(data)
