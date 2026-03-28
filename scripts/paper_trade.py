@@ -339,14 +339,20 @@ def fetch_live_data(tickers, period='5d', interval='1h'):
     end_date = datetime.now()
     start_date = end_date - timedelta(days=30)
 
-    for ticker in tickers:
-        try:
-            df = fetcher.fetch(ticker, start_date.strftime('%Y-%m-%d'),
-                             end_date.strftime('%Y-%m-%d'), interval=interval)
+    try:
+        # Use bulk_fetch to download tickers in parallel instead of sequentially
+        results = fetcher.bulk_fetch(
+            tickers,
+            start_date=start_date.strftime('%Y-%m-%d'),
+            end_date=end_date.strftime('%Y-%m-%d'),
+            interval=interval,
+            save_to_cache=False
+        )
+        for ticker, df in results.items():
             if df is not None and len(df) > 50:
                 data[ticker] = df
-        except Exception as e:
-            logger.warning(f"  {ticker}: fetch erreur ({e})")
+    except Exception as e:
+        logger.warning(f"  Erreur lors du bulk fetch: {e}")
 
     return data
 
