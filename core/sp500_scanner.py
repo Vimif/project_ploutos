@@ -5,9 +5,11 @@ en se basant sur le Sharpe ratio annualise.
 """
 
 import os
+import sys
 import json
 import numpy as np
 import pandas as pd
+from pathlib import Path
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Optional, Any
@@ -173,8 +175,12 @@ class SP500Scanner:
         if scan_results is None:
             scan_results = self.scan_sectors()
         tickers: List[str] = []
-        for stocks in scan_results['sectors'].values():
-            tickers.extend(stocks)
+        for stocks in scan_results.get("sectors", {}).values():
+            for stock_info in stocks:
+                if isinstance(stock_info, dict) and "ticker" in stock_info:
+                    tickers.append(stock_info["ticker"])
+                elif isinstance(stock_info, str):
+                    tickers.append(stock_info)
         return tickers
 
     def save_results(self, results: Dict, filepath: Optional[str] = None):
