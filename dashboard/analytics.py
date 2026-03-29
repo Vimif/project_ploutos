@@ -3,22 +3,22 @@
 
 import sys
 from pathlib import Path
-
 sys.path.insert(0, str(Path(__file__).parent.parent))
-
 
 import numpy as np
 import pandas as pd
+from typing import Dict, List, Tuple, Optional
+from datetime import datetime, timedelta
+from collections import defaultdict
 
 from core.utils import setup_logging
 
-logger = setup_logging(__name__, "analytics.log")
-
+logger = setup_logging(__name__, 'analytics.log')
 
 class PortfolioAnalytics:
     """Calculateur de métriques financières avancées"""
 
-    def __init__(self, trades: list[dict], daily_summaries: list[dict] = None):
+    def __init__(self, trades: List[Dict], daily_summaries: List[Dict] = None):
         """
         Initialiser l'analyseur
 
@@ -37,8 +37,8 @@ class PortfolioAnalytics:
             return pd.DataFrame()
 
         df = pd.DataFrame(self.trades)
-        df["timestamp"] = pd.to_datetime(df["timestamp"])
-        df = df.sort_values("timestamp")
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        df = df.sort_values('timestamp')
         return df
 
     def _daily_to_dataframe(self) -> pd.DataFrame:
@@ -47,8 +47,8 @@ class PortfolioAnalytics:
             return pd.DataFrame()
 
         df = pd.DataFrame(self.daily_summaries)
-        df["date"] = pd.to_datetime(df["date"])
-        df = df.sort_values("date")
+        df['date'] = pd.to_datetime(df['date'])
+        df = df.sort_values('date')
         return df
 
     def calculate_returns(self) -> pd.Series:
@@ -58,11 +58,11 @@ class PortfolioAnalytics:
         Returns:
             Series avec les rendements quotidiens
         """
-        if self.df_daily.empty or "portfolio_value" not in self.df_daily.columns:
+        if self.df_daily.empty or 'portfolio_value' not in self.df_daily.columns:
             logger.warning("⚠️  Pas de données daily pour calcul returns")
             return pd.Series(dtype=float)
 
-        returns = self.df_daily["portfolio_value"].pct_change().dropna()
+        returns = self.df_daily['portfolio_value'].pct_change().dropna()
         return returns
 
     def sharpe_ratio(self, risk_free_rate: float = 0.05) -> float:
@@ -118,18 +118,18 @@ class PortfolioAnalytics:
 
         return float(sortino) if not np.isnan(sortino) else 0.0
 
-    def max_drawdown(self) -> tuple[float, str, str]:
+    def max_drawdown(self) -> Tuple[float, str, str]:
         """
         Calculer le drawdown maximum
 
         Returns:
             Tuple (max_dd%, date_début, date_fin)
         """
-        if self.df_daily.empty or "portfolio_value" not in self.df_daily.columns:
-            return (0.0, "", "")
+        if self.df_daily.empty or 'portfolio_value' not in self.df_daily.columns:
+            return (0.0, '', '')
 
-        portfolio_values = self.df_daily["portfolio_value"].values
-        dates = self.df_daily["date"].dt.strftime("%Y-%m-%d").values
+        portfolio_values = self.df_daily['portfolio_value'].values
+        dates = self.df_daily['date'].dt.strftime('%Y-%m-%d').values
 
         # Calculer running maximum
         running_max = np.maximum.accumulate(portfolio_values)
@@ -142,12 +142,12 @@ class PortfolioAnalytics:
         max_dd = drawdowns[max_dd_idx]
 
         # Trouver la date du pic précédent
-        peak_idx = np.argmax(running_max[: max_dd_idx + 1])
+        peak_idx = np.argmax(running_max[:max_dd_idx+1])
 
         return (
             float(max_dd),
-            dates[peak_idx] if peak_idx < len(dates) else "",
-            dates[max_dd_idx] if max_dd_idx < len(dates) else "",
+            dates[peak_idx] if peak_idx < len(dates) else '',
+            dates[max_dd_idx] if max_dd_idx < len(dates) else ''
         )
 
     def calmar_ratio(self) -> float:
@@ -158,16 +158,17 @@ class PortfolioAnalytics:
         Returns:
             Calmar ratio (float)
         """
-        if self.df_daily.empty or "portfolio_value" not in self.df_daily.columns:
+        if self.df_daily.empty or 'portfolio_value' not in self.df_daily.columns:
             return 0.0
 
         # Rendement total sur la période
         total_return = (
-            self.df_daily["portfolio_value"].iloc[-1] / self.df_daily["portfolio_value"].iloc[0] - 1
+            self.df_daily['portfolio_value'].iloc[-1] /
+            self.df_daily['portfolio_value'].iloc[0] - 1
         )
 
         # Annualiser
-        days = (self.df_daily["date"].iloc[-1] - self.df_daily["date"].iloc[0]).days
+        days = (self.df_daily['date'].iloc[-1] - self.df_daily['date'].iloc[0]).days
         annualized_return = (1 + total_return) ** (365 / days) - 1 if days > 0 else 0
 
         # Max DD
@@ -180,7 +181,7 @@ class PortfolioAnalytics:
 
         return float(calmar) if not np.isnan(calmar) else 0.0
 
-    def win_rate(self) -> dict[str, float]:
+    def win_rate(self) -> Dict[str, float]:
         """
         Calculer le win rate (paires BUY->SELL rentables)
 
@@ -188,25 +189,25 @@ class PortfolioAnalytics:
             Dict avec wins, losses, total, win_rate%
         """
         if self.df_trades.empty:
-            return {"wins": 0, "losses": 0, "total": 0, "win_rate": 0.0}
+            return {'wins': 0, 'losses': 0, 'total': 0, 'win_rate': 0.0}
 
         # Grouper par symbole
-        symbols = self.df_trades["symbol"].unique()
+        symbols = self.df_trades['symbol'].unique()
 
         wins = 0
         losses = 0
 
         for symbol in symbols:
-            symbol_trades = self.df_trades[self.df_trades["symbol"] == symbol].copy()
-            symbol_trades = symbol_trades.sort_values("timestamp")
+            symbol_trades = self.df_trades[self.df_trades['symbol'] == symbol].copy()
+            symbol_trades = symbol_trades.sort_values('timestamp')
 
             # Trouver les paires BUY->SELL
             buy_price = None
             for _, trade in symbol_trades.iterrows():
-                if trade["action"] == "BUY":
-                    buy_price = float(trade["price"])
-                elif trade["action"] == "SELL" and buy_price is not None:
-                    sell_price = float(trade["price"])
+                if trade['action'] == 'BUY':
+                    buy_price = float(trade['price'])
+                elif trade['action'] == 'SELL' and buy_price is not None:
+                    sell_price = float(trade['price'])
 
                     if sell_price > buy_price:
                         wins += 1
@@ -218,9 +219,14 @@ class PortfolioAnalytics:
         total = wins + losses
         win_rate = (wins / total * 100) if total > 0 else 0.0
 
-        return {"wins": wins, "losses": losses, "total": total, "win_rate": win_rate}
+        return {
+            'wins': wins,
+            'losses': losses,
+            'total': total,
+            'win_rate': win_rate
+        }
 
-    def avg_win_loss(self) -> dict[str, float]:
+    def avg_win_loss(self) -> Dict[str, float]:
         """
         Calculer le gain moyen vs perte moyenne
 
@@ -228,28 +234,28 @@ class PortfolioAnalytics:
             Dict avec avg_win, avg_loss, profit_factor
         """
         if self.df_trades.empty:
-            return {"avg_win": 0, "avg_loss": 0, "profit_factor": 0}
+            return {'avg_win': 0, 'avg_loss': 0, 'profit_factor': 0}
 
-        symbols = self.df_trades["symbol"].unique()
+        symbols = self.df_trades['symbol'].unique()
 
         wins = []
         losses = []
 
         for symbol in symbols:
-            symbol_trades = self.df_trades[self.df_trades["symbol"] == symbol].copy()
-            symbol_trades = symbol_trades.sort_values("timestamp")
+            symbol_trades = self.df_trades[self.df_trades['symbol'] == symbol].copy()
+            symbol_trades = symbol_trades.sort_values('timestamp')
 
             buy_price = None
             buy_qty = None
 
             for _, trade in symbol_trades.iterrows():
-                if trade["action"] == "BUY":
-                    buy_price = float(trade["price"])
-                    buy_qty = float(trade.get("quantity", 1))
+                if trade['action'] == 'BUY':
+                    buy_price = float(trade['price'])
+                    buy_qty = float(trade.get('quantity', 1))
 
-                elif trade["action"] == "SELL" and buy_price is not None:
-                    sell_price = float(trade["price"])
-                    sell_qty = float(trade.get("quantity", buy_qty))
+                elif trade['action'] == 'SELL' and buy_price is not None:
+                    sell_price = float(trade['price'])
+                    sell_qty = float(trade.get('quantity', buy_qty))
 
                     pnl = (sell_price - buy_price) * min(buy_qty, sell_qty)
 
@@ -266,12 +272,12 @@ class PortfolioAnalytics:
         profit_factor = (sum(wins) / sum(losses)) if losses and sum(losses) > 0 else 0
 
         return {
-            "avg_win": float(avg_win),
-            "avg_loss": float(avg_loss),
-            "profit_factor": float(profit_factor),
+            'avg_win': float(avg_win),
+            'avg_loss': float(avg_loss),
+            'profit_factor': float(profit_factor)
         }
 
-    def trades_by_symbol(self) -> dict[str, dict]:
+    def trades_by_symbol(self) -> Dict[str, Dict]:
         """
         Statistiques par symbole
 
@@ -283,25 +289,25 @@ class PortfolioAnalytics:
 
         stats_by_symbol = {}
 
-        for symbol in self.df_trades["symbol"].unique():
-            symbol_trades = self.df_trades[self.df_trades["symbol"] == symbol]
+        for symbol in self.df_trades['symbol'].unique():
+            symbol_trades = self.df_trades[self.df_trades['symbol'] == symbol]
 
-            buy_trades = symbol_trades[symbol_trades["action"] == "BUY"]
-            sell_trades = symbol_trades[symbol_trades["action"] == "SELL"]
+            buy_trades = symbol_trades[symbol_trades['action'] == 'BUY']
+            sell_trades = symbol_trades[symbol_trades['action'] == 'SELL']
 
-            total_volume = symbol_trades["amount"].sum()
+            total_volume = symbol_trades['amount'].sum()
 
             stats_by_symbol[symbol] = {
-                "total_trades": len(symbol_trades),
-                "buy_count": len(buy_trades),
-                "sell_count": len(sell_trades),
-                "total_volume": float(total_volume),
-                "avg_price": float(symbol_trades["price"].mean()),
+                'total_trades': len(symbol_trades),
+                'buy_count': len(buy_trades),
+                'sell_count': len(sell_trades),
+                'total_volume': float(total_volume),
+                'avg_price': float(symbol_trades['price'].mean())
             }
 
         return stats_by_symbol
 
-    def get_all_metrics(self) -> dict:
+    def get_all_metrics(self) -> Dict:
         """
         Calculer toutes les métriques en une seule fois
 
@@ -326,35 +332,34 @@ class PortfolioAnalytics:
         by_symbol = self.trades_by_symbol()
 
         metrics = {
-            "performance_ratios": {
-                "sharpe_ratio": round(sharpe, 2),
-                "sortino_ratio": round(sortino, 2),
-                "calmar_ratio": round(calmar, 2),
+            'performance_ratios': {
+                'sharpe_ratio': round(sharpe, 2),
+                'sortino_ratio': round(sortino, 2),
+                'calmar_ratio': round(calmar, 2)
             },
-            "risk_metrics": {
-                "max_drawdown_pct": round(max_dd, 2),
-                "max_drawdown_start": dd_start,
-                "max_drawdown_end": dd_end,
+            'risk_metrics': {
+                'max_drawdown_pct': round(max_dd, 2),
+                'max_drawdown_start': dd_start,
+                'max_drawdown_end': dd_end
             },
-            "win_loss": {
-                "wins": win_loss["wins"],
-                "losses": win_loss["losses"],
-                "total_trades": win_loss["total"],
-                "win_rate_pct": round(win_loss["win_rate"], 2),
-                "avg_win": round(avg_wl["avg_win"], 2),
-                "avg_loss": round(avg_wl["avg_loss"], 2),
-                "profit_factor": round(avg_wl["profit_factor"], 2),
+            'win_loss': {
+                'wins': win_loss['wins'],
+                'losses': win_loss['losses'],
+                'total_trades': win_loss['total'],
+                'win_rate_pct': round(win_loss['win_rate'], 2),
+                'avg_win': round(avg_wl['avg_win'], 2),
+                'avg_loss': round(avg_wl['avg_loss'], 2),
+                'profit_factor': round(avg_wl['profit_factor'], 2)
             },
-            "by_symbol": by_symbol,
+            'by_symbol': by_symbol
         }
 
         logger.info("✅ Métriques calculées")
         return metrics
 
 
-def calculate_benchmark_comparison(
-    portfolio_returns: pd.Series, benchmark_returns: pd.Series
-) -> dict:
+def calculate_benchmark_comparison(portfolio_returns: pd.Series,
+                                  benchmark_returns: pd.Series) -> Dict:
     """
     Comparer le portfolio à un benchmark (ex: SPY)
 
@@ -366,34 +371,35 @@ def calculate_benchmark_comparison(
         Dict avec alpha, beta, correlation
     """
     if portfolio_returns.empty or benchmark_returns.empty:
-        return {"alpha": 0, "beta": 0, "correlation": 0}
+        return {'alpha': 0, 'beta': 0, 'correlation': 0}
 
     # Aligner les dates
-    combined = pd.DataFrame(
-        {"portfolio": portfolio_returns, "benchmark": benchmark_returns}
-    ).dropna()
+    combined = pd.DataFrame({
+        'portfolio': portfolio_returns,
+        'benchmark': benchmark_returns
+    }).dropna()
 
     if len(combined) < 2:
-        return {"alpha": 0, "beta": 0, "correlation": 0}
+        return {'alpha': 0, 'beta': 0, 'correlation': 0}
 
     # Beta (sensibilité au marché)
-    covariance = combined["portfolio"].cov(combined["benchmark"])
-    benchmark_var = combined["benchmark"].var()
+    covariance = combined['portfolio'].cov(combined['benchmark'])
+    benchmark_var = combined['benchmark'].var()
     beta = covariance / benchmark_var if benchmark_var > 0 else 0
 
     # Alpha (rendement excédentaire)
-    portfolio_mean = combined["portfolio"].mean()
-    benchmark_mean = combined["benchmark"].mean()
+    portfolio_mean = combined['portfolio'].mean()
+    benchmark_mean = combined['benchmark'].mean()
     alpha = portfolio_mean - (beta * benchmark_mean)
 
     # Annualiser alpha
     alpha_annualized = alpha * 252
 
     # Corrélation
-    correlation = combined["portfolio"].corr(combined["benchmark"])
+    correlation = combined['portfolio'].corr(combined['benchmark'])
 
     return {
-        "alpha": float(alpha_annualized) if not np.isnan(alpha_annualized) else 0,
-        "beta": float(beta) if not np.isnan(beta) else 0,
-        "correlation": float(correlation) if not np.isnan(correlation) else 0,
+        'alpha': float(alpha_annualized) if not np.isnan(alpha_annualized) else 0,
+        'beta': float(beta) if not np.isnan(beta) else 0,
+        'correlation': float(correlation) if not np.isnan(correlation) else 0
     }

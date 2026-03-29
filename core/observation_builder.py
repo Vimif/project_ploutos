@@ -2,6 +2,7 @@
 """Observation vector construction for TradingEnv."""
 
 import numpy as np
+from typing import Dict, List, Optional
 
 from core.constants import EQUITY_EPSILON, OBSERVATION_CLIP_RANGE
 
@@ -11,10 +12,10 @@ class ObservationBuilder:
 
     def __init__(
         self,
-        tickers: list[str],
-        feature_columns: list[str],
-        feature_arrays: dict[str, np.ndarray],
-        macro_array: np.ndarray | None = None,
+        tickers: List[str],
+        feature_columns: List[str],
+        feature_arrays: Dict[str, np.ndarray],
+        macro_array: Optional[np.ndarray] = None,
         n_macro_features: int = 0,
     ):
         self.tickers = tickers
@@ -37,8 +38,8 @@ class ObservationBuilder:
     def build(
         self,
         current_step: int,
-        portfolio: dict[str, float],
-        prices: dict[str, float],
+        portfolio: Dict[str, float],
+        prices: Dict[str, float],
         equity: float,
         balance: float,
         initial_balance: float,
@@ -66,17 +67,17 @@ class ObservationBuilder:
         for ticker in self.tickers:
             features_array = self.feature_arrays[ticker]
             if current_step >= len(features_array):
-                obs[idx : idx + self.n_features] = 0.0
+                obs[idx:idx+self.n_features] = 0.0
             else:
-                obs[idx : idx + self.n_features] = features_array[current_step]
+                obs[idx:idx+self.n_features] = features_array[current_step]
             idx += self.n_features
 
         # Macro features (shared across tickers)
         if self.macro_array is not None:
             if current_step < len(self.macro_array):
-                obs[idx : idx + self.n_macro_features] = self.macro_array[current_step]
+                obs[idx:idx+self.n_macro_features] = self.macro_array[current_step]
             else:
-                obs[idx : idx + self.n_macro_features] = 0.0
+                obs[idx:idx+self.n_macro_features] = 0.0
         idx += self.n_macro_features
 
         # Positions
@@ -90,36 +91,28 @@ class ObservationBuilder:
                 position_pct = 0.0
 
             # Explicit scalar clamping is faster than np.clip
-            if position_pct > 1.0:
-                position_pct = 1.0
-            elif position_pct < 0.0:
-                position_pct = 0.0
+            if position_pct > 1.0: position_pct = 1.0
+            elif position_pct < 0.0: position_pct = 0.0
 
             obs[idx] = position_pct
             idx += 1
 
         # Portfolio state
         cash_pct = balance / equity_plus_eps
-        if cash_pct > 1.0:
-            cash_pct = 1.0
-        elif cash_pct < 0.0:
-            cash_pct = 0.0
+        if cash_pct > 1.0: cash_pct = 1.0
+        elif cash_pct < 0.0: cash_pct = 0.0
 
         total_return = (equity - initial_balance) / initial_balance
-        if total_return > 5.0:
-            total_return = 5.0
-        elif total_return < -1.0:
-            total_return = -1.0
+        if total_return > 5.0: total_return = 5.0
+        elif total_return < -1.0: total_return = -1.0
 
         drawdown = (peak_value - equity) / (peak_value + EQUITY_EPSILON)
-        if drawdown > 1.0:
-            drawdown = 1.0
-        elif drawdown < 0.0:
-            drawdown = 0.0
+        if drawdown > 1.0: drawdown = 1.0
+        elif drawdown < 0.0: drawdown = 0.0
 
         obs[idx] = cash_pct
-        obs[idx + 1] = total_return
-        obs[idx + 2] = drawdown
+        obs[idx+1] = total_return
+        obs[idx+2] = drawdown
 
         # Apply global nan/inf and clipping efficiently in-place
         np.nan_to_num(obs, nan=0.0, posinf=clip, neginf=-clip, copy=False)

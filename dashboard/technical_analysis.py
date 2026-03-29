@@ -10,34 +10,33 @@ Version: 1.0.0
 
 import sys
 from pathlib import Path
-
 sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from dataclasses import asdict, dataclass
 
 import numpy as np
 import pandas as pd
 import yfinance as yf
+from typing import Dict, List, Tuple, Optional
+from datetime import datetime, timedelta
+from dataclasses import dataclass, asdict
 
 from core.utils import setup_logging
 
-logger = setup_logging(__name__, "technical_analysis.log")
+logger = setup_logging(__name__, 'technical_analysis.log')
 
 
 @dataclass
 class TradingSignal:
     """Signal de trading structuré"""
-
     signal: str  # 'BUY', 'SELL', 'HOLD'
     strength: int  # 0-100
     trend: str  # 'BULLISH', 'BEARISH', 'NEUTRAL'
     confidence: float  # 0.0-1.0
-    reasons: list[str]
-    entry_price: float | None = None
-    stop_loss: float | None = None
-    take_profit: float | None = None
+    reasons: List[str]
+    entry_price: Optional[float] = None
+    stop_loss: Optional[float] = None
+    take_profit: Optional[float] = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict:
         """Convertir en dictionnaire pour JSON"""
         return asdict(self)
 
@@ -45,7 +44,7 @@ class TradingSignal:
 class TechnicalAnalyzer:
     """Analyseur technique en temps réel pour une action"""
 
-    def __init__(self, symbol: str, period: str = "3mo", interval: str = "1h"):
+    def __init__(self, symbol: str, period: str = '3mo', interval: str = '1h'):
         """
         Initialiser l'analyseur technique
 
@@ -85,21 +84,21 @@ class TechnicalAnalyzer:
 
     def calculate_sma(self, period: int = 20) -> pd.Series:
         """Simple Moving Average (SMA)"""
-        return self.df["Close"].rolling(window=period).mean()
+        return self.df['Close'].rolling(window=period).mean()
 
     def calculate_ema(self, period: int = 20) -> pd.Series:
         """Exponential Moving Average (EMA) - Plus réactif que SMA"""
-        return self.df["Close"].ewm(span=period, adjust=False).mean()
+        return self.df['Close'].ewm(span=period, adjust=False).mean()
 
-    def calculate_macd(self) -> tuple[pd.Series, pd.Series, pd.Series]:
+    def calculate_macd(self) -> Tuple[pd.Series, pd.Series, pd.Series]:
         """
         MACD (Moving Average Convergence Divergence)
 
         Returns:
             Tuple (macd_line, signal_line, histogram)
         """
-        ema_12 = self.df["Close"].ewm(span=12, adjust=False).mean()
-        ema_26 = self.df["Close"].ewm(span=26, adjust=False).mean()
+        ema_12 = self.df['Close'].ewm(span=12, adjust=False).mean()
+        ema_26 = self.df['Close'].ewm(span=26, adjust=False).mean()
 
         macd_line = ema_12 - ema_26
         signal_line = macd_line.ewm(span=9, adjust=False).mean()
@@ -116,7 +115,7 @@ class TechnicalAnalyzer:
         RSI > 70: Suracheté (potentiel SELL)
         RSI < 30: Survendu (potentiel BUY)
         """
-        delta = self.df["Close"].diff()
+        delta = self.df['Close'].diff()
 
         gain = delta.where(delta > 0, 0)
         loss = -delta.where(delta < 0, 0)
@@ -129,28 +128,24 @@ class TechnicalAnalyzer:
 
         return rsi
 
-    def calculate_stochastic(
-        self, k_period: int = 14, d_period: int = 3
-    ) -> tuple[pd.Series, pd.Series]:
+    def calculate_stochastic(self, k_period: int = 14, d_period: int = 3) -> Tuple[pd.Series, pd.Series]:
         """
         Stochastic Oscillator
 
         %K > 80: Suracheté
         %K < 20: Survendu
         """
-        low_min = self.df["Low"].rolling(window=k_period).min()
-        high_max = self.df["High"].rolling(window=k_period).max()
+        low_min = self.df['Low'].rolling(window=k_period).min()
+        high_max = self.df['High'].rolling(window=k_period).max()
 
-        k_percent = 100 * ((self.df["Close"] - low_min) / (high_max - low_min))
+        k_percent = 100 * ((self.df['Close'] - low_min) / (high_max - low_min))
         d_percent = k_percent.rolling(window=d_period).mean()
 
         return k_percent, d_percent
 
     # ========== INDICATEURS DE VOLATILITÉ ==========
 
-    def calculate_bollinger_bands(
-        self, period: int = 20, std_dev: float = 2.0
-    ) -> tuple[pd.Series, pd.Series, pd.Series]:
+    def calculate_bollinger_bands(self, period: int = 20, std_dev: float = 2.0) -> Tuple[pd.Series, pd.Series, pd.Series]:
         """
         Bollinger Bands
 
@@ -158,7 +153,7 @@ class TechnicalAnalyzer:
         Prix < Lower Band: Potentiel survendu
         """
         middle_band = self.calculate_sma(period)
-        std = self.df["Close"].rolling(window=period).std()
+        std = self.df['Close'].rolling(window=period).std()
 
         upper_band = middle_band + (std * std_dev)
         lower_band = middle_band - (std * std_dev)
@@ -167,9 +162,9 @@ class TechnicalAnalyzer:
 
     def calculate_atr(self, period: int = 14) -> pd.Series:
         """ATR (Average True Range) - Mesure la volatilité"""
-        high_low = self.df["High"] - self.df["Low"]
-        high_close = np.abs(self.df["High"] - self.df["Close"].shift())
-        low_close = np.abs(self.df["Low"] - self.df["Close"].shift())
+        high_low = self.df['High'] - self.df['Low']
+        high_close = np.abs(self.df['High'] - self.df['Close'].shift())
+        low_close = np.abs(self.df['Low'] - self.df['Close'].shift())
 
         true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
         atr = true_range.rolling(window=period).mean()
@@ -181,9 +176,13 @@ class TechnicalAnalyzer:
     def calculate_obv(self) -> pd.Series:
         """OBV (On-Balance Volume) - Indicateur de flux de volume cumulatif"""
         obv = np.where(
-            self.df["Close"] > self.df["Close"].shift(),
-            self.df["Volume"],
-            np.where(self.df["Close"] < self.df["Close"].shift(), -self.df["Volume"], 0),
+            self.df['Close'] > self.df['Close'].shift(),
+            self.df['Volume'],
+            np.where(
+                self.df['Close'] < self.df['Close'].shift(),
+                -self.df['Volume'],
+                0
+            )
         )
         return pd.Series(obv, index=self.df.index).cumsum()
 
@@ -194,8 +193,8 @@ class TechnicalAnalyzer:
         Prix > VWAP: Tendance haussière
         Prix < VWAP: Tendance baissière
         """
-        typical_price = (self.df["High"] + self.df["Low"] + self.df["Close"]) / 3
-        vwap = (typical_price * self.df["Volume"]).cumsum() / self.df["Volume"].cumsum()
+        typical_price = (self.df['High'] + self.df['Low'] + self.df['Close']) / 3
+        vwap = (typical_price * self.df['Volume']).cumsum() / self.df['Volume'].cumsum()
 
         return vwap
 
@@ -209,12 +208,12 @@ class TechnicalAnalyzer:
             'BULLISH', 'BEARISH', ou 'NEUTRAL'
         """
         if self.df is None or len(self.df) < 50:
-            return "NEUTRAL"
+            return 'NEUTRAL'
 
         # Moyennes mobiles
         sma_20 = self.calculate_sma(20).iloc[-1]
         sma_50 = self.calculate_sma(50).iloc[-1]
-        current_price = self.df["Close"].iloc[-1]
+        current_price = self.df['Close'].iloc[-1]
 
         # MACD
         macd_line, signal_line, _ = self.calculate_macd()
@@ -244,11 +243,11 @@ class TechnicalAnalyzer:
             bearish_signals += 1
 
         if bullish_signals > bearish_signals:
-            return "BULLISH"
+            return 'BULLISH'
         elif bearish_signals > bullish_signals:
-            return "BEARISH"
+            return 'BEARISH'
         else:
-            return "NEUTRAL"
+            return 'NEUTRAL'
 
     def generate_signal(self) -> TradingSignal:
         """
@@ -259,14 +258,14 @@ class TechnicalAnalyzer:
         """
         if self.df is None or len(self.df) < 50:
             return TradingSignal(
-                signal="HOLD",
+                signal='HOLD',
                 strength=0,
-                trend="NEUTRAL",
+                trend='NEUTRAL',
                 confidence=0.0,
-                reasons=["Pas assez de données historiques"],
+                reasons=["Pas assez de données historiques"]
             )
 
-        current_price = self.df["Close"].iloc[-1]
+        current_price = self.df['Close'].iloc[-1]
         reasons = []
         buy_score = 0
         sell_score = 0
@@ -329,24 +328,24 @@ class TechnicalAnalyzer:
         obv = self.calculate_obv()
         obv_trend = (obv.iloc[-1] - obv.iloc[-5]) / 5
 
-        if obv_trend > 0 and current_price > self.df["Close"].iloc[-5]:
+        if obv_trend > 0 and current_price > self.df['Close'].iloc[-5]:
             buy_score += 1
             reasons.append("Volume confirmant la hausse")
-        elif obv_trend < 0 and current_price < self.df["Close"].iloc[-5]:
+        elif obv_trend < 0 and current_price < self.df['Close'].iloc[-5]:
             sell_score += 1
             reasons.append("Volume confirmant la baisse")
 
         # Déterminer le signal final
         if buy_score > sell_score and buy_score >= 4:
-            signal = "BUY"
+            signal = 'BUY'
             strength = min(100, int(buy_score / 7 * 100))
             confidence = min(1.0, buy_score / 7)
         elif sell_score > buy_score and sell_score >= 4:
-            signal = "SELL"
+            signal = 'SELL'
             strength = min(100, int(sell_score / 7 * 100))
             confidence = min(1.0, sell_score / 7)
         else:
-            signal = "HOLD"
+            signal = 'HOLD'
             strength = 50
             confidence = 0.5
             reasons.append("Signaux mixtes, attendre confirmation")
@@ -357,10 +356,10 @@ class TechnicalAnalyzer:
         stop_loss = None
         take_profit = None
 
-        if signal == "BUY":
+        if signal == 'BUY':
             stop_loss = current_price - (2 * atr)
             take_profit = current_price + (3 * atr)
-        elif signal == "SELL":
+        elif signal == 'SELL':
             stop_loss = current_price + (2 * atr)
             take_profit = current_price - (3 * atr)
 
@@ -374,10 +373,10 @@ class TechnicalAnalyzer:
             reasons=reasons,
             entry_price=current_price,
             stop_loss=stop_loss,
-            take_profit=take_profit,
+            take_profit=take_profit
         )
 
-    def get_all_indicators(self) -> dict:
+    def get_all_indicators(self) -> Dict:
         """
         Obtenir tous les indicateurs techniques actuels
 
@@ -385,9 +384,9 @@ class TechnicalAnalyzer:
             Dict avec toutes les valeurs des indicateurs
         """
         if self.df is None or len(self.df) < 50:
-            return {"error": "Pas assez de données"}
+            return {'error': 'Pas assez de données'}
 
-        current_price = self.df["Close"].iloc[-1]
+        current_price = self.df['Close'].iloc[-1]
 
         # Calculer tous les indicateurs
         sma_20 = self.calculate_sma(20).iloc[-1]
@@ -406,54 +405,36 @@ class TechnicalAnalyzer:
         vwap = self.calculate_vwap().iloc[-1]
 
         return {
-            "price": {
-                "current": float(current_price),
-                "change_24h": (
-                    float(
-                        (current_price - self.df["Close"].iloc[-24])
-                        / self.df["Close"].iloc[-24]
-                        * 100
-                    )
-                    if len(self.df) >= 24
-                    else 0
-                ),
-                "high_24h": (
-                    float(self.df["High"].iloc[-24:].max())
-                    if len(self.df) >= 24
-                    else float(current_price)
-                ),
-                "low_24h": (
-                    float(self.df["Low"].iloc[-24:].min())
-                    if len(self.df) >= 24
-                    else float(current_price)
-                ),
+            'price': {
+                'current': float(current_price),
+                'change_24h': float((current_price - self.df['Close'].iloc[-24]) / self.df['Close'].iloc[-24] * 100) if len(self.df) >= 24 else 0,
+                'high_24h': float(self.df['High'].iloc[-24:].max()) if len(self.df) >= 24 else float(current_price),
+                'low_24h': float(self.df['Low'].iloc[-24:].min()) if len(self.df) >= 24 else float(current_price)
             },
-            "moving_averages": {
-                "sma_20": float(sma_20),
-                "sma_50": float(sma_50),
-                "ema_20": float(ema_20),
+            'moving_averages': {
+                'sma_20': float(sma_20),
+                'sma_50': float(sma_50),
+                'ema_20': float(ema_20)
             },
-            "macd": {
-                "macd_line": float(macd_line.iloc[-1]),
-                "signal_line": float(signal_line.iloc[-1]),
-                "histogram": float(histogram.iloc[-1]),
+            'macd': {
+                'macd_line': float(macd_line.iloc[-1]),
+                'signal_line': float(signal_line.iloc[-1]),
+                'histogram': float(histogram.iloc[-1])
             },
-            "momentum": {
-                "rsi": float(rsi),
-                "stochastic_k": float(k_percent.iloc[-1]),
-                "stochastic_d": float(d_percent.iloc[-1]),
+            'momentum': {
+                'rsi': float(rsi),
+                'stochastic_k': float(k_percent.iloc[-1]),
+                'stochastic_d': float(d_percent.iloc[-1])
             },
-            "volatility": {
-                "bb_upper": float(upper.iloc[-1]),
-                "bb_middle": float(middle.iloc[-1]),
-                "bb_lower": float(lower.iloc[-1]),
-                "atr": float(atr),
+            'volatility': {
+                'bb_upper': float(upper.iloc[-1]),
+                'bb_middle': float(middle.iloc[-1]),
+                'bb_lower': float(lower.iloc[-1]),
+                'atr': float(atr)
             },
-            "volume": {
-                "obv": float(obv),
-                "vwap": float(vwap),
-                "volume_24h": (
-                    float(self.df["Volume"].iloc[-24:].sum()) if len(self.df) >= 24 else 0
-                ),
-            },
+            'volume': {
+                'obv': float(obv),
+                'vwap': float(vwap),
+                'volume_24h': float(self.df['Volume'].iloc[-24:].sum()) if len(self.df) >= 24 else 0
+            }
         }

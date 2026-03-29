@@ -1,12 +1,12 @@
 import logging
-from multiprocessing.shared_memory import SharedMemory
-from typing import Any
 
 import numpy as np
 import pandas as pd
+from multiprocessing.shared_memory import SharedMemory
+import pickle
+from typing import Dict, Tuple, Any, List
 
 logger = logging.getLogger(__name__)
-
 
 class SharedDataManager:
     """
@@ -15,9 +15,9 @@ class SharedDataManager:
     """
 
     def __init__(self):
-        self._shm_registry: list[SharedMemory] = []
+        self._shm_registry: List[SharedMemory] = []
 
-    def put_data(self, data_dict: dict[str, pd.DataFrame]) -> dict[str, Any]:
+    def put_data(self, data_dict: Dict[str, pd.DataFrame]) -> Dict[str, Any]:
         """
         Stocke un dictionnaire de DataFrames en mémoire partagée.
 
@@ -56,7 +56,7 @@ class SharedDataManager:
                 "shape": arr.shape,
                 "dtype": str(arr.dtype),
                 "columns": numeric_df.columns.tolist(),
-                "index": df.index.tolist(),  # Attention: index peut être gros, mais c'est du pickle
+                "index": df.index.tolist(), # Attention: index peut être gros, mais c'est du pickle
             }
 
         return metadata
@@ -66,13 +66,12 @@ class SharedDataManager:
         for shm in self._shm_registry:
             try:
                 shm.close()
-                shm.unlink()  # Détruit le bloc mémoire
+                shm.unlink() # Détruit le bloc mémoire
             except Exception as e:
                 logger.warning(f"Cleanup shm {shm.name}: {e}")
         self._shm_registry.clear()
 
-
-def load_shared_array(metadata_item: dict[str, Any]) -> tuple[SharedMemory, np.ndarray]:
+def load_shared_array(metadata_item: Dict[str, Any]) -> Tuple[SharedMemory, np.ndarray]:
     """
     Charge un array numpy depuis la SHM en mode Zero-Copy.
 
@@ -81,11 +80,14 @@ def load_shared_array(metadata_item: dict[str, Any]) -> tuple[SharedMemory, np.n
                     L'appelant doit conserver 'shm' tant qu'il utilise 'arr'.
     """
     shm = SharedMemory(name=metadata_item["shm_name"])
-    arr = np.ndarray(metadata_item["shape"], dtype=metadata_item["dtype"], buffer=shm.buf)
+    arr = np.ndarray(
+        metadata_item["shape"],
+        dtype=metadata_item["dtype"],
+        buffer=shm.buf
+    )
     return shm, arr
 
-
-def load_shared_data(metadata: dict[str, Any]) -> dict[str, pd.DataFrame]:
+def load_shared_data(metadata: Dict[str, Any]) -> Dict[str, pd.DataFrame]:
     """Reconstruit les DataFrames (avec copie). legacy V8 compatible."""
     reconstructed_data = {}
 
@@ -96,7 +98,11 @@ def load_shared_data(metadata: dict[str, Any]) -> dict[str, pd.DataFrame]:
             shm = SharedMemory(name=meta["shm_name"])
 
             # 2. Créer array numpy view
-            arr = np.ndarray(meta["shape"], dtype=meta["dtype"], buffer=shm.buf)
+            arr = np.ndarray(
+                meta["shape"],
+                dtype=meta["dtype"],
+                buffer=shm.buf
+            )
 
             # 3. Reconstruire DataFrame (Pandas va copier ici, mais c'est léger car 1 env à la fois)
             # Pour une vraie optimisation Zero-Copy, l'env devrait utiliser l'array numpy direct.
@@ -106,10 +112,10 @@ def load_shared_data(metadata: dict[str, Any]) -> dict[str, pd.DataFrame]:
             # NOTE: Pour V9 pur, l'env devrait consommer 'arr' directement.
             # Ici on fait une transition douce.
             df = pd.DataFrame(
-                arr,  # Ceci crée une COPIE si on ne fait pas attention, mais pandas est tricky.
+                arr, # Ceci crée une COPIE si on ne fait pas attention, mais pandas est tricky.
                 index=meta["index"],
                 columns=meta["columns"],
-                copy=True,  # Force la copie pour détacher de la SHM
+                copy=True # Force la copie pour détacher de la SHM
             )
             logger.debug(f"Loaded df: {list(df.columns)}")
 

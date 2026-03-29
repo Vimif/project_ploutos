@@ -1,9 +1,8 @@
 """Tests unitaires pour FeatureEngineer."""
 
+import pytest
 import numpy as np
 import pandas as pd
-import pytest
-
 from core.features import FeatureEngineer
 
 # ============================================================================

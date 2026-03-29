@@ -1,34 +1,31 @@
 # trading/alpaca_client.py
 """Client pour l'API Alpaca avec logging JSON"""
 
-import json
-import os
-import time
-from datetime import datetime
-
-from alpaca.data.historical import StockHistoricalDataClient
-from alpaca.data.requests import StockLatestQuoteRequest
 from alpaca.trading.client import TradingClient
-from alpaca.trading.enums import OrderSide, TimeInForce
-from alpaca.trading.requests import LimitOrderRequest, MarketOrderRequest
-from dotenv import load_dotenv
+from alpaca.trading.requests import MarketOrderRequest, LimitOrderRequest
+from alpaca.trading.enums import OrderSide, TimeInForce, OrderType
+from alpaca.data.historical import StockHistoricalDataClient
+from alpaca.data.requests import StockLatestQuoteRequest, StockBarsRequest
+from alpaca.data.timeframe import TimeFrame
 
+from datetime import datetime, timedelta
+import os
+import json
+import time
+from dotenv import load_dotenv
 from core.utils import setup_logging
 from trading.broker_interface import BrokerInterface
 
-logger = setup_logging(__name__, "alpaca.log")
+logger = setup_logging(__name__, 'alpaca.log')
 
 # Charger variables d'environnement
 load_dotenv()
 
 # ★ CRÉER DOSSIER LOGS TRADES
-TRADES_LOG_DIR = "logs/trades"
+TRADES_LOG_DIR = 'logs/trades'
 os.makedirs(TRADES_LOG_DIR, exist_ok=True)
 
-
-def log_trade_to_json(
-    symbol, action, quantity, price, amount, reason="", portfolio_value=None, order_id=None
-):
+def log_trade_to_json(symbol, action, quantity, price, amount, reason='', portfolio_value=None, order_id=None):
     """
     Logger un trade en JSON au lieu de PostgreSQL
 
@@ -44,15 +41,15 @@ def log_trade_to_json(
     """
     try:
         trade_data = {
-            "timestamp": datetime.now().isoformat(),
-            "symbol": symbol,
-            "action": action,
-            "quantity": quantity,
-            "price": price,
-            "amount": amount,
-            "reason": reason,
-            "portfolio_value": portfolio_value,
-            "order_id": order_id,
+            'timestamp': datetime.now().isoformat(),
+            'symbol': symbol,
+            'action': action,
+            'quantity': quantity,
+            'price': price,
+            'amount': amount,
+            'reason': reason,
+            'portfolio_value': portfolio_value,
+            'order_id': order_id
         }
 
         # Nom fichier: trades_2025-12-07.json
@@ -60,7 +57,7 @@ def log_trade_to_json(
 
         # Lire trades existants
         if os.path.exists(filename):
-            with open(filename) as f:
+            with open(filename, 'r') as f:
                 trades = json.load(f)
         else:
             trades = []
@@ -69,14 +66,13 @@ def log_trade_to_json(
         trades.append(trade_data)
 
         # Sauvegarder
-        with open(filename, "w") as f:
+        with open(filename, 'w') as f:
             json.dump(trades, f, indent=2)
 
         logger.debug(f"✅ Trade loggé en JSON: {symbol} {action}")
 
     except Exception as e:
         logger.warning(f"⚠️  Échec log JSON: {e}")
-
 
 class AlpacaClient(BrokerInterface):
     """Client Alpaca pour le trading (implémente BrokerInterface)"""
@@ -92,22 +88,27 @@ class AlpacaClient(BrokerInterface):
 
         # Récupérer les clés API
         if paper_trading:
-            api_key = os.getenv("ALPACA_PAPER_API_KEY") or os.getenv("ALPACA_API_KEY")
-            api_secret = os.getenv("ALPACA_PAPER_SECRET_KEY") or os.getenv("ALPACA_SECRET_KEY")
+            api_key = os.getenv('ALPACA_PAPER_API_KEY') or os.getenv('ALPACA_API_KEY')
+            api_secret = os.getenv('ALPACA_PAPER_SECRET_KEY') or os.getenv('ALPACA_SECRET_KEY')
         else:
-            api_key = os.getenv("ALPACA_LIVE_API_KEY")
-            api_secret = os.getenv("ALPACA_LIVE_SECRET_KEY")
+            api_key = os.getenv('ALPACA_LIVE_API_KEY')
+            api_secret = os.getenv('ALPACA_LIVE_SECRET_KEY')
 
         if not api_key or not api_secret:
             raise ValueError("❌ Clés API Alpaca manquantes dans .env")
 
         # Client de trading
         self.trading_client = TradingClient(
-            api_key=api_key, secret_key=api_secret, paper=paper_trading
+            api_key=api_key,
+            secret_key=api_secret,
+            paper=paper_trading
         )
 
         # Client de données
-        self.data_client = StockHistoricalDataClient(api_key=api_key, secret_key=api_secret)
+        self.data_client = StockHistoricalDataClient(
+            api_key=api_key,
+            secret_key=api_secret
+        )
 
         logger.info(f"✅ Client Alpaca initialisé ({'Paper' if paper_trading else 'LIVE'})")
         logger.info(f"📝 Trades loggés dans: {TRADES_LOG_DIR}/")
@@ -117,13 +118,13 @@ class AlpacaClient(BrokerInterface):
         try:
             account = self.trading_client.get_account()
             return {
-                "cash": float(account.cash),
-                "portfolio_value": float(account.portfolio_value),
-                "buying_power": float(account.buying_power),
-                "equity": float(account.equity),
-                "last_equity": float(account.last_equity),
-                "daytrade_count": int(account.daytrade_count),
-                "pattern_day_trader": account.pattern_day_trader,
+                'cash': float(account.cash),
+                'portfolio_value': float(account.portfolio_value),
+                'buying_power': float(account.buying_power),
+                'equity': float(account.equity),
+                'last_equity': float(account.last_equity),
+                'daytrade_count': int(account.daytrade_count),
+                'pattern_day_trader': account.pattern_day_trader
             }
         except Exception as e:
             logger.error(f"❌ Erreur récupération compte: {e}")
@@ -133,22 +134,17 @@ class AlpacaClient(BrokerInterface):
         """Obtenir toutes les positions ouvertes"""
         try:
             positions = self.trading_client.get_all_positions()
-            return [
-                {
-                    "symbol": pos.symbol,
-                    "qty": float(pos.qty),
-                    "market_value": float(pos.market_value),
-                    "cost_basis": float(pos.cost_basis),
-                    "unrealized_pl": float(pos.unrealized_pl),
-                    "unrealized_plpc": float(pos.unrealized_plpc),
-                    "current_price": float(pos.current_price),
-                    "avg_entry_price": float(pos.avg_entry_price),
-                    "purchase_date": getattr(
-                        pos, "created_at", None
-                    ),  # Alpaca Position lacks purchase_date
-                }
-                for pos in positions
-            ]
+            return [{
+                'symbol': pos.symbol,
+                'qty': float(pos.qty),
+                'market_value': float(pos.market_value),
+                'cost_basis': float(pos.cost_basis),
+                'unrealized_pl': float(pos.unrealized_pl),
+                'unrealized_plpc': float(pos.unrealized_plpc),
+                'current_price': float(pos.current_price),
+                'avg_entry_price': float(pos.avg_entry_price),
+                'purchase_date': getattr(pos, 'created_at', None)  # Alpaca Position lacks purchase_date
+            } for pos in positions]
         except Exception as e:
             logger.error(f"❌ Erreur récupération positions: {e}")
             return []
@@ -158,13 +154,13 @@ class AlpacaClient(BrokerInterface):
         try:
             pos = self.trading_client.get_open_position(symbol)
             return {
-                "symbol": pos.symbol,
-                "qty": float(pos.qty),
-                "market_value": float(pos.market_value),
-                "unrealized_pl": float(pos.unrealized_pl),
-                "unrealized_plpc": float(pos.unrealized_plpc),
-                "current_price": float(pos.current_price),
-                "avg_entry_price": float(pos.avg_entry_price),
+                'symbol': pos.symbol,
+                'qty': float(pos.qty),
+                'market_value': float(pos.market_value),
+                'unrealized_pl': float(pos.unrealized_pl),
+                'unrealized_plpc': float(pos.unrealized_plpc),
+                'current_price': float(pos.current_price),
+                'avg_entry_price': float(pos.avg_entry_price)
             }
         except Exception as e:
             # Position not found is expected, but log other errors
@@ -199,12 +195,12 @@ class AlpacaClient(BrokerInterface):
             int: Nombre d'ordres annulés
         """
         try:
-            orders = self.get_orders(status="open")
+            orders = self.get_orders(status='open')
             cancelled = 0
 
             for order in orders:
-                if order["symbol"] == symbol:
-                    self.cancel_order(order["id"])
+                if order['symbol'] == symbol:
+                    self.cancel_order(order['id'])
                     cancelled += 1
 
             if cancelled > 0:
@@ -233,11 +229,11 @@ class AlpacaClient(BrokerInterface):
                 order = self.trading_client.get_order_by_id(order_id)
                 status = str(order.status).lower()
 
-                if "filled" in status or "completed" in status:
+                if 'filled' in status or 'completed' in status:
                     logger.debug(f"  ✅ Ordre {order_id[:8]}... exécuté")
                     return True
 
-                elif "canceled" in status or "expired" in status or "rejected" in status:
+                elif 'canceled' in status or 'expired' in status or 'rejected' in status:
                     logger.warning(f"  ⚠️  Ordre {order_id[:8]}... {status}")
                     return False
 
@@ -251,7 +247,7 @@ class AlpacaClient(BrokerInterface):
         logger.warning(f"  ⏱️  Timeout ordre {order_id[:8]}...")
         return False
 
-    def place_market_order(self, symbol, qty, side="buy", reason=""):
+    def place_market_order(self, symbol, qty, side='buy', reason=''):
         """
         Passer un ordre au marché avec logging JSON
 
@@ -265,10 +261,13 @@ class AlpacaClient(BrokerInterface):
             Order object ou None
         """
         try:
-            order_side = OrderSide.BUY if side.lower() == "buy" else OrderSide.SELL
+            order_side = OrderSide.BUY if side.lower() == 'buy' else OrderSide.SELL
 
             order_data = MarketOrderRequest(
-                symbol=symbol, qty=qty, side=order_side, time_in_force=TimeInForce.DAY
+                symbol=symbol,
+                qty=qty,
+                side=order_side,
+                time_in_force=TimeInForce.DAY
             )
 
             order = self.trading_client.submit_order(order_data)
@@ -284,23 +283,17 @@ class AlpacaClient(BrokerInterface):
             order = self.trading_client.get_order_by_id(order.id)
 
             order_dict = {
-                "id": order.id,
-                "symbol": order.symbol,
-                "qty": float(order.qty),
-                "side": order.side,
-                "status": order.status,
-                "filled_avg_price": (
-                    float(order.filled_avg_price) if order.filled_avg_price else None
-                ),
+                'id': order.id,
+                'symbol': order.symbol,
+                'qty': float(order.qty),
+                'side': order.side,
+                'status': order.status,
+                'filled_avg_price': float(order.filled_avg_price) if order.filled_avg_price else None
             }
 
             # ★ LOGGER EN JSON (SAFE)
             account = self.get_account()
-            price = (
-                float(order.filled_avg_price)
-                if order.filled_avg_price
-                else self.get_current_price(symbol)
-            )
+            price = float(order.filled_avg_price) if order.filled_avg_price else self.get_current_price(symbol)
 
             if price and price > 0:
                 log_trade_to_json(
@@ -310,8 +303,8 @@ class AlpacaClient(BrokerInterface):
                     price=price,
                     amount=qty * price,
                     reason=reason,
-                    portfolio_value=account["portfolio_value"] if account else None,
-                    order_id=order.id,
+                    portfolio_value=account['portfolio_value'] if account else None,
+                    order_id=order.id
                 )
 
             return order_dict
@@ -320,17 +313,17 @@ class AlpacaClient(BrokerInterface):
             logger.error(f"❌ Erreur ordre {side} pour {symbol}: {e}")
             return None
 
-    def place_limit_order(self, symbol, qty, limit_price, side="buy"):
+    def place_limit_order(self, symbol, qty, limit_price, side='buy'):
         """Passer un ordre limite"""
         try:
-            order_side = OrderSide.BUY if side.lower() == "buy" else OrderSide.SELL
+            order_side = OrderSide.BUY if side.lower() == 'buy' else OrderSide.SELL
 
             order_data = LimitOrderRequest(
                 symbol=symbol,
                 qty=qty,
                 side=order_side,
                 time_in_force=TimeInForce.DAY,
-                limit_price=limit_price,
+                limit_price=limit_price
             )
 
             order = self.trading_client.submit_order(order_data)
@@ -338,18 +331,18 @@ class AlpacaClient(BrokerInterface):
             logger.info(f"✅ Ordre LIMIT {side.upper()} placé: {symbol} x{qty} @ ${limit_price}")
 
             return {
-                "id": order.id,
-                "symbol": order.symbol,
-                "qty": float(order.qty),
-                "limit_price": float(order.limit_price),
-                "status": order.status,
+                'id': order.id,
+                'symbol': order.symbol,
+                'qty': float(order.qty),
+                'limit_price': float(order.limit_price),
+                'status': order.status
             }
 
         except Exception as e:
             logger.error(f"❌ Erreur ordre limite pour {symbol}: {e}")
             return None
 
-    def close_position(self, symbol, reason=""):
+    def close_position(self, symbol, reason=''):
         """
         Fermer complètement une position avec gestion wash trade
         ★ ATTEND QUE L'ORDRE SOIT EXÉCUTÉ
@@ -369,8 +362,8 @@ class AlpacaClient(BrokerInterface):
                 logger.warning(f"⚠️  {symbol}: Pas de position à fermer")
                 return False
 
-            qty = position["qty"]
-            current_price = position["current_price"]
+            qty = position['qty']
+            current_price = position['current_price']
 
             # 2. Annuler tous les ordres en cours pour éviter wash trade
             self.cancel_orders_for_symbol(symbol)
@@ -382,7 +375,7 @@ class AlpacaClient(BrokerInterface):
             response = self.trading_client.close_position(symbol)
 
             # Récupérer l'ID de l'ordre créé
-            order_id = response.id if hasattr(response, "id") else None
+            order_id = response.id if hasattr(response, 'id') else None
 
             if order_id:
                 logger.info(f"✅ Ordre SELL créé: {symbol}")
@@ -401,12 +394,12 @@ class AlpacaClient(BrokerInterface):
             account = self.get_account()
             log_trade_to_json(
                 symbol=symbol,
-                action="SELL",
+                action='SELL',
                 quantity=qty,
                 price=current_price,
                 amount=qty * current_price,
-                reason=reason or "Fermeture position",
-                portfolio_value=account["portfolio_value"] if account else None,
+                reason=reason or 'Fermeture position',
+                portfolio_value=account['portfolio_value'] if account else None
             )
 
             return True
@@ -425,46 +418,36 @@ class AlpacaClient(BrokerInterface):
             logger.error(f"❌ Erreur fermeture globale: {e}")
             return False
 
-    def get_orders(self, status="open", limit=50):
+    def get_orders(self, status='open', limit=50):
         """Obtenir les ordres"""
         try:
-            from alpaca.trading.enums import QueryOrderStatus
             from alpaca.trading.requests import GetOrdersRequest
+            from alpaca.trading.enums import QueryOrderStatus
 
             status_map = {
-                "open": QueryOrderStatus.OPEN,
-                "closed": QueryOrderStatus.CLOSED,
-                "all": QueryOrderStatus.ALL,
+                'open': QueryOrderStatus.OPEN,
+                'closed': QueryOrderStatus.CLOSED,
+                'all': QueryOrderStatus.ALL
             }
 
             request = GetOrdersRequest(
-                status=status_map.get(status, QueryOrderStatus.OPEN), limit=limit
+                status=status_map.get(status, QueryOrderStatus.OPEN),
+                limit=limit
             )
 
             orders = self.trading_client.get_orders(filter=request)
 
-            return [
-                {
-                    "id": order.id,
-                    "symbol": order.symbol,
-                    "qty": float(order.qty) if order.qty else 0,
-                    "side": order.side.value if hasattr(order.side, "value") else str(order.side),
-                    "status": (
-                        order.status.value if hasattr(order.status, "value") else str(order.status)
-                    ),
-                    "order_type": (
-                        order.order_type.value
-                        if hasattr(order.order_type, "value")
-                        else str(order.order_type)
-                    ),
-                    "filled_avg_price": (
-                        float(order.filled_avg_price) if order.filled_avg_price else 0
-                    ),
-                    "filled_at": str(order.filled_at) if order.filled_at else "",
-                    "created_at": str(order.created_at) if order.created_at else "",
-                }
-                for order in orders
-            ]
+            return [{
+                'id': order.id,
+                'symbol': order.symbol,
+                'qty': float(order.qty) if order.qty else 0,
+                'side': order.side.value if hasattr(order.side, 'value') else str(order.side),
+                'status': order.status.value if hasattr(order.status, 'value') else str(order.status),
+                'order_type': order.order_type.value if hasattr(order.order_type, 'value') else str(order.order_type),
+                'filled_avg_price': float(order.filled_avg_price) if order.filled_avg_price else 0,
+                'filled_at': str(order.filled_at) if order.filled_at else '',
+                'created_at': str(order.created_at) if order.created_at else ''
+            } for order in orders]
         except Exception as e:
             logger.error(f"❌ Erreur récupération ordres: {e}")
             return []
@@ -484,10 +467,8 @@ class AlpacaClient(BrokerInterface):
         try:
             positions = self.get_positions()
             if positions:
-                filename = (
-                    f"{TRADES_LOG_DIR}/positions_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.json"
-                )
-                with open(filename, "w") as f:
+                filename = f"{TRADES_LOG_DIR}/positions_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.json"
+                with open(filename, 'w') as f:
                     json.dump(positions, f, indent=2)
                 logger.info(f"✅ {len(positions)} positions loggées: {filename}")
         except Exception as e:
