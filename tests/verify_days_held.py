@@ -1,6 +1,6 @@
 import sys
-from pathlib import Path
 from datetime import datetime, timedelta
+from pathlib import Path
 from unittest.mock import MagicMock
 
 # Mock numpy before it's imported by core.risk_manager
@@ -18,6 +18,7 @@ sys.modules["core.utils"].setup_logging.return_value = mock_logger
 # Ajouter la racine du projet au path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# ruff: noqa: E402
 from core.risk_manager import RiskManager
 
 
