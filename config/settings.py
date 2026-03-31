@@ -37,6 +37,11 @@ WANDB_CONFIG = {
     'entity': 'vimif-perso',
 }
 
-print(f"🖥️  Machine: {HOSTNAME}")
-print(f"📂 DATA_DIR: {DATA_DIR}")
-print(f"🏦 Broker: {BROKER}")
+try:
+    print(f"🖥️  Machine: {HOSTNAME}")
+    print(f"📂 DATA_DIR: {DATA_DIR}")
+    print(f"🏦 Broker: {BROKER}")
+except UnicodeEncodeError:
+    print(f"Machine: {HOSTNAME}")
+    print(f"DATA_DIR: {DATA_DIR}")
+    print(f"Broker: {BROKER}")

@@ -15,6 +15,7 @@ SCRIPT_ENTRY_RE = re.compile(r'^\s*([A-Za-z0-9._-]+)\s*=\s*"([^"]+)"\s*$')
 PYTHON_CMD_RE = re.compile(r"(?m)^\s*(?:python|python3)\s+([A-Za-z0-9_./\\-]+\.py)\b")
 SHELL_CMD_RE = re.compile(r"(?m)^\s*\./([A-Za-z0-9_./\\-]+\.sh)\b")
 VERSION_RE = re.compile(r"\bV(\d+(?:\.\d+)?)\b")
+NON_ASCII_RE = re.compile(r"[^\x00-\x7F]")
 
 
 @dataclass
@@ -154,6 +155,38 @@ def check_pytest_config_duplication(project_root: Path) -> list[Finding]:
     ]
 
 
+def check_windows_ascii_safety(project_root: Path) -> list[Finding]:
+    tracked_paths = [
+        Path("README.md"),
+        Path("pyproject.toml"),
+        Path("config/config.yaml"),
+        Path("training/train.py"),
+        Path("scripts/run_pipeline.py"),
+        Path("scripts/robustness_tests.py"),
+        Path("scripts/paper_trade.py"),
+        Path("scripts/backtest_ultimate.py"),
+        Path("scripts/audit_repo.py"),
+    ]
+    findings: list[Finding] = []
+
+    for rel_path in tracked_paths:
+        path = project_root / rel_path
+        if not path.exists():
+            continue
+        content = _read_text(path)
+        if NON_ASCII_RE.search(content):
+            findings.append(
+                Finding(
+                    "WARN",
+                    str(rel_path),
+                    "Critical workflow file contains non-ASCII characters. "
+                    "Prefer ASCII-safe text for Windows PowerShell compatibility.",
+                )
+            )
+
+    return findings
+
+
 def collect_findings(project_root: Path) -> list[Finding]:
     findings: list[Finding] = []
     pyproject_path = project_root / "pyproject.toml"
@@ -168,6 +201,7 @@ def collect_findings(project_root: Path) -> list[Finding]:
     findings.extend(check_version_markers(project_root))
     findings.extend(check_soft_failed_typecheck(project_root))
     findings.extend(check_pytest_config_duplication(project_root))
+    findings.extend(check_windows_ascii_safety(project_root))
     return findings
 
 

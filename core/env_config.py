@@ -51,6 +51,7 @@ class TradingConfig:
     warmup_steps: int = 100
     steps_per_trading_week: int = 78
     drawdown_threshold: float = 0.10
+    stop_loss_pct: float = 0.0  # 0 = disabled, e.g. 0.05 = auto-sell at -5%
 
 
 @dataclass

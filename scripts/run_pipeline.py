@@ -2,8 +2,8 @@
 # scripts/run_pipeline.py
 """Pipeline complet : Walk-Forward Training -> Tests de Robustesse.
 
-Orchestre l'entraînement et la validation en une seule commande.
-Avec --auto-scale, détecte le hardware et optimise les paramètres.
+Orchestre l'entrainement et la validation en une seule commande.
+Avec --auto-scale, detecte le hardware et optimise les parametres.
 
 Usage:
     python scripts/run_pipeline.py --config config/config.yaml --auto-scale
@@ -90,7 +90,7 @@ def main():
             logger.error("No output_dir in results, skipping robustness")
             return
 
-        # Trouver les modèles dans les folds
+        # Trouver les modeles dans les folds
         model_files = sorted(glob.glob(f"{output_dir}/fold_*/model.zip"))
         if not model_files:
             logger.warning("No model.zip found in folds, skipping robustness")
@@ -220,7 +220,7 @@ def main():
                 json.dump(report, f, indent=2)
             logger.info(f"  Report: {report_path}")
 
-    # === Résumé ===
+    # === Resume ===
     total_time = time.time() - t0
     logger.info("\n" + "=" * 70)
     logger.info("PIPELINE COMPLETE")

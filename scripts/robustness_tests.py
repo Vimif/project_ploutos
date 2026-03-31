@@ -151,11 +151,11 @@ def calculate_psr(returns: np.array, benchmark_sr: float = 0.0) -> float:
 
 
 def calculate_dsr(returns: np.array, n_trials: int = 1) -> float:
-    """Calcule le Deflated Sharpe Ratio (DSR) simplifié."""
+    """Calcule le Deflated Sharpe Ratio (DSR) simplifie."""
     if n_trials <= 1:
         return calculate_psr(returns, 0.0)
     
-    # Benchmark ajusté pour le biais de sélection (Multiple Testing)
+    # Benchmark ajuste pour le biais de selection (Multiple Testing)
     # E[max(SR)] approx sqrt(2 * logN)
     benchmark_sr = np.sqrt(2 * np.log(n_trials)) * 0.05 # Scale factor empirique pour hourly
     return calculate_psr(returns, benchmark_sr)
@@ -167,16 +167,16 @@ def simulate_crash(
     crash_day_idx: int = None,
     instant: bool = False,
 ) -> Dict[str, pd.DataFrame]:
-    """Simule un krach boursier à une date donnée.
+    """Simule un krach boursier a une date donnee.
 
     Args:
         data: Dict {ticker: DataFrame OHLCV}.
         crash_pct: Amplitude du krach (-0.20 = -20%).
-        crash_day_idx: Index de la bougie de début du krach (None = milieu).
-        instant: Si True, crash instantané (1 bar). Sinon, graduel sur 6 bars.
+        crash_day_idx: Index de la bougie de debut du krach (None = milieu).
+        instant: Si True, crash instantane (1 bar). Sinon, graduel sur 6 bars.
 
     Returns:
-        Données avec un krach injecté.
+        Donnees avec un krach injecte.
     """
     crashed_data = {}
     for ticker, df in data.items():
@@ -198,7 +198,7 @@ def simulate_crash(
                 drop = crash_pct * progress
                 crashed_df.iloc[idx, crashed_df.columns.get_loc(col)] *= (1 + drop)
 
-            # Les prix après le crash restent au niveau bas
+            # Les prix apres le crash restent au niveau bas
             post_crash_factor = 1 + crash_pct
             for idx in range(end_idx, n):
                 crashed_df.iloc[idx, crashed_df.columns.get_loc(col)] *= post_crash_factor
@@ -421,7 +421,7 @@ def stress_test_crash(
 ) -> dict:
     """Stress Test: simule un krach de -20%.
 
-    Vérifie que le modèle :
+    Verifie que le modele :
     1. Coupe ses positions (stop loss)
     2. Ne perd pas plus que le drawdown max acceptable (15%)
     """
@@ -451,7 +451,7 @@ def stress_test_crash(
         precomputed_env_kwargs,
     )
 
-    # Analyser la réaction
+    # Analyser la reaction
     baseline_return = baseline['total_return']
     crash_return = crash_result['total_return']
     return_impact = crash_return - baseline_return

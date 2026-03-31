@@ -2,6 +2,7 @@
 """Observation vector construction for TradingEnv."""
 
 import numpy as np
+from collections import deque
 from typing import Dict, List, Optional
 
 from core.constants import EQUITY_EPSILON, OBSERVATION_CLIP_RANGE
@@ -28,8 +29,10 @@ class ObservationBuilder:
         self.obs_size = (
             self.n_assets * self.n_features
             + self.n_macro_features
-            + self.n_assets  # positions
+            + self.n_assets  # position percentages
+            + self.n_assets  # unrealized PnL per position
             + 3  # cash_pct, total_return, drawdown
+            + 3  # recent returns: 1-step, 5-step, 20-step
         )
 
     def build(
@@ -41,6 +44,8 @@ class ObservationBuilder:
         balance: float,
         initial_balance: float,
         peak_value: float,
+        entry_prices: Optional[Dict[str, float]] = None,
+        portfolio_value_history: Optional[deque] = None,
     ) -> np.ndarray:
         """Build observation vector for current step.
 
@@ -52,6 +57,8 @@ class ObservationBuilder:
             balance: Current cash balance.
             initial_balance: Starting balance.
             peak_value: Historical peak equity.
+            entry_prices: Dict of ticker -> entry price for open positions.
+            portfolio_value_history: Recent equity history for return calculation.
 
         Returns:
             Flat numpy observation vector.
@@ -80,7 +87,7 @@ class ObservationBuilder:
             macro_features = np.clip(macro_features, -clip, clip)
             obs_parts.append(macro_features)
 
-        # Positions
+        # Position percentages
         for ticker in self.tickers:
             price = prices.get(ticker, 0.0)
             if price > 0:
@@ -90,11 +97,37 @@ class ObservationBuilder:
                 position_pct = 0.0
             obs_parts.append([np.clip(position_pct, 0, 1)])
 
+        # Unrealized PnL per position
+        if entry_prices is None:
+            entry_prices = {}
+        for ticker in self.tickers:
+            entry = entry_prices.get(ticker, 0.0)
+            qty = portfolio.get(ticker, 0.0)
+            price = prices.get(ticker, 0.0)
+            if entry > 0 and qty > 0 and price > 0:
+                unrealized_pnl = (price - entry) / entry
+            else:
+                unrealized_pnl = 0.0
+            obs_parts.append([np.clip(unrealized_pnl, -1.0, 5.0)])
+
         # Portfolio state
         cash_pct = np.clip(balance / (equity + EQUITY_EPSILON), 0, 1)
         total_return = np.clip((equity - initial_balance) / initial_balance, -1, 5)
         drawdown = np.clip((peak_value - equity) / (peak_value + EQUITY_EPSILON), 0, 1)
         obs_parts.append([cash_pct, total_return, drawdown])
+
+        # Recent portfolio returns (1-step, 5-step, 20-step)
+        hist = list(portfolio_value_history) if portfolio_value_history else []
+
+        def _recent_return(lookback):
+            if len(hist) > lookback and hist[-lookback - 1] > 0:
+                return (hist[-1] - hist[-lookback - 1]) / hist[-lookback - 1]
+            return 0.0
+
+        ret_1 = np.clip(_recent_return(1), -0.5, 0.5)
+        ret_5 = np.clip(_recent_return(5), -0.5, 0.5)
+        ret_20 = np.clip(_recent_return(20), -0.5, 0.5)
+        obs_parts.append([ret_1, ret_5, ret_20])
 
         obs = np.concatenate([np.array(p).flatten() for p in obs_parts])
         obs = np.nan_to_num(obs, nan=0.0, posinf=clip, neginf=-clip)

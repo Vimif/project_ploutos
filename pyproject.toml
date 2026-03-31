@@ -1,7 +1,7 @@
 [project]
 name = "ploutos-trading"
 version = "2.0.0"
-description = "Système de trading algorithmique avec Reinforcement Learning"
+description = "Systeme de trading algorithmique avec Reinforcement Learning"
 authors = [
     {name = "Vimif", email = "your@email.com"}
 ]

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ploutos Repo"
+  short_description: "Repo workflow for Ploutos RL"
+  default_prompt: "Use $ploutos-repo to inspect this repository, make a safe change, and verify it with focused tests."

@@ -17,7 +17,8 @@
       "Bash(python:*)",
       "Bash(test:*)",
       "Bash(del \"d:\\\\Dev\\\\Github\\\\project_ploutos\\\\.claude\\\\worktrees\\\\infallible-faraday\\\\CLAUDE.md\")",
-      "Bash(del \"d:\\\\Dev\\\\Github\\\\project_ploutos\\\\.claude\\\\worktrees\\\\amazing-meninsky\\\\CLAUDE.md\")"
+      "Bash(del \"d:\\\\Dev\\\\Github\\\\project_ploutos\\\\.claude\\\\worktrees\\\\amazing-meninsky\\\\CLAUDE.md\")",
+      "Bash(set:*)"
     ]
   }
 }

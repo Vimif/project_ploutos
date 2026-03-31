@@ -7,9 +7,9 @@ Principe:
     ...
     Train 2010-2023 -> Test 2024
 
-Chaque fenêtre entraîne un modèle frais, puis le teste sur la période
-suivante (jamais vue). Le résultat est une courbe de performance
-réaliste qui simule le trading réel année après année.
+Chaque fenetre entraine un modele frais, puis le teste sur la periode
+suivante (jamais vue). Le resultat est une courbe de performance
+realiste qui simule le trading reel annee apres annee.
 
 Usage:
     python training/train.py --config config/config.yaml
@@ -58,12 +58,12 @@ try:
     HAS_RECURRENT = True
 except ImportError:
     HAS_RECURRENT = False
-    logger.warning("sb3-contrib non disponible, RecurrentPPO désactivé")
+    logger.warning("sb3-contrib non disponible, RecurrentPPO desactive")
 
 
 def load_config(config_path: str) -> dict:
     if not os.path.exists(config_path):
-        logger.error(f"Config {config_path} non trouvé")
+        logger.error(f"Config {config_path} non trouve")
         return None
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
@@ -80,14 +80,14 @@ def generate_walk_forward_splits(
     step_months: int = 12,
     embargo_months: int = 1,  # Anti-Leak Embargo (buffer pour les indicateurs)
 ) -> List[Dict]:
-    """Génère les fenêtres walk-forward.
+    """Genere les fenetres walk-forward.
 
     Args:
         data: Dict {ticker: DataFrame} avec DatetimeIndex.
-        train_years: Nombre minimum d'années d'entraînement.
-        test_months: Durée de la fenêtre de test en mois.
-        step_months: Pas entre chaque fenêtre (en mois).
-        embargo_months: Mois à sauter entre train et test (Data Leakage protection).
+        train_years: Nombre minimum d'annees d'entrainement.
+        test_months: Duree de la fenetre de test en mois.
+        step_months: Pas entre chaque fenetre (en mois).
+        embargo_months: Mois a sauter entre train et test (Data Leakage protection).
 
     Returns:
         Liste de dicts avec 'train' et 'test' (chacun Dict[str, DataFrame]).
@@ -102,7 +102,7 @@ def generate_walk_forward_splits(
     train_end = start_date + pd.DateOffset(years=train_years)
 
     while True:
-        # Période d'Embargo (zone tampon)
+        # Periode d'Embargo (zone tampon)
         test_start = train_end + pd.DateOffset(months=embargo_months)
         test_end = test_start + pd.DateOffset(months=test_months)
 
@@ -172,10 +172,10 @@ def train_single_fold(
     seed: int = 42,
     split_info: Optional[Dict[str, str]] = None,
 ) -> dict:
-    """Entraîne et évalue sur un seul fold walk-forward.
+    """Entraine et evalue sur un seul fold walk-forward.
 
     Returns:
-        Dict avec métriques du fold.
+        Dict avec metriques du fold.
     """
     fold_dir = os.path.join(output_dir, f"fold_{fold_idx:02d}")
     os.makedirs(fold_dir, exist_ok=True)
@@ -184,10 +184,10 @@ def train_single_fold(
     use_shared_memory = config.get("training", {}).get("use_shared_memory", False)
     shm_manager = None
     
-    # ⚡ V9 Shared Memory: Optimisation RAM
+    # [FAST] V9 Shared Memory: Optimisation RAM
     if use_shared_memory:
         try:
-            logger.info(f"  ⚡ V9: Loading TRAIN data into Shared Memory for {n_envs} workers...")
+            logger.info(f"  [FAST] V9: Loading TRAIN data into Shared Memory for {n_envs} workers...")
             shm_manager = SharedDataManager()
             # On remplace le gros dict de DF par un petit dict de Metadata
             train_data = shm_manager.put_data(train_data)
@@ -197,9 +197,9 @@ def train_single_fold(
             raise e
 
     try:
-        # Environnements d'entraînement
+        # Environnements d'entrainement
         if use_recurrent:
-            # RecurrentPPO nécessite DummyVecEnv (pas SubprocVecEnv)
+            # RecurrentPPO necessite DummyVecEnv (pas SubprocVecEnv)
             envs = DummyVecEnv(
                 [
                     make_env(train_data, macro_data, config, mode="train", features_precomputed=True)
@@ -223,7 +223,7 @@ def train_single_fold(
             gamma=config.get("training", {}).get("gamma", 0.99),
         )
 
-        # Architecture réseau
+        # Architecture reseau
         net_arch = config.get("network", {}).get("net_arch", [512, 512, 256])
         activation_name = config.get("network", {}).get("activation_fn", "tanh")
         activation_fn = torch.nn.Tanh if activation_name == "tanh" else torch.nn.ReLU
@@ -233,7 +233,7 @@ def train_single_fold(
         training_cfg = config.get("training", {})
         timesteps = training_cfg.get("total_timesteps", 5_000_000)
 
-        # Créer le modèle
+        # Creer le modele
         if use_recurrent and HAS_RECURRENT:
             policy_kwargs = {
                 "net_arch": net_arch,
@@ -295,7 +295,7 @@ def train_single_fold(
             name_prefix=f"fold_{fold_idx:02d}",
         )
 
-        # Entraîner
+        # Entrainer
         logger.info(f"  Fold {fold_idx}: Training {timesteps:,} timesteps...")
         try:
             import tqdm  # noqa: F401
@@ -308,7 +308,7 @@ def train_single_fold(
             total_timesteps=timesteps, callback=[checkpoint_cb], progress_bar=_progress_bar
         )
 
-        # Sauvegarder le modèle
+        # Sauvegarder le modele
         model_path = os.path.join(fold_dir, "model")
         model.save(model_path)
         envs.save(os.path.join(fold_dir, "vecnormalize.pkl"))
@@ -320,7 +320,7 @@ def train_single_fold(
                 json.dump(split_info, f, indent=2)
             logger.info(f"  Fold {fold_idx}: Saved metadata to {metadata_path}")
 
-        # Évaluer sur le test set (geler les stats de normalisation)
+        # Evaluer sur le test set (geler les stats de normalisation)
         logger.info(f"  Fold {fold_idx}: Evaluating on test period...")
         envs.training = False
         envs.norm_reward = False
@@ -328,7 +328,7 @@ def train_single_fold(
             model, envs, test_data, macro_data, config, features_precomputed=True
         )
 
-        # Sauvegarder métriques
+        # Sauvegarder metriques
         metrics_path = os.path.join(fold_dir, "metrics.json")
         with open(metrics_path, "w") as f:
             json.dump(metrics, f, indent=2)
@@ -345,14 +345,14 @@ def train_single_fold(
 
     finally:
         if shm_manager:
-            logger.info("  ⚡ V9: Cleaning up Shared Memory resources")
+            logger.info("  [FAST] V9: Cleaning up Shared Memory resources")
             shm_manager.cleanup()
 
     return metrics
 
 
 def _annualization_factor(interval: str) -> float:
-    """Facteur d'annualisation du Sharpe ratio selon l'intervalle des données."""
+    """Facteur d'annualisation du Sharpe ratio selon l'intervalle des donnees."""
     factors = {"1h": 252 * 6.5, "1d": 252, "1wk": 52, "1mo": 12}
     return np.sqrt(factors.get(interval, 252))
 
@@ -360,7 +360,7 @@ def _annualization_factor(interval: str) -> float:
 def evaluate_on_test(
     model, train_envs, test_data, macro_data, config, features_precomputed=False
 ) -> dict:
-    """Évalue le modèle sur la période de test.
+    """Evalue le modele sur la periode de test.
 
     Returns:
         Dict avec total_return, sharpe_ratio, max_drawdown, etc.
@@ -392,7 +392,7 @@ def evaluate_on_test(
         episode_start = np.array([done], dtype=bool)
         equity_curve.append(info["equity"])
 
-    # Calculer métriques
+    # Calculer metriques
     equity_series = pd.Series(equity_curve)
     returns = equity_series.pct_change().dropna()
 
@@ -444,7 +444,7 @@ def run_walk_forward(
     else:
         max_workers = 3
 
-    # 1. Télécharger données
+    # 1. Telecharger donnees
     logger.info("Downloading data...")
     data = download_data(
         tickers=config["data"]["tickers"],
@@ -463,7 +463,7 @@ def run_walk_forward(
     # Feature engineer (used per-fold to avoid look-ahead bias)
     feature_engineer = FeatureEngineer()
 
-    # 2. Télécharger données macro
+    # 2. Telecharger donnees macro
     logger.info("Downloading macro data (VIX, TNX, DXY)...")
     macro_fetcher = MacroDataFetcher()
     ref_ticker = list(data.keys())[0]
@@ -483,7 +483,7 @@ def run_walk_forward(
         logger.warning("No macro data available, proceeding without")
         macro_data = None
 
-    # 3. Générer splits walk-forward
+    # 3. Generer splits walk-forward
     wf_cfg = config.get("walk_forward", {})
     logger.info("Generating walk-forward splits...")
     splits = generate_walk_forward_splits(
@@ -503,7 +503,7 @@ def run_walk_forward(
     output_dir = f"models/walk_forward_{algo}_{timestamp}"
     os.makedirs(output_dir, exist_ok=True)
 
-    # 5. Entraîner chaque fold
+    # 5. Entrainer chaque fold
     all_metrics = []
 
     for fold_idx, split in enumerate(splits):
@@ -546,7 +546,7 @@ def run_walk_forward(
             "test_end": split["test_end"],
         }
 
-        # Ensemble : entraîner n_ensemble modèles avec des seeds différents
+        # Ensemble : entrainer n_ensemble modeles avec des seeds differents
         if n_ensemble > 1:
             fold_metrics_list = []
             for ens_idx in range(n_ensemble):
@@ -564,7 +564,7 @@ def run_walk_forward(
                 )
                 fold_metrics_list.append(metrics)
 
-            # Moyenne des métriques de l'ensemble
+            # Moyenne des metriques de l'ensemble
             avg_metrics = {
                 key: float(np.mean([m[key] for m in fold_metrics_list]))
                 for key in fold_metrics_list[0]
@@ -616,7 +616,7 @@ def run_walk_forward(
     logger.info(f"  Win Folds:   {sum(1 for r in returns if r > 0)}/{len(returns)}")
     logger.info(f"  Cumulative:  {np.prod([1 + r for r in returns]) - 1:+.2%}")
 
-    # Sauvegarder résultats
+    # Sauvegarder resultats
     results = {
         "algorithm": algo,
         "n_folds": len(all_metrics),

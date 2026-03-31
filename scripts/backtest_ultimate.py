@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 """
 ===============================================================================
-  BACKTEST ULTIMATE — Validation Complete des Modeles Ploutos
+  BACKTEST ULTIMATE - Validation Complete des Modeles Ploutos
 ===============================================================================
 
 11 modules d'analyse:
-  1. Trade Journal         — Log detaille de chaque trade + timing quality
-  2. Walk-Forward          — Fenetres glissantes pour tester la stabilite
-  3. Benchmarks            — Buy & Hold, Random Agent, Hold Cash
-  4. Metriques exhaustives — Sharpe, Sortino, Calmar, Profit Factor, etc.
-  5. Monte Carlo           — Test statistique: la strategie bat-elle le hasard?
-  6. Stress Test           — Robustesse sous couts/slippage augmentes
-  7. Rapport Certification — Verdict PASS/FAIL + score 0-100 + export JSON
-  8. OOS Validation        — Detection chevauchement training/backtest
-  9. Bootstrap CI          — Intervalles de confiance 95% sur les metriques
- 10. Market Regime         — Performance par regime (bull/bear/range)
- 11. Stress Scenarios      — Crash, range-bound, gap simulations
+  1. Trade Journal         - Log detaille de chaque trade + timing quality
+  2. Walk-Forward          - Fenetres glissantes pour tester la stabilite
+  3. Benchmarks            - Buy & Hold, Random Agent, Hold Cash
+  4. Metriques exhaustives - Sharpe, Sortino, Calmar, Profit Factor, etc.
+  5. Monte Carlo           - Test statistique: la strategie bat-elle le hasard?
+  6. Stress Test           - Robustesse sous couts/slippage augmentes
+  7. Rapport Certification - Verdict PASS/FAIL + score 0-100 + export JSON
+  8. OOS Validation        - Detection chevauchement training/backtest
+  9. Bootstrap CI          - Intervalles de confiance 95% sur les metriques
+ 10. Market Regime         - Performance par regime (bull/bear/range)
+ 11. Stress Scenarios      - Crash, range-bound, gap simulations
 
 Usage:
   python scripts/backtest_ultimate.py --model data/models/brain_tech.zip
@@ -226,7 +226,7 @@ def detect_environment(model, metadata=None, config=None):
         # Cross-validate ticker count with model obs_size
         if obs_matches and actual_n_int != n_tickers:
             logger.warning(
-                f"  ⚠️  Metadata liste {n_tickers} tickers mais le modele a ete entraine avec "
+                f"  [WARN]  Metadata liste {n_tickers} tickers mais le modele a ete entraine avec "
                 f"{actual_n_int} tickers (obs_size={obs_size}). "
                 f"Probable: {n_tickers - actual_n_int} tickers absents pendant l'entrainement."
             )
@@ -310,7 +310,7 @@ def create_vec_env_normalized(env_class, data, env_params, vecnorm_path=None):
 
 
 # ============================================================================
-# TRADE JOURNAL — Module 1
+# TRADE JOURNAL - Module 1
 # ============================================================================
 
 class TradeJournal:
@@ -326,7 +326,7 @@ class TradeJournal:
         return {t: env.portfolio.get(t, 0.0) for t in self.tickers}
 
     def on_step_done(self, step, actions, env, data_dict, portfolio_before):
-        """Appelee APRES env.step() — compare avant/apres pour detecter trades."""
+        """Appelee APRES env.step() - compare avant/apres pour detecter trades."""
         for i, ticker in enumerate(self.tickers):
             qty_before = portfolio_before.get(ticker, 0.0)
             qty_after = env.portfolio.get(ticker, 0.0)
@@ -481,7 +481,7 @@ class BacktestEngine:
 
 
 # ============================================================================
-# METRIQUES — Module 4
+# METRIQUES - Module 4
 # ============================================================================
 
 def compute_portfolio_metrics(portfolio_history, initial_balance, annualize_factor=252 * 6.5):
@@ -528,7 +528,7 @@ def compute_portfolio_metrics(portfolio_history, initial_balance, annualize_fact
 
 
 # ============================================================================
-# BENCHMARKS — Module 3
+# BENCHMARKS - Module 3
 # ============================================================================
 
 def benchmark_buy_and_hold(data, initial_balance):
@@ -566,7 +566,7 @@ def benchmark_random_agent(env_class, data, env_params, model_obs_size, n_assets
 
 
 # ============================================================================
-# WALK-FORWARD — Module 2
+# WALK-FORWARD - Module 2
 # ============================================================================
 
 def walk_forward_validation(engine, data_full, n_windows=6, window_days=30, shift_days=15, episodes_per_window=3):
@@ -617,7 +617,7 @@ def walk_forward_validation(engine, data_full, n_windows=6, window_days=30, shif
 
 
 # ============================================================================
-# MONTE CARLO — Module 5
+# MONTE CARLO - Module 5
 # ============================================================================
 
 def monte_carlo_test(env_class, data, env_params, model_obs_size, n_assets, real_return, n_perms=100):
@@ -662,7 +662,7 @@ def monte_carlo_test(env_class, data, env_params, model_obs_size, n_assets, real
 
 
 # ============================================================================
-# STRESS TEST — Module 6 (Enhanced)
+# STRESS TEST - Module 6 (Enhanced)
 # ============================================================================
 
 def _apply_crash_to_data(data, crash_pct=-0.10, crash_point=0.5):
@@ -758,7 +758,7 @@ def stress_test(engine, data, base_params):
 
 
 # ============================================================================
-# OOS VALIDATION — Module 8
+# OOS VALIDATION - Module 8
 # ============================================================================
 
 def check_oos_validity(metadata, backtest_start_date, backtest_end_date):
@@ -777,13 +777,13 @@ def check_oos_validity(metadata, backtest_start_date, backtest_end_date):
     }
 
     if not metadata:
-        result['warnings'].append("Pas de metadata — impossible de verifier OOS")
+        result['warnings'].append("Pas de metadata - impossible de verifier OOS")
         result['is_oos'] = False
         return result
 
     training_end_str = metadata.get('training_data_end')
     if not training_end_str:
-        result['warnings'].append("Metadata sans 'training_data_end' — impossible de verifier OOS")
+        result['warnings'].append("Metadata sans 'training_data_end' - impossible de verifier OOS")
         result['is_oos'] = False
         return result
 
@@ -816,7 +816,7 @@ def check_oos_validity(metadata, backtest_start_date, backtest_end_date):
     if bt_start >= training_end:
         result['is_oos'] = True
         result['overlap_pct'] = 0.0
-        logger.info(f"  ✅ OOS VALIDE: backtest ({bt_start.date()}) commence apres training ({training_end.date()})")
+        logger.info(f"  [OK] OOS VALIDE: backtest ({bt_start.date()}) commence apres training ({training_end.date()})")
     else:
         total_bt_days = (bt_end - bt_start).days
         overlap_days = (training_end - bt_start).days if training_end > bt_start else 0
@@ -827,12 +827,12 @@ def check_oos_validity(metadata, backtest_start_date, backtest_end_date):
 
         if overlap_pct >= 100:
             result['warnings'].append(
-                f"⛔ ALERTE CRITIQUE: 100% des donnees de backtest etaient dans le training! "
+                f"[ERROR] ALERTE CRITIQUE: 100% des donnees de backtest etaient dans le training! "
                 f"Training: ->  {training_end.date()} | Backtest: {bt_start.date()} -> {bt_end.date()}"
             )
         else:
             result['warnings'].append(
-                f"⚠️  CHEVAUCHEMENT: {overlap_pct:.0f}% des donnees backtest dans le training. "
+                f"[WARN]  CHEVAUCHEMENT: {overlap_pct:.0f}% des donnees backtest dans le training. "
                 f"Training: -> {training_end.date()} | Backtest: {bt_start.date()} -> {bt_end.date()}"
             )
 
@@ -840,7 +840,7 @@ def check_oos_validity(metadata, backtest_start_date, backtest_end_date):
 
 
 # ============================================================================
-# BOOTSTRAP CONFIDENCE INTERVALS — Module 9
+# BOOTSTRAP CONFIDENCE INTERVALS - Module 9
 # ============================================================================
 
 def bootstrap_confidence_intervals(all_histories, initial_balance, n_bootstrap=1000, ci_level=0.95):
@@ -909,7 +909,7 @@ def bootstrap_confidence_intervals(all_histories, initial_balance, n_bootstrap=1
 
 
 # ============================================================================
-# MARKET REGIME ANALYSIS — Module 10
+# MARKET REGIME ANALYSIS - Module 10
 # ============================================================================
 
 def detect_market_regime(data, window_bars=100):
@@ -997,7 +997,7 @@ def market_regime_analysis(engine, data, metadata=None):
 
 
 # ============================================================================
-# CERTIFICATION — Module 7
+# CERTIFICATION - Module 7
 # ============================================================================
 
 def generate_certification(metrics, journal_metrics, walk_forward, monte_carlo, stress_results, benchmarks, thresholds):
@@ -1047,7 +1047,7 @@ def print_full_report(cert, metrics, jm, wf, mc, stress, benchmarks, model_path,
                       oos_result=None, bootstrap_ci=None, regime_results=None):
     W = 70
     print(f"\n{'='*W}")
-    print(f"  RAPPORT DE CERTIFICATION — BACKTEST ULTIMATE")
+    print(f"  RAPPORT DE CERTIFICATION - BACKTEST ULTIMATE")
     print(f"{'='*W}")
     print(f"  Modele    : {model_path}")
     print(f"  Env       : {env_version}")
@@ -1059,10 +1059,10 @@ def print_full_report(cert, metrics, jm, wf, mc, stress, benchmarks, model_path,
     if oos_result:
         print(f"\n  [OOS VALIDATION]")
         if oos_result.get('is_oos'):
-            print(f"  {'Statut':<25s}: {'✅ OUT-OF-SAMPLE VALIDE':>30s}")
+            print(f"  {'Statut':<25s}: {'[OK] OUT-OF-SAMPLE VALIDE':>30s}")
         else:
             overlap = oos_result.get('overlap_pct', 0)
-            print(f"  {'Statut':<25s}: {'⛔ IN-SAMPLE (BIAISE)':>30s}")
+            print(f"  {'Statut':<25s}: {'[ERROR] IN-SAMPLE (BIAISE)':>30s}")
             print(f"  {'Chevauchement':<25s}: {overlap:>10.0f}%")
         if oos_result.get('training_data_end'):
             print(f"  {'Fin donnees training':<25s}: {oos_result['training_data_end']:>30s}")
@@ -1134,12 +1134,12 @@ def print_full_report(cert, metrics, jm, wf, mc, stress, benchmarks, model_path,
     if regime_results and regime_results.get('per_regime'):
         print(f"\n  [MARKET REGIME]")
         for regime, stats in regime_results['per_regime'].items():
-            emoji = {'BULL': '📈', 'BEAR': '📉', 'RANGE': '➡️'}.get(regime, '')
+            emoji = {'BULL': '??', 'BEAR': '??', 'RANGE': '->'}.get(regime, '')
             print(f"  {emoji} {regime:<22s}: {stats['mean_return']:>+10.2%}  "
                   f"({stats['n_windows']} fenetres, {stats['positive_pct']:.0%} positif)")
 
     print(f"\n{'='*W}")
-    print(f"  CERTIFICATION — CRITERES PASS/FAIL")
+    print(f"  CERTIFICATION - CRITERES PASS/FAIL")
     print(f"{'='*W}")
     for name, c in cert['checks'].items():
         icon = "PASS" if c['pass'] else "FAIL"
@@ -1156,7 +1156,7 @@ def print_full_report(cert, metrics, jm, wf, mc, stress, benchmarks, model_path,
     # OOS penalty in verdict
     oos_penalty = ""
     if oos_result and not oos_result.get('is_oos'):
-        oos_penalty = "  ⚠️  ATTENTION: Resultats IN-SAMPLE — non fiables pour production!"
+        oos_penalty = "  [WARN]  ATTENTION: Resultats IN-SAMPLE - non fiables pour production!"
 
     print(f"\n{'='*W}")
     print(f"  VERDICT FINAL:  {cert['verdict']}  |  Score: {cert['score']}/100  |  {cert['n_pass']}/{cert['n_total']} criteres")
@@ -1170,7 +1170,7 @@ def print_full_report(cert, metrics, jm, wf, mc, stress, benchmarks, model_path,
 # ============================================================================
 
 def main():
-    parser = argparse.ArgumentParser(description='Backtest Ultimate — Validation Complete')
+    parser = argparse.ArgumentParser(description='Backtest Ultimate - Validation Complete')
     parser.add_argument('--model', type=str, required=True, help='Chemin du modele (.zip)')
     parser.add_argument('--days', type=int, default=90, help='Periode de backtest (defaut: 90)')
     parser.add_argument('--episodes', type=int, default=5, help='Episodes pour le run principal (defaut: 5)')
@@ -1185,7 +1185,7 @@ def main():
 
     start_time = time.time()
 
-    # ── 0. LOAD MODEL ──
+    # -- 0. LOAD MODEL --
     model_path = Path(args.model)
     if not model_path.exists():
         logger.error(f"Modele introuvable: {model_path}")
@@ -1195,7 +1195,7 @@ def main():
     model = PPO.load(model_path)
     model_obs_size = model.observation_space.shape[0]
 
-    # ── 0b. LOAD V7 METADATA (if exists) ──
+    # -- 0b. LOAD V7 METADATA (if exists) --
     metadata, model_config, vecnorm_path = load_model_metadata(model_path)
 
     # Override config from CLI if specified
@@ -1205,7 +1205,7 @@ def main():
             model_config = yaml_config
             logger.info(f"  Config YAML chargee: {args.config}")
 
-    # ── 1. DETECT ENVIRONMENT ──
+    # -- 1. DETECT ENVIRONMENT --
     env_version, n_tickers, meta_tickers, env_class, env_params = detect_environment(
         model, metadata=metadata, config=model_config
     )
@@ -1225,7 +1225,7 @@ def main():
     use_vecnorm = vecnorm_path is not None or (env_version == 'V7')
     logger.info(f"  Environnement: {env_version} | Tickers: {len(tickers)} | VecNormalize: {use_vecnorm}")
 
-    # ── 2. FETCH DATA (with OOS support) ──
+    # -- 2. FETCH DATA (with OOS support) --
     end_date = datetime.now()
 
     # OOS-only mode: start from training end date
@@ -1234,7 +1234,7 @@ def main():
         try:
             training_end = pd.to_datetime(training_end_str)
             start_date = training_end + timedelta(days=1)
-            logger.info(f"\n⚡ MODE OOS-ONLY: donnees uniquement apres {start_date.strftime('%Y-%m-%d')}")
+            logger.info(f"\n[FAST] MODE OOS-ONLY: donnees uniquement apres {start_date.strftime('%Y-%m-%d')}")
             logger.info(f"  (training_data_end = {training_end_str})")
         except Exception:
             logger.warning(f"  Format date non reconnu pour OOS: {training_end_str}")
@@ -1265,7 +1265,7 @@ def main():
     actual_tickers = list(data.keys())
     n_assets = len(actual_tickers)
 
-    # ── 2b. OOS VALIDATION ──
+    # -- 2b. OOS VALIDATION --
     logger.info(f"\n{'='*60}")
     logger.info(f"  OOS VALIDATION")
     logger.info(f"{'='*60}")
@@ -1287,12 +1287,12 @@ def main():
         for w in oos_result.get('warnings', []):
             logger.warning(w)
         if oos_result.get('overlap_pct', 0) >= 100:
-            logger.error("⛔ 100% in-sample! Utilisez --oos-only pour un vrai test OOS, ou --force pour continuer quand meme.")
+            logger.error("[ERROR] 100% in-sample! Utilisez --oos-only pour un vrai test OOS, ou --force pour continuer quand meme.")
             if not args.force:
                 logger.error("Ajoutez --force pour continuer malgre le chevauchement.")
                 sys.exit(1)
 
-    # ── 3. VERIFY ENV COMPATIBILITY ──
+    # -- 3. VERIFY ENV COMPATIBILITY --
     logger.info(f"\nVerification compatibilite modele/environnement...")
     try:
         test_env = create_env_with_check(env_class, data, env_params, model_obs_size)
@@ -1304,7 +1304,7 @@ def main():
         logger.error(f"  Verifiez que le bon environnement est installe ou utilisez un modele V6/V7.")
         sys.exit(1)
 
-    # ── 4. MAIN BACKTEST ──
+    # -- 4. MAIN BACKTEST --
     logger.info(f"\n{'='*60}")
     logger.info(f"  BACKTEST PRINCIPAL ({args.episodes} episodes)")
     logger.info(f"{'='*60}")
@@ -1335,7 +1335,7 @@ def main():
     agg_journal.trades = all_trades
     journal_metrics = agg_journal.get_metrics()
 
-    # ── 5. BENCHMARKS ──
+    # -- 5. BENCHMARKS --
     logger.info(f"\n{'='*60}")
     logger.info(f"  BENCHMARKS")
     logger.info(f"{'='*60}")
@@ -1349,48 +1349,48 @@ def main():
 
     benchmarks = {'Buy & Hold': bh, 'Random Agent': rnd, 'Hold Cash': 0.0}
 
-    # ── 6. WALK-FORWARD ──
+    # -- 6. WALK-FORWARD --
     wf_params = dict(
         n_windows=(3 if args.quick else 6), window_days=30,
         shift_days=15, episodes_per_window=(2 if args.quick else 3),
     )
     wf = walk_forward_validation(engine, data, **wf_params)
 
-    # ── 7. MONTE CARLO ──
+    # -- 7. MONTE CARLO --
     if args.quick:
         logger.info(f"\n  [SKIP] Monte Carlo (mode --quick)")
         mc = {'p_value': 0.0, 'percentile': 100, 'beats_random': True}
     else:
         mc = monte_carlo_test(env_class, data, env_params, model_obs_size, n_assets, first_return, n_perms=100)
 
-    # ── 8. STRESS TEST ──
+    # -- 8. STRESS TEST --
     stress = stress_test(engine, data, env_params)
 
-    # ── 9. BOOTSTRAP CONFIDENCE INTERVALS ──
+    # -- 9. BOOTSTRAP CONFIDENCE INTERVALS --
     if args.quick:
         logger.info(f"\n  [SKIP] Bootstrap CI (mode --quick)")
         bootstrap_ci = {}
     else:
         bootstrap_ci = bootstrap_confidence_intervals(all_histories, INITIAL_BALANCE, n_bootstrap=1000)
 
-    # ── 10. MARKET REGIME ANALYSIS ──
+    # -- 10. MARKET REGIME ANALYSIS --
     if args.quick:
         logger.info(f"\n  [SKIP] Market Regime (mode --quick)")
         regime_results = {}
     else:
         regime_results = market_regime_analysis(engine, data, metadata)
 
-    # ── 11. CERTIFICATION ──
+    # -- 11. CERTIFICATION --
     cert = generate_certification(main_metrics, journal_metrics, wf, mc, stress, benchmarks, THRESHOLDS)
 
     elapsed = time.time() - start_time
 
-    # ── DISPLAY ──
+    # -- DISPLAY --
     print_full_report(cert, main_metrics, journal_metrics, wf, mc, stress, benchmarks,
                       model_path.name, env_version, elapsed,
                       oos_result=oos_result, bootstrap_ci=bootstrap_ci, regime_results=regime_results)
 
-    # ── EXPORT JSON ──
+    # -- EXPORT JSON --
     report_dir = Path('logs/backtest_reports')
     report_dir.mkdir(parents=True, exist_ok=True)
 

@@ -122,7 +122,7 @@ class KillSwitch:
             alert = f"INACTIVITY: {hours_since_trade:.1f}h since last trade"
             if alert not in self.alerts:
                 self.alerts.append(alert)
-                logger.warning(f"  ⚠️  {alert}")
+                logger.warning(f"  [WARN]  {alert}")
 
         return False, None
 
@@ -153,7 +153,7 @@ class LiveTradeJournal:
             'qty': qty,
             'total_value': total_value,
         })
-        logger.info(f"  📊 TRADE: {side} {qty:.2f}x {ticker} @ ${price:.2f} = ${total_value:.2f}")
+        logger.info(f"  ?? TRADE: {side} {qty:.2f}x {ticker} @ ${price:.2f} = ${total_value:.2f}")
 
     def record_equity(self, equity):
         """Enregistre un point equity."""
@@ -276,7 +276,7 @@ class AlpacaBroker:
             self.api = tradeapi.REST(api_key, api_secret, base_url, api_version='v2')
             account = self.api.get_account()
             self.initial_balance = float(account.equity)
-            logger.info(f"  ✅ Alpaca connecte | Equity: ${self.initial_balance:,.2f}")
+            logger.info(f"  [OK] Alpaca connecte | Equity: ${self.initial_balance:,.2f}")
         except ImportError:
             logger.error("alpaca-trade-api non installe. pip install alpaca-trade-api")
             raise
@@ -453,7 +453,7 @@ def run_paper_trading(model_path, mode='simulate', api_key=None, api_secret=None
     running = True
     def signal_handler(sig, frame):
         nonlocal running
-        logger.info("\n⚡ Arret demande (Ctrl+C)")
+        logger.info("\n[FAST] Arret demande (Ctrl+C)")
         running = False
     signal.signal(signal.SIGINT, signal_handler)
 
@@ -464,7 +464,7 @@ def run_paper_trading(model_path, mode='simulate', api_key=None, api_secret=None
         elapsed_hours = (datetime.now() - start_time).total_seconds() / 3600
 
         if elapsed_hours >= max_hours:
-            logger.info(f"\n⏰ Duree max atteinte ({max_hours}h)")
+            logger.info(f"\n[TIME] Duree max atteinte ({max_hours}h)")
             break
 
         logger.info(f"\n--- Iteration {iteration} | {datetime.now().strftime('%H:%M:%S')} | {elapsed_hours:.1f}h ---")
@@ -484,7 +484,7 @@ def run_paper_trading(model_path, mode='simulate', api_key=None, api_secret=None
 
         triggered, reason = kill_switch.check(equity)
         if triggered:
-            logger.error(f"\n🛑 KILL SWITCH: {reason}")
+            logger.error(f"\n?? KILL SWITCH: {reason}")
             logger.error(f"  Equity: ${equity:,.2f} | Peak: ${kill_switch.peak_equity:,.2f}")
             break
 

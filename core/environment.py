@@ -91,6 +91,7 @@ class TradingEnv(gym.Env):
         warmup_steps: int = 100,
         steps_per_trading_week: int = 78,
         drawdown_threshold: float = 0.10,
+        stop_loss_pct: float = 0.0,  # 0 = disabled, e.g. 0.05 = auto-sell at -5%
     ):
         super().__init__()
 
@@ -155,6 +156,7 @@ class TradingEnv(gym.Env):
         self.warmup_steps = warmup_steps
         self.steps_per_trading_week = steps_per_trading_week
         self.drawdown_threshold = drawdown_threshold
+        self.stop_loss_pct = stop_loss_pct
 
         self.current_step = 0
         self.max_steps = max_steps
@@ -261,6 +263,7 @@ class TradingEnv(gym.Env):
             high_winrate_threshold=rw.high_winrate_threshold,
             features_precomputed=config.features_precomputed,
             max_features_per_ticker=config.max_features_per_ticker,
+            stop_loss_pct=tr.stop_loss_pct,
             mode=mode,
             seed=seed,
         )
@@ -379,12 +382,42 @@ class TradingEnv(gym.Env):
         obs = self._get_observation()
         return obs, self._get_info()
 
+    def _check_stop_losses(self):
+        """Auto-sell positions that have breached the stop-loss threshold."""
+        if self.stop_loss_pct <= 0:
+            return 0.0
+
+        reward = 0.0
+        for ticker in self.tickers:
+            if self.portfolio[ticker] < MIN_POSITION_THRESHOLD:
+                continue
+            current_price = self._get_current_price(ticker)
+            entry = self.entry_prices[ticker]
+            if entry <= 0:
+                continue
+            unrealized_pnl = (current_price - entry) / entry
+            if unrealized_pnl < -self.stop_loss_pct:
+                execution_price = self._apply_slippage_sell(ticker, current_price)
+                execution_price *= 1 - self.spread_bps
+                quantity = self.portfolio[ticker]
+                proceeds = quantity * execution_price
+                net_proceeds = proceeds - proceeds * self.sec_fee - proceeds * self.finra_taf
+                self.balance += net_proceeds
+                self.portfolio[ticker] = 0.0
+                self.entry_prices[ticker] = 0.0
+                self.losing_trades += 1
+                self.total_trades += 1
+                reward -= 0.1
+        return reward
+
     def step(self, actions):
         if self.done:
             return self._get_observation(), 0.0, True, False, self._get_info()
 
         if self.current_step % self.steps_per_trading_week == 0:
             self.trades_today = 0
+
+        stop_loss_reward = self._check_stop_losses()
 
         total_reward = 0.0
         trades_executed = 0
@@ -397,6 +430,7 @@ class TradingEnv(gym.Env):
 
         self._update_equity()
         reward = self._calculate_reward(total_reward, trades_executed)
+        reward += stop_loss_reward
         reward = np.clip(reward, -MAX_REWARD_CLIP, MAX_REWARD_CLIP)
 
         self.current_step += 1
@@ -579,6 +613,8 @@ class TradingEnv(gym.Env):
             balance=self.balance,
             initial_balance=self.initial_balance,
             peak_value=self.peak_value,
+            entry_prices=self.entry_prices,
+            portfolio_value_history=self.portfolio_value_history,
         )
 
     def _get_info(self) -> dict:

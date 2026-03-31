@@ -86,13 +86,15 @@ class TestEnvModes:
 class TestObservation:
     def test_observation_space_shape(self, train_env):
         n_features = len(train_env.feature_columns)
-        expected = train_env.n_assets * n_features + train_env.n_assets + 3
+        # positions + unrealized_pnl + cash/return/drawdown + recent_returns(3)
+        expected = train_env.n_assets * n_features + train_env.n_assets * 2 + 6
         assert train_env.observation_space.shape == (expected,)
 
     def test_observation_space_shape_with_macro(self, env_with_macro):
         n_features = len(env_with_macro.feature_columns)
         n_macro = env_with_macro.n_macro_features
-        expected = env_with_macro.n_assets * n_features + n_macro + env_with_macro.n_assets + 3
+        # positions + unrealized_pnl + cash/return/drawdown + recent_returns(3)
+        expected = env_with_macro.n_assets * n_features + n_macro + env_with_macro.n_assets * 2 + 6
         assert env_with_macro.observation_space.shape == (expected,)
 
     def test_action_space_shape(self, train_env):

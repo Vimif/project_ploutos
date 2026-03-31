@@ -12,7 +12,7 @@ training:
   gae_lambda: 0.98
   clip_range: 0.2
   ent_coef: 0.01
-  use_shared_memory: true  # ⚡ V9: zero-copy data sharing across SubprocVecEnv workers
+  use_shared_memory: true  # [FAST] V9: zero-copy data sharing across SubprocVecEnv workers
 
 environment:
   initial_balance: 100000
