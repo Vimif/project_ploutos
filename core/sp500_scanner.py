@@ -5,9 +5,11 @@ en se basant sur le Sharpe ratio annualise.
 """
 
 import os
+import sys
 import json
 import numpy as np
 import pandas as pd
+from pathlib import Path
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Optional, Any
