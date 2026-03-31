@@ -20,7 +20,7 @@
 Usage:
   python scripts/backtest_ultimate.py --model data/models/brain_tech.zip
   python scripts/backtest_ultimate.py --model data/models/brain_tech.zip --quick
-  python scripts/backtest_ultimate.py --model models/v7_sp500/ploutos_v7_sp500.zip
+  python scripts/backtest_ultimate.py --model models/fold_01/model.zip
   python scripts/backtest_ultimate.py --model ... --oos-only
 """
 
@@ -86,7 +86,7 @@ THRESHOLDS = {
     'monte_carlo_p_max': 0.05,
 }
 
-# V6 environment defaults
+# Legacy environment defaults kept for compatibility
 ENV_PARAMS_V6 = dict(
     initial_balance=INITIAL_BALANCE,
     commission=0.0,
@@ -108,7 +108,7 @@ ENV_PARAMS_V6 = dict(
     mode='backtest',
 )
 
-# V7 environment defaults (same env class, adjusted params for ~22 tickers)
+# Legacy sector-model defaults (same env class, adjusted params for larger universes)
 ENV_PARAMS_V7 = dict(
     initial_balance=INITIAL_BALANCE,
     commission=0.0,
@@ -201,7 +201,7 @@ def detect_environment(model, metadata=None, config=None):
     from legacy.core.universal_environment_v6_better_timing import UniversalTradingEnvV6BetterTiming
     from core.environment import TradingEnv # V8/V9
 
-    # --- V8/V9: metadata fournie ---
+    # --- Supported V8/V9 metadata path ---
     if metadata and (metadata.get('version', '').startswith('v8') or metadata.get('version', '').startswith('v9')):
         tickers = metadata.get('tickers', [])
         n_tickers = len(tickers)
@@ -218,7 +218,7 @@ def detect_environment(model, metadata=None, config=None):
         logger.info(f"  -> {version} Model detected: {n_tickers} tickers")
         return version, n_tickers, tickers, TradingEnv, params
 
-    # --- V7: metadata fournie avec tickers specifiques ---
+    # --- Legacy V7 metadata path ---
     if metadata and metadata.get('version', '').startswith('v7'):
         tickers = metadata.get('tickers', [])
         n_tickers = len(tickers)
@@ -246,7 +246,7 @@ def detect_environment(model, metadata=None, config=None):
         logger.info(f"  -> V7 S&P 500 Sectors: {n_tickers} tickers")
         return 'V7', n_tickers, tickers, UniversalTradingEnvV6BetterTiming, params
 
-    # --- V6/V7 sans metadata: detection par obs_size ---
+    # --- Legacy fallback without metadata: detect from observation size ---
     # Formula: obs = n_tickers * 85 + n_tickers + 3 = n_tickers * 86 + 3
     if obs_matches:
         n_tickers = actual_n_int

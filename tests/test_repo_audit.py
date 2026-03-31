@@ -1,6 +1,7 @@
 """Tests for the repository audit helpers."""
 
 from scripts.audit_repo import (
+    check_pytest_config_duplication,
     check_version_markers,
     extract_command_paths,
     parse_project_scripts,
@@ -86,5 +87,30 @@ class TestCheckVersionMarkers:
         )
 
         findings = check_version_markers(tmp_path)
+
+        assert findings == []
+
+
+class TestCheckPytestConfigDuplication:
+    def test_warns_when_pytest_config_exists_in_two_places(self, tmp_path):
+        (tmp_path / "pyproject.toml").write_text(
+            """
+[tool.pytest.ini_options]
+addopts = "-v"
+""".strip(),
+            encoding="utf-8",
+        )
+        (tmp_path / "pytest.ini").write_text("[pytest]\naddopts = -v\n", encoding="utf-8")
+
+        findings = check_pytest_config_duplication(tmp_path)
+
+        assert len(findings) == 1
+        assert findings[0].severity == "WARN"
+
+    def test_ignores_single_source_of_truth(self, tmp_path):
+        (tmp_path / "pyproject.toml").write_text("[project]\nname = \"demo\"\n", encoding="utf-8")
+        (tmp_path / "pytest.ini").write_text("[pytest]\naddopts = -v\n", encoding="utf-8")
+
+        findings = check_pytest_config_duplication(tmp_path)
 
         assert findings == []

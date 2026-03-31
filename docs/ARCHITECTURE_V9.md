@@ -1,105 +1,109 @@
-# Documentation Architecture V9.1 (Ploutos Ultimate)
+# Architecture V9.1
 
-## Vue d'Ensemble
-L'architecture **V9.1** (Fevrier 2026) est une refonte majeure de l'infrastructure de traitement de donnees et d'entrainement pour permettre le **Massively Parallel Training** sur des architectures multi-coeurs (RunPod/Cloud GPU).
+This document describes the supported V9.1 architecture at a high level.
+It intentionally avoids hard-coded claims that drift quickly, such as exact
+test counts or frozen performance numbers.
 
-Elle s'appuie sur quatre piliers principaux :
-1. **Polars High-Performance Engine** : Calcul des indicateurs techniques ultra-rapide.
-2. **Shared Memory Manager** : Partage de donnees zero-copie entre processus d'entrainement.
-3. **Component Architecture** : Environnement decoupe en sous-composants (RewardCalculator, ObservationBuilder, EnvConfig).
-4. **Config Validation & CI/CD** : Schema de validation, exceptions custom, 116 tests, GitHub Actions.
+## Overview
 
-## Structure des Composants
+The project is organized around four main layers:
 
-### 1. Feature Engineering (`core/features.py`)
-- **Backend** : Polars (`pl.DataFrame`) pour les calculs vectorises (SIMD).
-- **Frontend** : Pandas (`pd.DataFrame`) pour la compatibilite avec `gym` et `stable-baselines3`.
-- **Index Round-Trip** : Normalise l'index en `__date_idx` pour un aller-retour fiable Pandas->Polars->Pandas, quel que soit le nom d'index original ('Date', 'Datetime', None, etc.).
-- **Workflow** :
-  - Input: Pandas DataFrame (OHLCV + DatetimeIndex).
-  - Processing: Conversion Polars -> Calculs (60+ features) -> Cleanup (fill_nan/fill_null) -> Conversion Pandas.
-  - Output: Pandas DataFrame enrichi avec DatetimeIndex restaure.
-- **Performance** : x100 par rapport a Pandas pur.
+1. Data and features
 
-### 2. Environment (`core/environment.py`)
-Le nouvel environnement `TradingEnv` unifie remplace les anciennes versions (V6, V8, Universal).
-- **Compatible** : PPO (MLP) et RecurrentPPO (LSTM).
-- **Memoire Partagee** : Si active, lit les donnees directement depuis la RAM partagee (`SharedMemory`) au lieu de copier les DataFrames pour chaque worker.
-- **Macro Data** : Integre nativement les donnees macroeconomiques (VIX, TNX, DXY).
-- **Feature Selection** : `max_features_per_ticker` selectionne les top-N features par variance pour reduire l'observation space.
-- **Dtype Safety** : Utilise `pd.api.types.is_numeric_dtype()` pour filtrer les colonnes features + `pd.to_numeric(errors="coerce")` comme filet de securite.
+- `core/data_fetcher.py`
+- `core/macro_data.py`
+- `core/features.py`
 
-### 2b. Composants extraits (V9.1)
-L'environnement a ete decompose en sous-composants pour la maintenabilite :
-- **`core/env_config.py`** : `EnvConfig` dataclass structuree (TransactionConfig, RewardConfig, TradingConfig). Remplace les 30+ parametres du constructeur. `from_flat_dict()` pour compatibilite YAML.
-- **`core/reward_calculator.py`** : Calcul DSR (Differential Sharpe Ratio) avec algorithme de Welford pour la variance online. Penalties drawdown et overtrading.
-- **`core/observation_builder.py`** : Construction du vecteur d'observation (features + macro + portfolio state). Clipping et normalisation.
-- **`core/constants.py`** : Constantes centralisees (`OBSERVATION_CLIP_RANGE`, `DSR_VARIANCE_FLOOR`, `BANKRUPTCY_THRESHOLD`, `MAX_REWARD_CLIP`, `PORTFOLIO_HISTORY_WINDOW`, etc.).
-- **`core/exceptions.py`** : Hierarchie d'exceptions custom (`PloutosError` -> `ConfigValidationError`, `DataFetchError`, `TrainingError`, `InsufficientDataError`).
+Market data is fetched as pandas DataFrames. Technical features are computed in
+`core/features.py`, using Polars internally for the heavy feature-engineering
+path and returning pandas output for environment compatibility.
 
-### 3. Training Pipeline (`training/train.py`)
-Le script principal d'entrainement a ete refondu pour gerer efficacement les ressources.
-- **Auto-Scaling** : Detecte le materiel (CPU cores, RAM, GPU) et ajuste `n_envs` automatiquement.
-- **Shared Memory Auto-Init** : Lance le `SharedDataManager` avant de forker les processus SubprocVecEnv.
-- **Per-Fold Feature Computation** : Les features sont calculees par fold pour eviter le look-ahead bias.
-- **Config Validation** : `config/schema.py` valide la config au chargement (types, ranges, contraintes croisees `n_envs * n_steps >= batch_size`).
+2. Environment and trading logic
 
-### 4. Shared Data Manager (`core/shared_memory_manager.py`)
-- Utilise `multiprocessing.shared_memory` pour stocker les arrays Numpy en float32 dans un segment memoire unique.
-- Les workers accedent aux donnees en lecture seule via des pointeurs (Zero-Copy).
-- **Attention** : `put_data()` appelle `select_dtypes(include=[np.number]).astype(float32)` ce qui homogeneise tous les types numeriques. Le chemin test (sans SHM) doit utiliser `is_numeric_dtype()` pour rester coherent.
+- `core/environment.py`
+- `core/env_config.py`
+- `core/observation_builder.py`
+- `core/reward_calculator.py`
+- `core/transaction_costs.py`
+- `core/constants.py`
 
-### 5. Config Validation (`config/schema.py`)
-- Valide les sections : `training`, `environment`, `data`, `walk_forward`, `network`, `checkpoint`, `eval`.
-- Detecte les typos (cles inconnues).
-- Verifie les types et les bornes (min/max).
-- Contraintes croisees : `n_envs * n_steps >= batch_size`.
-- Leve `ConfigValidationError` (custom exception).
+`TradingEnv` is the main environment used by the supported training workflow.
+It delegates observation assembly and reward logic to smaller components and can
+operate either on raw in-memory data or shared-memory-backed data prepared for
+parallel training.
 
-## Flux de Donnees (Data Flow)
+3. Training and evaluation
 
-```
-1. Download (DataFetcher) -> Pandas DF (OHLCV + DatetimeIndex)
-2. Walk-Forward Split (generate_walk_forward_splits) -> train/test slices par fold
-3. Feature Engineering per fold (FeatureEngineer) -> Polars -> Pandas DF enrichi
-4. [Training] Shared Memory Put (SharedDataManager) -> float32 arrays en SHM
-5. [Training] TradingEnv init -> load_shared_data() -> DataFrames reconstruits
-6. [Test] TradingEnv init -> DataFrames bruts (pas de SHM)
-7. _prepare_features() -> is_numeric_dtype() filter -> variance selection -> numpy arrays
-```
+- `training/train.py`
+- `core/model_support.py`
+- `core/ensemble.py`
 
-Meme avec 64 workers, la consommation memoire reste celle d'une seule copie des donnees !
+Training is driven by walk-forward splits. The supported workflow computes
+features per fold to avoid look-ahead bias. Recurrent evaluation helpers live in
+`core/model_support.py` so the same recurrence handling can be reused across
+training evaluation and robustness scripts.
 
-## Organisation des Fichiers
+4. Operational scripts
+
+- `scripts/run_pipeline.py`
+- `scripts/optimize_hyperparams.py`
+- `scripts/robustness_tests.py`
+- `scripts/paper_trade.py`
+- `scripts/backtest_ultimate.py`
+- `scripts/audit_repo.py`
+
+These scripts orchestrate the main repo workflows. Some of them still include
+legacy compatibility logic for older model formats. That compatibility should be
+seen as a maintenance boundary, not as a statement that all historical paths are
+equally mature.
+
+## Data Flow
 
 ```text
-/project_ploutos
-├── core/
-│   ├── environment.py           # V9 Environment (orchestrateur leger)
-│   ├── env_config.py            # EnvConfig dataclass
-│   ├── observation_builder.py   # Construction observations
-│   ├── reward_calculator.py     # DSR + penalties (Welford)
-│   ├── constants.py             # Magic numbers centralises
-│   ├── exceptions.py            # Hierarchie d'exceptions custom
-│   ├── features.py              # Polars Feature Engine (60+ features)
-│   ├── transaction_costs.py     # Slippage/spread/commission (vol_ceiling configurable)
-│   ├── ensemble.py              # Multi-model voting + predict_filtered()
-│   ├── shared_memory_manager.py # Shared Memory Zero-Copy
-│   ├── data_fetcher.py          # Yahoo Finance / Alpaca
-│   └── macro_data.py            # VIX/TNX/DXY
-├── config/
-│   ├── schema.py                # Validation YAML (types + ranges + cross-field)
-│   ├── hardware.py              # Auto-detect GPU/CPU/RAM
-│   └── config.yaml              # Config principale
-├── training/
-│   └── train.py                 # V9 Walk-Forward Training
-├── tests/                       # 116 tests (pytest)
-├── scripts/                     # CLI tools
-│   ├── run_pipeline.py          # Pipeline complet
-│   ├── robustness_tests.py      # Monte Carlo + stress tests
-│   └── paper_trade.py           # Paper Trading
-└── .github/workflows/tests.yml  # CI: pytest + black + ruff + mypy
+download market data
+-> split by walk-forward window
+-> compute features inside each fold
+-> optionally place training data in shared memory
+-> initialize TradingEnv
+-> train PPO or RecurrentPPO
+-> evaluate on held-out data
+-> run robustness checks and paper-trading compatibility flows
 ```
 
----
-*Document mis a jour - Fevrier 2026 (V9.1)*
+## Configuration
+
+- `config/config.yaml` is the main runtime config
+- `config/schema.py` validates structure, types, ranges, and cross-field constraints
+- `config/hardware.py` can auto-scale selected training parameters from hardware
+
+The current validation policy is intentionally strict: unknown sections, typoed
+keys, and impossible PPO geometry should fail early.
+
+## Shared Memory Path
+
+`core/shared_memory_manager.py` converts numeric data into a shared-memory
+representation so multiple training workers can reuse the same underlying arrays
+instead of duplicating DataFrames. The raw path and the shared-memory path must
+remain feature-selection compatible.
+
+## Legacy Boundary
+
+The repository still contains a `legacy/` folder and some compatibility logic in
+supported scripts, especially around older backtest and artifact formats. The
+cleanup direction is:
+
+- keep supported V9.1 flows explicit
+- isolate historical compatibility code
+- avoid importing legacy behavior into new code unless required
+
+## Quality Controls
+
+- pytest suite in `tests/`
+- formatting with Black
+- linting with Ruff
+- type checking with mypy in CI
+- repository audit with `scripts/audit_repo.py`
+
+These controls improve confidence, but the most important validation still comes
+from running the critical workflows on real artifacts and checking that docs,
+config, and runtime behavior stay aligned.

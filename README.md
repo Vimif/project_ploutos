@@ -1,217 +1,119 @@
-# Ploutos Trading V9.1 (Polars + Shared Memory + Component Architecture)
+# Ploutos Trading V9.1
 
-Un projet personnel de trading algorithmique utilisant le Reinforcement Learning. L'idée : entraîner un agent à trader de manière autonome sur les marchés financiers.
+Experimental reinforcement-learning trading system built around PPO/RecurrentPPO,
+walk-forward validation, ensemble training, technical features, and macro data.
 
-> ⚠️ **Avertissement** : Ce projet est expérimental et en paper trading. Le trading algorithmique comporte des risques significatifs. Ne jamais utiliser d'argent réel sans comprendre ces risques.
+This repository is still a research and paper-trading project. It is not a
+production trading platform and should not be used with real money without
+independent validation.
 
----
+## What Is In Scope
 
-## C'est quoi ?
-
-Ploutos est un bot de trading qui apprend par lui-même en utilisant l'algorithme PPO (Proximal Policy Optimization). Au lieu de suivre des règles fixes, il observe le marché et développe sa propre stratégie.
-
-**Ce que ça fait :**
-- Collecte les données de marché (via Alpaca)
-- Analyse les tendances avec 85+ indicateurs techniques (Moteur Polars ultra-rapide)
-- Prend des décisions d'achat/vente de manière autonome
-- Utilise la Shared Memory pour un entraînement parallèle sans surcharger la RAM
-- Se ré-entraîne automatiquement si nécessaire
-
----
-
-## Performances actuelles
-
-| Métrique | Valeur |
-|----------|--------|
-| Sharpe Ratio | ~1.5 |
-| Max Drawdown | -12% |
-| Win Rate | 55% |
-| **Speed (Features)** | **x100 (0.09s/100k bars)** |
-| Mode | Paper Trading |
-
-*Ces résultats sont en paper trading et ne garantissent rien en conditions réelles.*
-
----
+- Walk-forward training with `training/train.py`
+- End-to-end pipeline with `scripts/run_pipeline.py`
+- Robustness checks with `scripts/robustness_tests.py`
+- Paper trading with `scripts/paper_trade.py`
+- Feature engineering with Polars
+- Shared-memory support for multi-process training
 
 ## Installation
 
+Requires Python 3.10+.
+
 ```bash
-# Cloner le repo
 git clone https://github.com/Vimif/project_ploutos
 cd project_ploutos
 
-# Créer un environnement virtuel
 python -m venv venv
 source venv/bin/activate  # Linux/Mac
 venv\Scripts\activate     # Windows
 
-# Installer les dépendances (Polars, PyArrow, Torch...)
-pip install -e .
+pip install -e ".[dev,training,web]"
+cp .env.example .env
 ```
 
----
+Fill in `.env` only if you need broker or database integrations.
 
-## Workflow d'entraînement (V9)
-
-Le pipeline V9 utilise le walk-forward training avec support natif pour **Polars** et **Shared Memory**.
-
-### 1. Pipeline High-Performance (Recommandé)
+## Main Commands
 
 ```bash
-# Script optimisé pour le hardware (thread pinning, limit open files, auto-scale)
-./start_training.sh
-```
+# Tests
+pytest
+pytest tests/test_trading_env_v8.py
 
-Ce script configure automatiquement l'environnement (OMP_NUM_THREADS), détecte le hardware (GPU/RAM) et lance le pipeline complet avec les paramètres optimaux.
+# Lint and format
+black --check .
+ruff check .
 
-### 2. Entraînement Walk-Forward (séparé)
+# Full pipeline
+python scripts/run_pipeline.py --config config/config.yaml --auto-scale --ensemble 3
 
-```bash
-# PPO standard avec Shared Memory (V9)
-python training/train.py --config config/config.yaml --auto-scale --shared-memory
+# Training
+python training/train.py --config config/config.yaml --auto-scale
+python training/train.py --config config/config.yaml --recurrent --auto-scale
+python training/train.py --config config/config.yaml --ensemble 3 --auto-scale
 
-# RecurrentPPO avec LSTM
-python training/train.py --config config/config.yaml --recurrent --auto-scale --shared-memory
-
-# Ensemble de 3 modèles
-python training/train.py --config config/config.yaml --ensemble 3 --auto-scale --shared-memory
-```
-
-### 3. Optimisation des hyperparamètres (optionnel)
-
-```bash
-# Auto-détecte le nombre de jobs parallèles et n_envs par trial
+# Hyperparameter search
 python scripts/optimize_hyperparams.py --config config/config.yaml --n-trials 50 --auto-scale
 
-# Ou manuellement : 4 trials parallèles
-python scripts/optimize_hyperparams.py --config config/config.yaml --n-trials 50 --n-jobs 4
+# Robustness
+python scripts/robustness_tests.py --model models/<fold>/model.zip --all --auto-scale
+
+# Paper trading
+python scripts/paper_trade.py --model models/<fold>/model.zip
 ```
 
-### 4. Tests de robustesse (séparé)
+## Architecture
 
-```bash
-# Monte Carlo parallélisé + stress test
-python scripts/robustness_tests.py --model models/<fold>/model.zip --vecnorm models/<fold>/vecnormalize.pkl --all --auto-scale
-
-# Monte Carlo seul
-python scripts/robustness_tests.py --model models/<fold>/model.zip --monte-carlo 1000 --auto-scale
+```text
+config/      YAML config, hardware auto-scaling, settings
+core/        Environment, features, rewards, observations, shared memory
+training/    Walk-forward training entry point
+scripts/     Pipeline, optimization, robustness, paper trading, audits
+trading/     Broker integrations
+tests/       Pytest suite
+docs/        Architecture notes and roadmap
+legacy/      Older V6/V7 code kept for compatibility and migration
 ```
 
-### 5. Paper trading
+Useful entry points:
 
-```bash
-# Lance le paper trading (détecte auto V9)
-python scripts/paper_trade.py --model models/.../model.zip
-```
+- `core/environment.py`
+- `core/features.py`
+- `core/shared_memory_manager.py`
+- `training/train.py`
+- `scripts/run_pipeline.py`
+- `scripts/robustness_tests.py`
+- `scripts/paper_trade.py`
 
-> **GPU Cloud** : Avec `--auto-scale`, un seul config suffit pour dev et cloud. Voir le [guide RunPod](docs/RUNPOD_GUIDE.md).
+## Current Constraints
 
----
+- The full test suite depends on optional training dependencies such as `polars`.
+- `models/` is gitignored; trained artifacts must be managed outside the repo.
+- Some scripts still contain legacy compatibility paths for older model formats.
+- CI and audit are meant to catch workflow drift, but they are not a substitute for
+  running the critical flows on real artifacts.
 
-## Structure du projet
+## Documentation
 
-```
-project_ploutos/
-├── config/             # Configuration
-│   ├── hardware.py          # Auto-détection GPU/CPU/RAM + scaling
-│   └── config.yaml          # Config training standard
-├── core/               # Code principal V9.1
-│   ├── environment.py       # Environnement V9 (orchestrateur)
-│   ├── env_config.py        # EnvConfig dataclass
-│   ├── observation_builder.py # Construction observations
-│   ├── reward_calculator.py # DSR + Welford online variance
-│   ├── constants.py         # Constantes centralisees
-│   ├── exceptions.py        # Exceptions custom
-│   ├── features.py          # Moteur Polars (x100 speed)
-│   ├── transaction_costs.py # Slippage/spread/commission
-│   ├── ensemble.py          # Multi-model voting
-│   ├── shared_memory_manager.py # Gestionnaire Shared Memory
-│   └── data_fetcher.py      # Yahoo Finance / Alpaca
-├── trading/            # Intégrations broker (eToro, Alpaca)
-├── training/           # Module d'entraînement
-│   └── train.py             # Script Walk-Forward V9
-├── scripts/            # CLI (pipeline, optimisation, robustness, paper trade)
-│   ├── run_pipeline.py      # Pipeline complet training→robustness
-│   ├── paper_trade.py       # Paper Trading V9
-│   └── ...
-├── legacy/             # Archives (V6/V7/V8)
-└── docs/               # Documentation
-    ├── ARCHITECTURE_V9.md   # 🏗️ Architecture Technique V9
-    ├── RELEASE_NOTES_V9.md  # 🚀 Nouveautés V9
-    ├── RUNPOD_GUIDE.md      # Guide déploiement Cloud
-    └── ...
-```
+- Roadmap: [docs/ROADMAP.md](docs/ROADMAP.md)
+- Architecture notes: [docs/ARCHITECTURE_V9.md](docs/ARCHITECTURE_V9.md)
+- RunPod guide: [docs/RUNPOD_GUIDE.md](docs/RUNPOD_GUIDE.md)
+- Coding guidelines: [docs/coding_guidelines.md](docs/coding_guidelines.md)
 
----
+## Status
 
-## Configuration
+Recent cleanup focused on:
 
-Édite `config/config.yaml` :
+- honest config validation
+- reproducible workflow auditing
+- recurrent-model evaluation fixes
+- robustness pipeline fixes
+- paper-trading and packaging drift reduction
 
-```yaml
-training:
-  total_timesteps: 10000000  # par fold walk-forward
-  n_envs: 16                 # Auto-scalé si --auto-scale
-  use_shared_memory: true    # Activer V9 Shared Memory
-
-walk_forward:
-  train_years: 1       # Durée du training par fold
-  test_months: 6       # Durée du test
-  step_months: 6       # Pas entre chaque fold
-
-wandb:
-  enabled: false       # Activer pour le tracking
-```
-
----
-
-## Monitoring
-
-**Logs** : `logs/train.log`
-
-**Dashboards disponibles** :
-- TensorBoard : `tensorboard --logdir models/walk_forward_.../`
-- Grafana : `http://localhost:3000` (si configuré)
-
----
-
-## La roadmap
-
-**Fait :**
-- [x] Curriculum Learning (apprentissage progressif)
-- [x] Coûts de transaction réalistes
-- [x] Walk-forward validation (V9)
-- [x] Ensemble de modèles
-- [x] Données macro (VIX/TNX/DXY)
-- [x] RecurrentPPO (LSTM)
-- [x] Déploiement cloud (RunPod)
-- [x] Auto-scaling hardware (GPU/CPU/RAM)
-- [x] **"Turbo Init" (Polars Engine x100)**
-- [x] **Optimisation RAM (Shared Memory)**
-- [x] Protection contre le Data Leakage (Embargo)
-- [x] Tests de Robustesse (Monte Carlo + PSR/DSR)
-
-**V9.1 (Fevrier 2026) :**
-- [x] 116 Tests Unitaires & CI/CD (pytest + black + ruff + mypy)
-- [x] Refactoring : EnvConfig, RewardCalculator, ObservationBuilder, constants, exceptions
-- [x] Fix look-ahead bias (features par fold)
-- [x] Fix production Timestamp crash (dtype filter, Polars index round-trip)
-- [x] Observation space reduction (max_features_per_ticker)
-- [x] DSR stabilise avec Welford
-
-**Prochaines Etapes :**
-- [ ] Detection des regimes de marche (HMM/Clustering)
-- [ ] Architecture Transformer
-
-**Futur :**
-- [ ] Meta-learning (MAML)
-
----
+More cleanup is still needed around legacy compatibility code and documentation
+that historically drifted faster than the runtime.
 
 ## License
 
 MIT
-
----
-
-*Derniere mise a jour : Fevrier 2026 (V9.1)*

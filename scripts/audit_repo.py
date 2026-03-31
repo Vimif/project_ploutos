@@ -134,6 +134,26 @@ def check_soft_failed_typecheck(project_root: Path) -> list[Finding]:
     ]
 
 
+def check_pytest_config_duplication(project_root: Path) -> list[Finding]:
+    pyproject_path = project_root / "pyproject.toml"
+    pytest_ini_path = project_root / "pytest.ini"
+    if not pyproject_path.exists() or not pytest_ini_path.exists():
+        return []
+
+    pyproject_content = _read_text(pyproject_path)
+    if "[tool.pytest.ini_options]" not in pyproject_content:
+        return []
+
+    return [
+        Finding(
+            "WARN",
+            "pyproject.toml",
+            "Pytest configuration is duplicated in pyproject.toml and pytest.ini. "
+            "Pytest will ignore the pyproject section while pytest.ini exists.",
+        )
+    ]
+
+
 def collect_findings(project_root: Path) -> list[Finding]:
     findings: list[Finding] = []
     pyproject_path = project_root / "pyproject.toml"
@@ -147,6 +167,7 @@ def collect_findings(project_root: Path) -> list[Finding]:
     findings.extend(check_readme_command_paths(project_root, readme_path))
     findings.extend(check_version_markers(project_root))
     findings.extend(check_soft_failed_typecheck(project_root))
+    findings.extend(check_pytest_config_duplication(project_root))
     return findings
 
 

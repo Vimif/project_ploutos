@@ -1,73 +1,37 @@
-# 🚀 Ploutos V9 : Spécifications Architecturales
+# V9 Specs Archive
 
-**Objectif** : Transformer le prototype de recherche (V8) en un moteur de trading quantitatif industriel, scalable et résilient.
+This document is preserved as an archive of the V9 design intent.
+It is no longer the best source of truth for the live repository.
 
----
+## Original Direction
 
-## 🏗️ 1. Refonte du Core (Performance & Mémoire)
+The V9 effort aimed to move the project from a fragile research prototype toward
+a more scalable workflow with:
 
-### 1.1 Shared Memory Architecture (Priorité Critique 🔴)
-Actuellement, chaque environnement (128 envs) charge sa propre copie des données, saturant la RAM (116GB+).
-**Solution V9** :
-- Utiliser `multiprocessing.shared_memory` pour charger le dataset (Numpy array) **une seule fois** en mémoire principale.
-- Les environnements accèderont à ces données en **Lecture Seule (Zero-Copy)**.
-- **Gain attendu** : Réduction de la RAM de 95% (de 100GB à ~5GB). Capacité de scaler à 256+ cœurs sans OOM.
+- shared memory for multi-process training
+- faster feature engineering
+- stronger testing and CI
+- cleaner configuration and operational scripts
 
-### 1.2 Polars pour le Data Engineering (Priorité Haute 🟠)
-Remplacer `Pandas` par **Polars** pour le pipeline de feature engineering (`FeatureEngineer`).
-- **Gain attendu** : Traitement des données 50x plus rapide, lazy evaluation, et meilleure gestion mémoire lors du `Turbo Init`.
+## What Still Matters
 
----
+- Shared-memory support remains part of the supported training path.
+- Faster feature engineering remains important to the workflow.
+- CI, config validation, and audit checks are part of the cleanup strategy.
 
-## 🛡️ 2. Fiabilité & Qualité (CI/CD)
+## What Should Be Read With Caution
 
-### 2.1 Suite de Tests Unitaires (Tests-First)
-Aucun code ne doit être fusionné sans passer une suite de tests.
-- **`tests/core/`** : Valider que `UniversalTradingEnv` calcule correctement le PnL, les Frais et le Reward.
-- **`tests/data/`** : Valider que les données ne contiennent pas de NaN ou d'incohérences après le téléchargement.
-- **`tests/strategies/`** : Sanity check (run de 100 steps) pour vérifier que le modèle ne crash pas.
+- exact benchmark multipliers
+- exact RAM reduction claims
+- exact test counts
+- any statement that implies every historical script path is equally maintained
 
-### 2.2 Gestion des Erreurs (Resilience)
-- Implémenter un décorateur `@retry` sur les appels API externes (Yahoo/Alpaca/Macro).
-- Fallback automatique : Si `MacroData` échoue, utiliser une valeur neutre ou la dernière valeur connue plutôt que de crasher.
+## Current Source Of Truth
 
----
+Use these files instead when making changes:
 
-## 🧠 3. Intelligence Financière (Algo)
-
-### 3.1 Détection de Régime de Marché (HMM)
-Intégrer un module **Hidden Markov Model (HMM)** ou un Clustering (K-Means) pour classifier le marché en temps réel :
-- *Bull / Bear / Sideways / High Volatility*.
-- Le Reward ou l'Architecture du modèle pourra s'adapter dynamiquement au régime détecté.
-
-### 3.2 Gestion de Configuration (Hydra)
-Remplacer `argparse` et `hardware.py` par **Hydra** (`config.yaml` hiérarchique).
-- Permet de lancer des expériences complexes : `python train.py model=lstm data=crypto hardware=server_runpod`.
-
----
-
-## 📅 Roadmap d'Implémentation
-
-### Phase 9.0 : Fondation (Completed)
-- [x] Mise en place de `pytest` et premiers tests unitaires.
-- [x] 116 tests couvrant env, reward, config, transaction costs, ensemble, features.
-- [x] CI/CD GitHub Actions (pytest + black + ruff + mypy, matrice Python 3.10/3.11).
-- [ ] Migration vers Hydra pour la configuration (Reporte).
-
-### Phase 9.1 : Scalabilite (Completed)
-- [x] Implementation du `SharedMemoryLoader` (`core/shared_memory_manager.py`).
-- [x] Benchmark RAM vs V8 (Gain x10 confirme).
-- [x] Refactoring composants : EnvConfig, RewardCalculator, ObservationBuilder, constants, exceptions.
-- [x] Fix look-ahead bias (features par fold), dtype filter, Polars index round-trip.
-
-### Phase 9.2 : Moteur de Donnees (Completed)
-- [x] Migration du `FeatureEngineer` vers Polars (`core/features.py`).
-- [x] Gain de performance (0.09s vs 5s).
-- [x] Index round-trip fiable via `__date_idx`.
-
-### Phase 9.3 : Intelligence (A venir)
-- [ ] Module `MarketRegimeDetector`.
-- [ ] Integration dans l'observation space du RL.
-
----
-*Document mis a jour - Fevrier 2026 (V9.1)*
+- `README.md`
+- `docs/ARCHITECTURE_V9.md`
+- `docs/ROADMAP.md`
+- `config/config.yaml`
+- `training/train.py`

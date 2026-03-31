@@ -62,13 +62,6 @@ where = ["."]
 include = ["core*", "training*", "trading*", "config*", "scripts*", "database*", "notifications*", "dashboard*"]
 exclude = ["data*", "logs*", "models*", "runs*", "tests*", ".git*", ".vscode*"]
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-addopts = "-v"
-
 [tool.black]
 line-length = 100
 target-version = ['py310']

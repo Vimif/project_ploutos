@@ -1,96 +1,80 @@
-# Plan Directeur : L'IA de Trading Ultime (Ploutos V8/V9)
+# Ploutos Roadmap
 
-Ce document decrit la "Golden Path" pour construire l'IA de trading la plus performante et robuste possible. Inspire des methodes Quant et HFT modernes.
+This roadmap focuses on the supported V9.1 workflow, not on every historical
+experiment left in the repository.
 
-## Objectifs
-- **Performance** : Sharpe Ratio > 2.0 (Risque/Rendement excellent)
-- **Fiabilite** : Drawdown Max < 15% (Survie aux crises)
-- **Robustesse** : Profit constant sur 5+ annees de test OOS (Out-of-Sample)
+## Current Priorities
 
----
+1. Stabilize the golden path
 
-## Phase 1 : Donnees & Univers (Le Socle)
+- Keep one supported training entry point: `training/train.py`
+- Keep one supported end-to-end pipeline: `scripts/run_pipeline.py`
+- Keep one supported robustness path: `scripts/robustness_tests.py`
+- Keep one supported paper-trading flow: `scripts/paper_trade.py`
 
-Une IA ne vaut que ce qu'elle mange.
+2. Reduce workflow drift
 
-- [x] **1. Univers Dynamique (Selectif)**
-    - Au lieu de trader 500 actions (bruit), selectionner chaque trimestre les **50 actions les plus fortes** (Top Momentum + Volatilite suffisante).
-    - *Pourquoi ?* L'IA detecte mieux les signaux sur des actifs qui bougent vraiment.
-- [x] **2. Donnees Macroeconomiques (Contexte)**
-    - Integrer en entree du reseau :
-        - **VIX (Volatilite)** : Pour savoir quand etre defensif.
-        - **TNX (Taux 10 ans)** : Impacte fortement la Tech.
-        - **DXY (Dollar Index)** : Impacte les matieres premieres.
-- [x] **3. Profondeur Historique**
-    - Recuperer des **donnees horaires (1h) depuis 2010** (minimum 2 cycles economiques : Bull run, Crash Covid, Hausse des taux).
+- Keep README, packaging, CI, and runtime commands aligned
+- Make config validation fail on typos and impossible combinations
+- Remove silent CI fallbacks and duplicated configuration
+- Add audits for version drift and broken entry points
 
-## Phase 2 : Architecture & Modele (Le Cerveau)
+3. Strengthen evidence
 
-- [x] **4. Memoire (LSTM / RecurrentPPO)**
-    - Utiliser `RecurrentPPO` (de stable-baselines3-contrib) au lieu de PPO standard.
-    - *Avantage* : L'IA se "souvient" des bougies precedentes et du contexte (ex: "ca baisse depuis 3 jours") au lieu de juste voir l'instant T.
-- [x] **5. Ensemble Learning (Le Conseil des Sages)**
-    - Entrainer **3 a 5 modeles** identiques avec des "seeds" differentes.
-    - Pour prendre une decision : Vote a la majorite.
-    - *Avantage* : Lisse les erreurs individuelles et augmente considerablement la fiabilite.
+- Add smoke tests for critical workflows
+- Require model metadata and artifact compatibility checks
+- Re-run robustness and paper-trading flows on real trained artifacts
+- Replace historical claims with reproducible checks
 
-## Phase 3 : Protocole d'Entrainement (L'Ecole)
+## Completed Foundations
 
-C'est ici que se joue 80% de la performance future.
+- Walk-forward training
+- RecurrentPPO support
+- Ensemble training
+- Macro data integration
+- Shared-memory support
+- Polars-based feature engineering
+- Basic CI and repository auditing
+- Stricter YAML config validation
 
-- [x] **6. Walk-Forward Analysis (Le Gold Standard)**
-    - Ne jamais entrainer sur 2010-2020 et tester sur 2021.
-    - Faire :
-        - Train 2010-2015 -> Test 2016
-        - Train 2010-2016 -> Test 2017
-        - ...
-        - Train 2010-2023 -> Test 2024
-    - *Resultat* : Une courbe de performance realiste qui simule le trading reel annee apres annee.
-- [x] **7. Hyperparameter Tuning (Optuna)**
-    - Script `scripts/optimize_hyperparams.py` opérationnel avec Optuna + `--auto-scale`.
+## Important Reality Checks
 
-## Phase 4 : Robustesse & Validation (Le Crash Test)
+- Stress tests must validate behavior on recomputed post-shock features, not on
+  stale precomputed indicators.
+- Recurrent models must be evaluated with recurrent state preserved.
+- The project does not currently implement a true supported short-selling
+  workflow in the main environment.
+- Legacy V6/V7 compatibility code still exists and should be treated as
+  migration debt, not as proof of current support quality.
 
-- [x] **8. Monte Carlo Simulations**
-    - Lancer 1000 backtests en ajoutant du bruit aleatoire aux prix (+/- 0.1%).
-    - Si l'IA perd de l'argent dans >5% des cas, elle est **sur-optimisee** (overfitting) -> Poubelle.
-- [x] **9. Stress Test "Krach"**
-    - Simuler manuellement une chute de -20% en une journee. Verifier que l'IA coupe ses positions (Stop Loss) ou se met short immediatement.
+## Next Cleanup Phases
 
-## Phase 5 : Production (Le Reel)
+### Phase 1: Runtime Honesty
 
-- [x] **10. Paper Trading "Smart Check"**
-    - Script `scripts/paper_trade.py` opérationnel avec kill switch et monitoring local.
-- [ ] **11. Monitoring Temps Reel**
-    - Alertes Discord/Telegram a chaque trade.
-    - Dashboard Grafana pour suivre le P&L et l'exposition.
+- Remove remaining legacy naming from supported scripts
+- Simplify docs that overstate maturity or performance
+- Add more audit checks for doc/code drift
 
----
+### Phase 2: Testing the Critical Path
 
-## Phase 6 : Industrialisation & Intelligence (Ploutos V9)
+- Add lightweight smoke coverage for train, pipeline, robustness, and paper trade
+- Separate optional heavy tests from fast default validation
+- Make dependency expectations explicit in CI and docs
 
-L'objectif de la V9 est de passer à l'échelle (Scale) et d'ajouter une couche d'intelligence de marché avancée.
+### Phase 3: Legacy Isolation
 
-- [x] **12. Architecture Scalable (Performance)**
-    - **Shared Memory (Zero-Copy)** : `core/shared_memory_manager.py` réduit la RAM de 100Go à 5Go.
-    - **Polars Data Engine** : `core/features.py` utilise Polars pour un feature engineering x100.
-- [ ] **13. Intelligence de Marché (Alpha)**
-    - **Détection de Régime (HMM)** : Classifier le marché (Bull/Bear/Volatile) et adapter la stratégie.
-    - **Transformer Architecture** : Tester une architecture basée sur l'Attention (Decision Transformer).
-- [x] **14. Qualité Logicielle (CI/CD)**
-    - **Tests Unitaires** : 116 tests couvrant env, reward, config, transaction costs, ensemble, features.
-    - **CI/CD** : GitHub Actions avec pytest + black + ruff + mypy (matrice Python 3.10/3.11).
-    - **Config Validation** : `config/schema.py` valide types, ranges et contraintes croisées.
+- Move unsupported historical helpers behind clearer compatibility boundaries
+- Reduce direct imports from `legacy/` in supported scripts
+- Document which model artifact formats are still intentionally supported
 
----
+### Phase 4: Research Features
 
-## Todo List (V9.1 -> V10)
+- Market regime detection
+- Transformer-based experiments
+- Better monitoring and alerting for paper trading
 
-1. [x] ~~Mettre en place `pytest` et les premiers tests unitaires~~ — 116 tests, CI/CD actif.
-2. [x] ~~Implémenter le `SharedMemoryLoader`~~ — `core/shared_memory_manager.py` opérationnel.
-3. [ ] Migrer `hardware.py` vers Hydra ou une classe de config plus robuste.
-4. [x] ~~Refondre le `FeatureEngineer` avec Polars~~ — `core/features.py` (x100 perf).
-5. [x] Refactoring V9 : EnvConfig dataclass, RewardCalculator, ObservationBuilder, constants, exceptions.
-6. [x] Fix production bugs : dtype filter, Polars index round-trip, SHM/raw path parity.
-7. [ ] Détection de régime de marché (HMM/Clustering).
-8. [ ] Architecture Transformer (Decision Transformer).
+## Non-Goals For Cleanup
+
+- Rebranding research metrics as production evidence
+- Keeping stale version labels for marketing continuity
+- Supporting every historical artifact format equally well forever
