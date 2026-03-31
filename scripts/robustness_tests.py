@@ -2,16 +2,19 @@
 # scripts/robustness_tests.py
 """Tests de Robustesse : Monte Carlo + Stress Test Krach.
 
-1. Monte Carlo: 1000 backtests avec bruit aléatoire sur les prix.
-   Si le modèle perd de l'argent dans >20% des cas -> overfitting.
+1. Monte Carlo: N backtests avec bruit sur les feature arrays (pas OHLCV).
+   Le bruit est proportionnel a la std de chaque feature (noise_std * col_std).
+   Features calculees une seule fois, bruitees N fois -> ~1000x speedup.
+   Si le modele perd de l'argent dans >20% des cas -> overfitting.
 
-2. Stress Test: Simule un krach de -20% en une journée.
-   Vérifie que le modèle coupe ses positions ou se met short.
+2. Stress Test: Simule un krach de -20% en une journee.
+   Verifie que le modele coupe ses positions ou se met short.
 
 Usage:
-    python scripts/robustness_tests.py --model models/v8/model.zip --vecnorm models/v8/vecnormalize.pkl
-    python scripts/robustness_tests.py --model models/v8/model.zip --monte-carlo 1000
-    python scripts/robustness_tests.py --model models/v8/model.zip --stress-test
+    python scripts/robustness_tests.py --model models/fold_00/model.zip --all
+    python scripts/robustness_tests.py --model models/fold_00/model.zip --monte-carlo 1000
+    python scripts/robustness_tests.py --model models/fold_00/model.zip --stress-test
+    python scripts/robustness_tests.py --model models/fold_00/model.zip --all --test-start 2024-01-01 --test-end 2024-07-01
 """
 
 import sys
@@ -31,9 +34,11 @@ from stable_baselines3.common.vec_env import VecNormalize, DummyVecEnv
 from stable_baselines3.common.monitor import Monitor
 
 from core.environment import TradingEnv
+from core.features import FeatureEngineer
 from core.macro_data import MacroDataFetcher
 from core.data_fetcher import download_data
 from core.data_pipeline import DataSplitter
+from core.model_support import predict_with_optional_recurrence
 from core.utils import setup_logging
 from config.hardware import detect_hardware, compute_optimal_params
 
@@ -46,22 +51,70 @@ except ImportError:
     HAS_RECURRENT = False
 
 
-def load_model(model_path: str, use_recurrent: bool = False):
-    """Charge un modèle PPO ou RecurrentPPO."""
+def load_model(model_path: str, use_recurrent: bool = False, device: str = "auto"):
+    """Charge un modele PPO ou RecurrentPPO."""
     ModelClass = RecurrentPPO if (use_recurrent and HAS_RECURRENT) else PPO
-    return ModelClass.load(model_path)
+    return ModelClass.load(model_path, device=device)
 
 
-def add_price_noise(data: Dict[str, pd.DataFrame], noise_std: float = 0.005) -> Dict[str, pd.DataFrame]:
-    """Ajoute du bruit gaussien aux prix OHLCV.
+def _load_vecnormalize(vecnorm_path, test_data, macro_data, env_kwargs):
+    """Load a frozen VecNormalize from pickle for inference."""
+    kwargs = {**env_kwargs, 'mode': 'backtest'}
+    dummy_env = DummyVecEnv([
+        lambda: Monitor(TradingEnv(data=test_data, macro_data=macro_data, **kwargs))
+    ])
+    vecnorm_env = VecNormalize.load(vecnorm_path, dummy_env)
+    vecnorm_env.training = False
+    vecnorm_env.norm_reward = False
+    return vecnorm_env
+
+
+def _precompute_features(data: Dict[str, pd.DataFrame]) -> Dict[str, pd.DataFrame]:
+    """Pre-compute features while preserving the original index."""
+    fe = FeatureEngineer()
+    precomputed = {}
+    for ticker, df in data.items():
+        original_idx = df.index
+        feat_df = fe.calculate_all_features(df.copy())
+        if len(feat_df) == len(original_idx):
+            feat_df.index = original_idx
+        precomputed[ticker] = feat_df
+    return precomputed
+
+
+def add_feature_noise(
+    data: Dict[str, pd.DataFrame], noise_std: float = 0.005
+) -> Dict[str, pd.DataFrame]:
+    """Add proportional gaussian noise directly to feature columns (not OHLCV).
+
+    Noise per column = noise_std * col_std * randn. OHLCV columns are kept intact
+    so that trade execution prices remain realistic.
 
     Args:
-        data: Dict {ticker: DataFrame OHLCV}.
-        noise_std: Écart-type du bruit (0.005 = +/- 0.5%).
+        data: Dict {ticker: DataFrame with computed features}.
+        noise_std: Noise scale relative to each column's std.
 
     Returns:
-        Copie des données avec bruit ajouté.
+        Copy of data with noised feature columns.
     """
+    ohlcv_cols = {'Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close'}
+    noisy_data = {}
+    for ticker, df in data.items():
+        noisy_df = df.copy()
+        feature_cols = [c for c in noisy_df.columns if c not in ohlcv_cols]
+        for col in feature_cols:
+            col_std = noisy_df[col].std()
+            if col_std > 0:
+                noise = np.random.randn(len(noisy_df)) * noise_std * col_std
+                noisy_df[col] = noisy_df[col] + noise
+        noisy_data[ticker] = noisy_df
+    return noisy_data
+
+
+def add_price_noise(
+    data: Dict[str, pd.DataFrame], noise_std: float = 0.005
+) -> Dict[str, pd.DataFrame]:
+    """Add gaussian noise to OHLCV prices (legacy, used by stress test)."""
     noisy_data = {}
     for ticker, df in data.items():
         noisy_df = df.copy()
@@ -69,12 +122,9 @@ def add_price_noise(data: Dict[str, pd.DataFrame], noise_std: float = 0.005) -> 
             if col in noisy_df.columns:
                 noise = np.random.randn(len(noisy_df)) * noise_std
                 noisy_df[col] = noisy_df[col] * (1 + noise)
-
-        # S'assurer que High >= Low et que les prix restent positifs
         noisy_df['High'] = noisy_df[['Open', 'High', 'Close']].max(axis=1)
         noisy_df['Low'] = noisy_df[['Open', 'Low', 'Close']].min(axis=1)
         noisy_df = noisy_df.clip(lower=0.01)
-
         noisy_data[ticker] = noisy_df
     return noisy_data
 
@@ -159,9 +209,16 @@ def simulate_crash(
     return crashed_data
 
 
-def run_backtest(model, data, macro_data, vecnorm_env=None, env_kwargs=None) -> dict:
-    """Exécute un backtest et retourne les métriques."""
-    kwargs = env_kwargs or {}
+def run_backtest(
+    model, data, macro_data, vecnorm_env=None, env_kwargs=None, deterministic=True
+) -> dict:
+    """Execute a backtest and return metrics.
+
+    Args:
+        deterministic: If False, use stochastic policy (adds exploration noise).
+            MC sims should use deterministic=False to capture policy uncertainty.
+    """
+    kwargs = dict(env_kwargs or {})
     kwargs['mode'] = 'backtest'
     kwargs['seed'] = 42
 
@@ -169,14 +226,23 @@ def run_backtest(model, data, macro_data, vecnorm_env=None, env_kwargs=None) -> 
     obs, _ = env.reset()
     done = False
     equity_curve = [env.initial_balance]
+    recurrent_state = None
+    episode_start = np.array([True], dtype=bool)
 
     while not done:
         if vecnorm_env is not None:
             obs_norm = vecnorm_env.normalize_obs(obs.reshape(1, -1)).flatten()
         else:
             obs_norm = obs
-        action, _ = model.predict(obs_norm, deterministic=True)
+        action, recurrent_state = predict_with_optional_recurrence(
+            model,
+            obs_norm,
+            deterministic=deterministic,
+            recurrent_state=recurrent_state,
+            episode_start=episode_start,
+        )
         obs, reward, done, truncated, info = env.step(action)
+        episode_start = np.array([done], dtype=bool)
         equity_curve.append(info['equity'])
 
     equity_series = pd.Series(equity_curve)
@@ -201,12 +267,28 @@ def run_backtest(model, data, macro_data, vecnorm_env=None, env_kwargs=None) -> 
 
 
 def _mc_worker(args):
-    """Worker pour Monte Carlo parallèle. Top-level pour pickle."""
-    test_data, macro_data, noise_std, env_kwargs, model_path, use_recurrent, seed = args
+    """Worker for parallel Monte Carlo. Top-level for pickle.
+
+    Receives precomputed feature data, applies feature noise, loads VecNormalize
+    from disk in each worker (picklable path string).
+    """
+    precomputed_data, macro_data, noise_std, env_kwargs, model_path, use_recurrent, seed, vecnorm_path = args
     np.random.seed(seed)
-    model = load_model(model_path, use_recurrent=use_recurrent)
-    noisy_data = add_price_noise(test_data, noise_std=noise_std)
-    return run_backtest(model, noisy_data, macro_data, vecnorm_env=None, env_kwargs=env_kwargs)
+    model = load_model(model_path, use_recurrent=use_recurrent, device="cpu")
+
+    # Apply feature noise to precomputed data
+    noisy_data = add_feature_noise(precomputed_data, noise_std=noise_std)
+
+    # Load VecNormalize in worker if available
+    vecnorm_env = None
+    if vecnorm_path:
+        vecnorm_env = _load_vecnormalize(vecnorm_path, noisy_data, macro_data, env_kwargs)
+
+    return run_backtest(
+        model, noisy_data, macro_data, vecnorm_env=vecnorm_env,
+        env_kwargs={**env_kwargs, 'features_precomputed': True},
+        deterministic=False,
+    )
 
 
 def monte_carlo_test(
@@ -220,35 +302,52 @@ def monte_carlo_test(
     n_workers: int = 1,
     model_path: str = None,
     use_recurrent: bool = False,
+    vecnorm_path: str = None,
 ) -> dict:
-    """Monte Carlo Simulations.
+    """Monte Carlo Simulations with feature-level noise.
 
-    Lance n_simulations backtests avec du bruit aléatoire.
-    Critère: si >5% des simulations perdent de l'argent -> overfitting.
-    n_workers > 1 parallélise via ProcessPoolExecutor.
+    Pre-computes features once, then applies proportional noise to feature arrays
+    N times. Uses non-deterministic policy to capture action stochasticity.
+    Loads VecNormalize per worker for correct observation normalization.
+
+    Criterion: if >20% of simulations lose money -> overfitting.
     """
+    # Pre-compute features once (shared across all MC sims)
+    logger.info("  Pre-computing features for MC simulations...")
+    precomputed_data = _precompute_features(test_data)
+
+    mc_env_kwargs = dict(env_kwargs or {})
+    mc_env_kwargs['features_precomputed'] = True
+
     logger.info(
         f"Monte Carlo: {n_simulations} simulations "
-        f"(noise={noise_std*100:.1f}%, workers={n_workers})"
+        f"(feature_noise={noise_std*100:.1f}%, workers={n_workers}, deterministic=False)"
     )
 
     if n_workers > 1 and model_path:
+        import multiprocessing as mp
         from concurrent.futures import ProcessPoolExecutor
 
+        # Use 'spawn' context to avoid CUDA re-initialization errors in forked processes
+        ctx = mp.get_context('spawn')
         worker_args = [
-            (test_data, macro_data, noise_std, env_kwargs,
-             model_path, use_recurrent, 42 + i)
+            (precomputed_data, macro_data, noise_std, mc_env_kwargs,
+             model_path, use_recurrent, 42 + i, vecnorm_path)
             for i in range(n_simulations)
         ]
-        with ProcessPoolExecutor(max_workers=n_workers) as pool:
+        with ProcessPoolExecutor(max_workers=n_workers, mp_context=ctx) as pool:
             results = list(pool.map(_mc_worker, worker_args))
         losses = sum(1 for r in results if r['total_return'] < 0)
         logger.info(f"  Done: {n_simulations} sims | Losses: {losses}/{n_simulations}")
     else:
         results = []
         for i in range(n_simulations):
-            noisy_data = add_price_noise(test_data, noise_std=noise_std)
-            metrics = run_backtest(model, noisy_data, macro_data, vecnorm_env, env_kwargs)
+            np.random.seed(42 + i)
+            noisy_data = add_feature_noise(precomputed_data, noise_std=noise_std)
+            metrics = run_backtest(
+                model, noisy_data, macro_data, vecnorm_env,
+                env_kwargs=mc_env_kwargs, deterministic=False,
+            )
             results.append(metrics)
 
             if (i + 1) % 100 == 0:
@@ -258,7 +357,7 @@ def monte_carlo_test(
                     f"Losses: {losses}/{i+1} ({losses/(i+1)*100:.1f}%)"
                 )
 
-    # Analyser
+    # Analyze
     returns = [r['total_return'] for r in results]
     sharpes = [r['sharpe_ratio'] for r in results]
     drawdowns = [r['max_drawdown'] for r in results]
@@ -269,6 +368,8 @@ def monte_carlo_test(
     report = {
         'n_simulations': n_simulations,
         'noise_std': noise_std,
+        'noise_type': 'feature',
+        'deterministic': False,
         'loss_rate': loss_rate,
         'is_overfit': loss_rate > 0.20,
         'avg_return': float(np.mean(returns)),
@@ -282,25 +383,17 @@ def monte_carlo_test(
         'avg_max_drawdown': float(np.mean(drawdowns)),
     }
 
-    # Calcul PSR/DSR sur la distribution des *moyennes* de rendement des simulations
-    # Note: Le PSR s'applique normalement à une série temporelle de rendements d'UNE stratégie.
-    # Ici on l'applique à la distribution des Sharpes de Monte Carlo pour voir la robustesse globale.
-    
-    # Agrégation des rendements de tous les MC pour un PSR global "Meta"
-    # On prend le rendement moyen par pas de temps sur toutes les sims
-    # C'est une approximation pour voir si la stratégie "en moyenne" a un PSR élevé.
-    all_returns_flat = np.array(returns) # Rendements totaux des épisodes
-    
-    # Calcul PSR sur la distribution des Scénarios (Est-ce que >95% des scénarios battent 0 ?)
-    # On utilise simplement le taux de perte pour ça, mais le PSR ajoute la nuance de la variance.
     psr = calculate_psr(np.array(returns), benchmark_sr=0.0)
     report['psr'] = psr
     report['dsr'] = calculate_dsr(np.array(returns), n_trials=n_simulations)
 
     logger.info("\n" + "=" * 50)
-    logger.info("MONTE CARLO RESULTS (Robuste)")
+    logger.info("MONTE CARLO RESULTS")
     logger.info("=" * 50)
     logger.info(f"  Simulations: {n_simulations}")
+    logger.info(f"  Noise type:  feature-level ({noise_std*100:.1f}% * col_std)")
+    logger.info(f"  Policy:      stochastic (deterministic=False)")
+    logger.info(f"  VecNorm:     {'YES' if (vecnorm_env or vecnorm_path) else 'NO'}")
     logger.info(f"  Loss Rate:   {loss_rate:.1%} {'OVERFIT' if report['is_overfit'] else 'OK'}")
     logger.info(f"  Avg Return:  {report['avg_return']:+.2%}")
     logger.info(f"  Std Return:  {report['std_return']:.2%}")
@@ -311,9 +404,9 @@ def monte_carlo_test(
     logger.info(f"  Avg MaxDD:   {report['avg_max_drawdown']:.2%}")
 
     if report['is_overfit']:
-        logger.warning("  VERDICT: OVERFIT - Le modele perd de l'argent dans >5% des cas")
+        logger.warning("  VERDICT: OVERFIT - Loss rate > 20%")
     else:
-        logger.info("  VERDICT: ROBUSTE - Le modele est stable")
+        logger.info("  VERDICT: ROBUST")
 
     return report
 
@@ -334,12 +427,29 @@ def stress_test_crash(
     """
     logger.info(f"Stress Test: krach de {crash_pct*100:.0f}%")
 
-    # Baseline sans krach
-    baseline = run_backtest(model, test_data, macro_data, vecnorm_env, env_kwargs)
+    precomputed_env_kwargs = dict(env_kwargs or {})
+    precomputed_env_kwargs['features_precomputed'] = True
 
-    # Avec krach
+    # Baseline sans krach
+    baseline_data = _precompute_features(test_data)
+    baseline = run_backtest(
+        model,
+        baseline_data,
+        macro_data,
+        vecnorm_env,
+        precomputed_env_kwargs,
+    )
+
+    # Avec krach: les features doivent etre recalculees APRES le choc prix
     crashed_data = simulate_crash(test_data, crash_pct=crash_pct)
-    crash_result = run_backtest(model, crashed_data, macro_data, vecnorm_env, env_kwargs)
+    crashed_features = _precompute_features(crashed_data)
+    crash_result = run_backtest(
+        model,
+        crashed_features,
+        macro_data,
+        vecnorm_env,
+        precomputed_env_kwargs,
+    )
 
     # Analyser la réaction
     baseline_return = baseline['total_return']
@@ -386,7 +496,7 @@ def main():
 
     parser = argparse.ArgumentParser(description='Robustness Tests (Monte Carlo + Stress Test)')
     parser.add_argument('--model', type=str, required=True, help='Path to model .zip')
-    parser.add_argument('--vecnorm', type=str, default=None, help='Path to vecnormalize .pkl')
+    parser.add_argument('--vecnorm', type=str, default=None, help='Path to vecnormalize .pkl (auto-detected from model dir if not set)')
     parser.add_argument('--config', type=str, default='config/config.yaml')
     parser.add_argument('--monte-carlo', type=int, default=0, help='Number of MC simulations (0=skip)')
     parser.add_argument('--stress-test', action='store_true', help='Run crash stress test')
@@ -394,6 +504,8 @@ def main():
     parser.add_argument('--recurrent', action='store_true', help='Model is RecurrentPPO')
     parser.add_argument('--noise-std', type=float, default=0.005, help='MC noise std (default: 0.5%%)')
     parser.add_argument('--crash-pct', type=float, default=-0.20, help='Crash severity (default: -20%%)')
+    parser.add_argument('--test-start', type=str, default=None, help='Test period start date (YYYY-MM-DD)')
+    parser.add_argument('--test-end', type=str, default=None, help='Test period end date (YYYY-MM-DD)')
     parser.add_argument(
         '--auto-scale', action='store_true',
         help='Auto-detect hardware and parallelize Monte Carlo',
@@ -409,49 +521,104 @@ def main():
         print("Specify --monte-carlo N, --stress-test, or --all")
         return
 
-    # Charger modèle
+    # Auto-detect vecnorm from model directory
+    model_dir = str(Path(args.model).parent)
+    if args.vecnorm is None:
+        candidate = os.path.join(model_dir, 'vecnormalize.pkl')
+        if os.path.exists(candidate):
+            args.vecnorm = candidate
+            logger.info(f"Auto-detected VecNormalize: {candidate}")
+
+    # Try to load fold_metadata.json for test period alignment
+    test_start = args.test_start
+    test_end = args.test_end
+    if test_start is None or test_end is None:
+        metadata_path = os.path.join(model_dir, 'fold_metadata.json')
+        if os.path.exists(metadata_path):
+            with open(metadata_path, 'r') as f:
+                metadata = json.load(f)
+            if test_start is None:
+                test_start = metadata.get('test_start')
+            if test_end is None:
+                test_end = metadata.get('test_end')
+            logger.info(f"Using fold metadata test period: {test_start} -> {test_end}")
+
+    # Load model
     logger.info(f"Loading model: {args.model}")
     model = load_model(args.model, use_recurrent=args.recurrent)
 
-    # Charger config
+    # Load config
     with open(args.config, 'r') as f:
         config = yaml.safe_load(f)
 
     env_kwargs = {k: v for k, v in config.get('environment', {}).items()}
 
-    # Charger données
-    logger.info("Loading test data...")
+    # Load data
+    logger.info("Loading data...")
     data = download_data(
         tickers=config['data']['tickers'],
         period=config['data'].get('period', '5y'),
         interval=config['data'].get('interval', '1h'),
+        dataset_path=config['data'].get('dataset_path'),
     )
 
-    splits = DataSplitter.split(data)
-    test_data = splits.test
+    # Slice test data using fold dates or fallback to DataSplitter
+    if test_start and test_end:
+        logger.info(f"Slicing test data: {test_start} -> {test_end}")
+        test_data = {}
+        ts_start = pd.Timestamp(test_start)
+        ts_end = pd.Timestamp(test_end)
+        for ticker, df in data.items():
+            mask = (df.index >= ts_start) & (df.index < ts_end)
+            sliced = df.loc[mask]
+            if len(sliced) > 50:
+                test_data[ticker] = sliced
+        if not test_data:
+            logger.warning("No data in test range, falling back to DataSplitter")
+            splits = DataSplitter.split(data)
+            test_data = splits.test
+    else:
+        logger.info("No test dates specified, using DataSplitter (60/20/20)")
+        splits = DataSplitter.split(data)
+        test_data = splits.test
+
+    ref_ticker = list(test_data.keys())[0]
+    logger.info(
+        f"Test data: {len(test_data)} tickers, "
+        f"{len(test_data[ref_ticker])} bars "
+        f"({test_data[ref_ticker].index[0].date()} -> {test_data[ref_ticker].index[-1].date()})"
+    )
 
     # Macro data
-    macro_fetcher = MacroDataFetcher()
-    ref_df = data[list(data.keys())[0]]
-    macro_data = macro_fetcher.fetch_all(
-        start_date=str(ref_df.index[0].date()),
-        end_date=str(ref_df.index[-1].date()),
-        interval=config['data'].get('interval', '1h'),
-    )
-    if macro_data.empty:
-        macro_data = None
+    macro_data = None
+    try:
+        macro_fetcher = MacroDataFetcher()
+        ref_df = test_data[ref_ticker]
+        macro_data = macro_fetcher.fetch_all(
+            start_date=str(ref_df.index[0].date()),
+            end_date=str(ref_df.index[-1].date()),
+            interval=config['data'].get('interval', '1h'),
+        )
+        if macro_data.empty:
+            macro_data = None
+    except Exception as e:
+        logger.warning(f"Failed to fetch macro data: {e}")
+
+    # Pre-compute features for stress test (MC does its own)
+    logger.info("Pre-computing features for test data...")
+    precomputed_test = _precompute_features(test_data)
+
+    precomputed_env_kwargs = {**env_kwargs, 'features_precomputed': True}
 
     # VecNormalize
     vecnorm_env = None
+    vecnorm_path = None
     if args.vecnorm and os.path.exists(args.vecnorm):
-        dummy_env = DummyVecEnv([
-            lambda: Monitor(TradingEnv(
-                data=test_data, macro_data=macro_data, **{**env_kwargs, 'mode': 'backtest'}
-            ))
-        ])
-        vecnorm_env = VecNormalize.load(args.vecnorm, dummy_env)
-        vecnorm_env.training = False
-        vecnorm_env.norm_reward = False
+        vecnorm_path = args.vecnorm
+        vecnorm_env = _load_vecnormalize(vecnorm_path, precomputed_test, macro_data, env_kwargs)
+        logger.info(f"Loaded VecNormalize: {vecnorm_path}")
+    else:
+        logger.warning("No VecNormalize found - model receives unnormalized observations!")
 
     # Auto-scale
     n_workers = 1
@@ -468,7 +635,7 @@ def main():
 
     all_results = {}
 
-    # Monte Carlo
+    # Monte Carlo (uses raw test_data, pre-computes features internally)
     if args.monte_carlo > 0:
         mc_report = monte_carlo_test(
             model, test_data, macro_data,
@@ -479,10 +646,11 @@ def main():
             n_workers=n_workers,
             model_path=args.model,
             use_recurrent=args.recurrent,
+            vecnorm_path=vecnorm_path,
         )
         all_results['monte_carlo'] = mc_report
 
-    # Stress Test
+    # Stress Test (uses precomputed features)
     if args.stress_test:
         st_report = stress_test_crash(
             model, test_data, macro_data,
@@ -492,7 +660,7 @@ def main():
         )
         all_results['stress_test'] = st_report
 
-    # Sauvegarder
+    # Save
     results_path = os.path.join(output_dir, 'robustness_report.json')
     with open(results_path, 'w') as f:
         json.dump(all_results, f, indent=2)

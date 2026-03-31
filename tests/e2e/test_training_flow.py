@@ -35,14 +35,12 @@ def setup_config():
             "clip_range": 0.2,
             "ent_coef": 0.01,
             "vf_coef": 0.5,
-            "n_envs": 1,
-            "xml_output": False
+            "n_envs": 1
         },
         "environment": {
             "initial_balance": 10000,
             "commission": 0.001,
-            "reward_scaling": 1.0,
-            "features_precomputed": True
+            "reward_scaling": 1.0
         },
         "walk_forward": {
             "train_years": 1,

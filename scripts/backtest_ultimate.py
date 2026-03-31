@@ -132,11 +132,11 @@ ENV_PARAMS_V7 = dict(
 
 
 # ============================================================================
-# V7 METADATA & CONFIG LOADING
+# MODEL METADATA & CONFIG LOADING
 # ============================================================================
 
-def load_v7_metadata(model_path):
-    """Charge les metadata V7 (tickers, secteurs, config) a cote du modele."""
+def load_model_metadata(model_path):
+    """Load model metadata, config and optional VecNormalize next to the model."""
     p = Path(model_path)
     metadata_path = p.with_name(p.stem + '_metadata.json')
     config_path = p.with_name(p.stem + '_config.json')
@@ -148,20 +148,24 @@ def load_v7_metadata(model_path):
     if metadata_path.exists():
         with open(metadata_path, 'r', encoding='utf-8') as f:
             metadata = json.load(f)
-        logger.info(f"  Metadata V7 chargee: {metadata_path.name}")
+        logger.info(f"  Metadata chargee: {metadata_path.name}")
         logger.info(f"    Version: {metadata.get('version', '?')}")
         logger.info(f"    Tickers: {metadata.get('n_tickers', '?')} ({', '.join(metadata.get('tickers', [])[:5])}...)")
 
     if config_path.exists():
         with open(config_path, 'r', encoding='utf-8') as f:
             config = json.load(f)
-        logger.info(f"  Config V7 chargee: {config_path.name}")
+        logger.info(f"  Config chargee: {config_path.name}")
 
     vecnorm_exists = vecnorm_path.exists()
     if vecnorm_exists:
         logger.info(f"  VecNormalize: {vecnorm_path.name}")
 
     return metadata, config, vecnorm_path if vecnorm_exists else None
+
+
+# Backward-compatible alias kept for older scripts.
+load_v7_metadata = load_model_metadata
 
 
 def load_yaml_config(config_path):
@@ -1192,7 +1196,7 @@ def main():
     model_obs_size = model.observation_space.shape[0]
 
     # ── 0b. LOAD V7 METADATA (if exists) ──
-    metadata, model_config, vecnorm_path = load_v7_metadata(model_path)
+    metadata, model_config, vecnorm_path = load_model_metadata(model_path)
 
     # Override config from CLI if specified
     if args.config:

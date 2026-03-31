@@ -1,22 +1,19 @@
-# config/schema.py
-"""Validation légère des configs YAML de training.
+"""Schema validation for YAML training configs.
 
-Détecte les typos et valeurs aberrantes sans dépendance externe.
-
-Usage:
-    from config.schema import validate_config
-    config = yaml.safe_load(open('config/config.yaml'))
-    validate_config(config)  # Lève ConfigValidationError si invalide
+The goal is to fail on real configuration mistakes instead of silently
+continuing with typos or impossible PPO settings.
 """
 
-import logging
+from __future__ import annotations
+
+from typing import Any
 
 from core.exceptions import ConfigValidationError
 
-logger = logging.getLogger(__name__)
+FieldType = type | tuple[type, ...]
+FieldSpec = tuple[FieldType, float | int | None, float | int | None]
 
-# Clés attendues par section avec (type, min, max) ou (type, None, None)
-SCHEMA = {
+SCHEMA: dict[str, dict[str, FieldSpec]] = {
     "training": {
         "total_timesteps": (int, 128, 1_000_000_000),
         "n_envs": (int, 1, 512),
@@ -34,14 +31,14 @@ SCHEMA = {
         "use_shared_memory": (bool, None, None),
     },
     "environment": {
-        "initial_balance": ((int, float), 1000, 100_000_000),
+        "initial_balance": ((int, float), 1_000, 100_000_000),
         "max_steps": (int, 100, 100_000),
         "buy_pct": (float, 0.01, 1.0),
         "max_position_pct": (float, 0.01, 1.0),
-        "max_trades_per_day": (int, 1, 1000),
+        "max_trades_per_day": (int, 1, 1_000),
         "min_holding_period": (int, 0, 100),
         "reward_scaling": (float, 0.01, 100.0),
-        "warmup_steps": (int, 0, 1000),
+        "warmup_steps": (int, 0, 1_000),
         "steps_per_trading_week": (int, 1, 500),
         "drawdown_threshold": (float, 0.01, 1.0),
         "commission": (float, 0.0, 1.0),
@@ -55,7 +52,16 @@ SCHEMA = {
         "reward_trade_success": (float, 0.0, 10.0),
         "penalty_overtrading": (float, 0.0, 10.0),
         "drawdown_penalty_factor": (float, 0.0, 100.0),
-        "max_features_per_ticker": (int, 0, 1000),
+        "reward_buy_executed": (float, -10.0, 10.0),
+        "reward_overtrading": (float, -10.0, 10.0),
+        "reward_invalid_trade": (float, -10.0, 10.0),
+        "reward_bad_price": (float, -10.0, 10.0),
+        "reward_good_return_bonus": (float, -10.0, 10.0),
+        "reward_high_winrate_bonus": (float, -10.0, 10.0),
+        "good_return_threshold": (float, 0.0, 1.0),
+        "high_winrate_threshold": (float, 0.0, 1.0),
+        "max_features_per_ticker": (int, 0, 1_000),
+        "stop_loss_pct": (float, 0.0, 1.0),
     },
     "data": {
         "tickers": (list, None, None),
@@ -71,7 +77,7 @@ SCHEMA = {
     "network": {
         "net_arch": (list, None, None),
         "activation_fn": (str, None, None),
-        "lstm_hidden_size": (int, 16, 2048),
+        "lstm_hidden_size": (int, 16, 2_048),
         "n_lstm_layers": (int, 1, 8),
     },
     "checkpoint": {
@@ -83,75 +89,113 @@ SCHEMA = {
         "n_eval_episodes": (int, 1, 100),
         "best_model_save_path": (str, None, None),
     },
+    "optuna": {
+        "timesteps_per_trial": (int, 128, 1_000_000_000),
+    },
+    "wandb": {
+        "enabled": (bool, None, None),
+        "project": (str, None, None),
+        "entity": ((str, type(None)), None, None),
+    },
 }
 
+REQUIRED_SECTIONS = {"training", "environment", "data", "walk_forward"}
 
-def validate_config(config: dict) -> list:
-    """Valide la config et retourne les warnings.
 
-    Args:
-        config: Dict chargé depuis YAML.
+def _type_label(expected_type: FieldType) -> str:
+    if isinstance(expected_type, tuple):
+        return " | ".join(t.__name__ for t in expected_type)
+    return expected_type.__name__
 
-    Returns:
-        Liste de warnings (str). Vide si tout est OK.
 
-    Raises:
-        ValueError: Si une valeur est hors limites.
+def _is_valid_type(value: Any, expected_type: FieldType) -> bool:
+    if isinstance(expected_type, tuple):
+        return any(_is_valid_type(value, member_type) for member_type in expected_type)
+    if expected_type is float:
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if expected_type is int:
+        return isinstance(value, int) and not isinstance(value, bool)
+    return isinstance(value, expected_type)
+
+
+def _validate_bounds(section_name: str, key: str, value: Any, min_val: Any, max_val: Any) -> None:
+    if isinstance(value, bool):
+        return
+    if min_val is not None and value < min_val:
+        raise ConfigValidationError(f"'{section_name}.{key}': {value} < minimum {min_val}")
+    if max_val is not None and value > max_val:
+        raise ConfigValidationError(f"'{section_name}.{key}': {value} > maximum {max_val}")
+
+
+def _validate_section(section_name: str, section: dict[str, Any], fields: dict[str, FieldSpec]) -> None:
+    known_keys = set(fields)
+    unknown_keys = sorted(set(section) - known_keys)
+    if unknown_keys:
+        pretty_keys = ", ".join(unknown_keys)
+        raise ConfigValidationError(
+            f"Section '{section_name}' contains unknown key(s): {pretty_keys}. "
+            f"Valid keys: {sorted(known_keys)}"
+        )
+
+    for key, (expected_type, min_val, max_val) in fields.items():
+        if key not in section:
+            continue
+
+        value = section[key]
+        if not _is_valid_type(value, expected_type):
+            raise ConfigValidationError(
+                f"'{section_name}.{key}': expected {_type_label(expected_type)}, "
+                f"got {type(value).__name__} ({value!r})"
+            )
+        _validate_bounds(section_name, key, value, min_val, max_val)
+
+
+def _validate_cross_field_constraints(config: dict[str, Any]) -> None:
+    training = config.get("training", {})
+    n_envs = training.get("n_envs", 1)
+    n_steps = training.get("n_steps", 2_048)
+    batch_size = training.get("batch_size", 64)
+
+    if n_envs * n_steps < batch_size:
+        raise ConfigValidationError(
+            f"n_envs * n_steps ({n_envs * n_steps}) < batch_size ({batch_size}). "
+            "PPO requires n_envs * n_steps >= batch_size."
+        )
+
+
+def validate_config(config: dict) -> list[str]:
+    """Validate a YAML config and return non-fatal warnings.
+
+    The current policy is intentionally strict: typos, unknown sections and
+    impossible PPO settings raise ``ConfigValidationError``.
     """
-    warnings = []
+    if not isinstance(config, dict):
+        raise ConfigValidationError(
+            f"Top-level config must be a mapping, got {type(config).__name__}"
+        )
+
+    unknown_sections = sorted(set(config) - set(SCHEMA))
+    if unknown_sections:
+        raise ConfigValidationError(
+            f"Unknown top-level section(s): {', '.join(unknown_sections)}. "
+            f"Valid sections: {sorted(SCHEMA)}"
+        )
+
+    missing_sections = sorted(section for section in REQUIRED_SECTIONS if section not in config)
+    if missing_sections:
+        raise ConfigValidationError(
+            f"Missing required section(s): {', '.join(missing_sections)}"
+        )
 
     for section_name, fields in SCHEMA.items():
         section = config.get(section_name)
         if section is None:
-            warnings.append(f"Section '{section_name}' manquante dans la config")
             continue
+        if not isinstance(section, dict):
+            raise ConfigValidationError(
+                f"Section '{section_name}' must be a mapping, got {type(section).__name__}"
+            )
+        _validate_section(section_name, section, fields)
 
-        # Détecter les clés inconnues (potentielles typos)
-        known_keys = set(fields.keys())
-        for key in section:
-            if key not in known_keys:
-                warnings.append(
-                    f"Clé inconnue '{section_name}.{key}' "
-                    f"(typo ? clés valides: {sorted(known_keys)})"
-                )
-
-        # Valider les types et bornes
-        for key, (expected_type, min_val, max_val) in fields.items():
-            if key not in section:
-                continue
-
-            value = section[key]
-
-            # Vérifier le type
-            if not isinstance(value, expected_type):
-                # Accepter int là où float est attendu
-                if expected_type is float and isinstance(value, int):
-                    pass
-                else:
-                    raise ConfigValidationError(
-                        f"'{section_name}.{key}': attendu {expected_type.__name__}, "
-                        f"obtenu {type(value).__name__} ({value})"
-                    )
-
-            # Vérifier les bornes
-            if min_val is not None and value < min_val:
-                raise ConfigValidationError(f"'{section_name}.{key}': {value} < minimum {min_val}")
-            if max_val is not None and value > max_val:
-                raise ConfigValidationError(f"'{section_name}.{key}': {value} > maximum {max_val}")
-
-    # Cross-field constraints
-    training = config.get("training", {})
-    n_envs = training.get("n_envs", 1)
-    n_steps = training.get("n_steps", 2048)
-    batch_size = training.get("batch_size", 64)
-
-    if n_envs * n_steps < batch_size:
-        warnings.append(
-            f"n_envs * n_steps ({n_envs * n_steps}) < batch_size ({batch_size}). "
-            f"PPO requires n_envs * n_steps >= batch_size."
-        )
-
-    for w in warnings:
-        logger.warning(f"Config warning: {w}")
-
-    return warnings
+    _validate_cross_field_constraints(config)
+    return []

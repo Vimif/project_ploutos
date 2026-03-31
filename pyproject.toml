@@ -50,8 +50,8 @@ dev = [
 ]
 
 [project.scripts]
-ploutos-train = "training.train_v6_better_timing:main"
-ploutos-backtest = "scripts.backtest_v6:main"
+ploutos-train = "training.train:main"
+ploutos-backtest = "scripts.backtest_ultimate:main"
 
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]

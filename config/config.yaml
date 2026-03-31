@@ -1,5 +1,5 @@
 # config/config.yaml
-# Configuration V8 - Macro Data + LSTM + Walk-Forward
+# Configuration V9.1 - Macro Data + LSTM + Walk-Forward
 
 training:
   total_timesteps: 10000000  # 10M (par fold walk-forward)
@@ -37,6 +37,7 @@ environment:
   steps_per_trading_week: 78
   drawdown_threshold: 0.10
   max_features_per_ticker: 30  # 0 = all features, >0 = top N by variance (reduces obs dims)
+  stop_loss_pct: 0.05  # Auto-sell positions at -5% loss (0 = disabled)
 
 data:
   tickers:
@@ -69,7 +70,7 @@ network:
   n_lstm_layers: 1
 
 walk_forward:
-  train_years: 5       # On a 6 ans de data -> 5 ans train + 1 an test
+  train_years: 3       # 3y = ~9000 bars 1h per ticker (4-5 folds with 6y data)
   test_months: 6       # Test sur 6 mois
   step_months: 6       # Avancer de 6 mois entre chaque fold
 

@@ -46,6 +46,7 @@ from core.utils import setup_logging
 from config.hardware import auto_scale_config, detect_hardware, compute_optimal_params
 from config.schema import validate_config
 from core.features import FeatureEngineer  # Turbo Init
+from core.model_support import predict_with_optional_recurrence
 from core.shared_memory_manager import SharedDataManager  # V9 Shared Memory
 
 logger = setup_logging(__name__, "train.log")
@@ -169,6 +170,7 @@ def train_single_fold(
     output_dir: str,
     use_recurrent: bool = False,
     seed: int = 42,
+    split_info: Optional[Dict[str, str]] = None,
 ) -> dict:
     """Entraîne et évalue sur un seul fold walk-forward.
 
@@ -311,6 +313,13 @@ def train_single_fold(
         model.save(model_path)
         envs.save(os.path.join(fold_dir, "vecnormalize.pkl"))
 
+        # Sauvegarder fold metadata (pour robustness tests)
+        if split_info:
+            metadata_path = os.path.join(fold_dir, "fold_metadata.json")
+            with open(metadata_path, "w") as f:
+                json.dump(split_info, f, indent=2)
+            logger.info(f"  Fold {fold_idx}: Saved metadata to {metadata_path}")
+
         # Évaluer sur le test set (geler les stats de normalisation)
         logger.info(f"  Fold {fold_idx}: Evaluating on test period...")
         envs.training = False
@@ -366,12 +375,21 @@ def evaluate_on_test(
     obs, info = test_env.reset()
     done = False
     equity_curve = [test_env.initial_balance]
+    recurrent_state = None
+    episode_start = np.array([True], dtype=bool)
 
     while not done:
         # Normaliser l'observation comme pendant le training
         obs_normalized = train_envs.normalize_obs(obs.reshape(1, -1)).flatten()
-        action, _ = model.predict(obs_normalized, deterministic=True)
+        action, recurrent_state = predict_with_optional_recurrence(
+            model,
+            obs_normalized,
+            deterministic=True,
+            recurrent_state=recurrent_state,
+            episode_start=episode_start,
+        )
         obs, reward, done, truncated, info = test_env.step(action)
+        episode_start = np.array([done], dtype=bool)
         equity_curve.append(info["equity"])
 
     # Calculer métriques
@@ -520,6 +538,14 @@ def run_walk_forward(
                 feat_test.index = original_test_idx
             fold_test[ticker] = feat_test
 
+        # Fold split info for metadata
+        fold_split_info = {
+            "train_start": split["train_start"],
+            "train_end": split["train_end"],
+            "test_start": split["test_start"],
+            "test_end": split["test_end"],
+        }
+
         # Ensemble : entraîner n_ensemble modèles avec des seeds différents
         if n_ensemble > 1:
             fold_metrics_list = []
@@ -534,6 +560,7 @@ def run_walk_forward(
                     output_dir=output_dir,
                     use_recurrent=use_recurrent,
                     seed=seed,
+                    split_info=fold_split_info,
                 )
                 fold_metrics_list.append(metrics)
 
@@ -557,6 +584,7 @@ def run_walk_forward(
                 output_dir=output_dir,
                 use_recurrent=use_recurrent,
                 seed=42,
+                split_info=fold_split_info,
             )
             metrics["fold_idx"] = fold_idx
             metrics["train_period"] = f"{split['train_start']}->{split['train_end']}"
@@ -612,7 +640,7 @@ def run_walk_forward(
     return results
 
 
-if __name__ == "__main__":
+def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Walk-Forward Analysis V9")
@@ -639,3 +667,7 @@ if __name__ == "__main__":
         auto_scale=args.auto_scale,
         use_shared_memory=args.shared_memory,
     )
+
+
+if __name__ == "__main__":
+    main()

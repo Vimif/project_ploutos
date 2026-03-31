@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
 """
 ===============================================================================
-  PAPER TRADER V7 — Simulation Live des Modeles Ploutos
+  PAPER TRADER - Live simulation for Ploutos models
 ===============================================================================
 
-Pipeline de paper trading pour valider un modele V7 en conditions reelles.
-Supporte deux modes:
-  - Alpaca Paper Trading (avec cles API)
-  - Simulation locale (sans API, yfinance only)
+Paper-trading pipeline for validating a trained model in live-like conditions.
+Supported modes:
+  - Alpaca paper trading (with API keys)
+  - Local simulation (without API, yfinance only)
 
-Fonctionnalites:
-  - Chargement V7 model + VecNormalize + metadata
-  - Boucle de trading live avec interval configurable
-  - Kill switch automatique (drawdown, inactivite, perte max)
-  - Journal des trades en temps reel
-  - Export equity curve + rapport JSON
-  - Comparaison avec performance OOS attendue
+Features:
+  - Model + VecNormalize + metadata loading
+  - Live trading loop with configurable interval
+  - Automatic kill switch (drawdown, inactivity, max loss)
+  - Real-time trade journal
+  - Equity curve export + JSON report
+  - Comparison against expected OOS performance
 
 Usage:
-  python scripts/paper_trade.py --model models/v7_sp500/ploutos_v7.zip --mode simulate
-  python scripts/paper_trade.py --model models/v7_sp500/ploutos_v7.zip --mode alpaca \\
+  python scripts/paper_trade.py --model models/fold_01/model.zip --mode simulate
+  python scripts/paper_trade.py --model models/fold_01/model.zip --mode alpaca \\
       --api-key YOUR_KEY --api-secret YOUR_SECRET
 """
 
@@ -370,7 +370,7 @@ def get_model_actions(model, data, tickers, env_class, env_params, model_obs_siz
     from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
     try:
-        # Instanciation dynamique (V7 ou V9 selon detect_environment)
+        # Instanciation dynamique selon l'environnement detecte
         env = env_class(data=data, **env_params)
 
         if env.observation_space.shape[0] != model_obs_size:
@@ -385,7 +385,7 @@ def get_model_actions(model, data, tickers, env_class, env_params, model_obs_siz
             vec_env.norm_reward = False
             obs = vec_env.reset()
         else:
-            obs = env.reset()
+            obs, _ = env.reset()
             vec_env = None
 
         # Run model for a few steps to get its current decision
@@ -409,7 +409,7 @@ def run_paper_trading(model_path, mode='simulate', api_key=None, api_secret=None
 
     model_path = Path(model_path)
     logger.info(f"\n{'='*60}")
-    logger.info(f"  PAPER TRADER V7")
+    logger.info(f"  PAPER TRADER")
     logger.info(f"{'='*60}")
     logger.info(f"  Modele     : {model_path.name}")
     logger.info(f"  Mode       : {mode}")
@@ -422,9 +422,9 @@ def run_paper_trading(model_path, mode='simulate', api_key=None, api_secret=None
     model = PPO.load(model_path)
     model_obs_size = model.observation_space.shape[0]
 
-    # Load V7 metadata
-    from scripts.backtest_ultimate import load_v7_metadata, detect_environment
-    metadata, model_config, vecnorm_path = load_v7_metadata(model_path)
+    # Load metadata and detect the compatible environment automatically
+    from scripts.backtest_ultimate import load_model_metadata, detect_environment
+    metadata, model_config, vecnorm_path = load_model_metadata(model_path)
 
     env_version, n_tickers, meta_tickers, env_class, env_params = detect_environment(
         model, metadata=metadata, config=model_config
@@ -591,8 +591,8 @@ def run_paper_trading(model_path, mode='simulate', api_key=None, api_secret=None
 # ============================================================================
 
 def main():
-    parser = argparse.ArgumentParser(description='Paper Trader V9 — Live Simulation')
-    parser.add_argument('--model', type=str, required=True, help='Chemin du modele V7 (.zip)')
+    parser = argparse.ArgumentParser(description="Paper Trader - Live Simulation")
+    parser.add_argument('--model', type=str, required=True, help='Chemin du modele (.zip)')
     parser.add_argument('--mode', type=str, default='simulate', choices=['simulate', 'alpaca'],
                         help='Mode: simulate (local) ou alpaca (paper trading)')
     parser.add_argument('--api-key', type=str, default=None, help='Alpaca API key')

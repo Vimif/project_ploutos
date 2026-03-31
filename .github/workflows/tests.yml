@@ -55,4 +55,4 @@ jobs:
       - name: Install dependencies
         run: pip install -e ".[dev,training]"
       - name: Type check
-        run: mypy core/ training/ --ignore-missing-imports --no-error-summary || true
+        run: mypy core/ training/ --ignore-missing-imports --no-error-summary
