@@ -9,17 +9,20 @@ from core.utils import setup_logging
 
 logger = setup_logging(__name__)
 
+
 class RiskManager:
     """Gestionnaire de risque sophistiqué"""
 
-    def __init__(self,
-                 max_portfolio_risk: float = 0.02,
-                 max_daily_loss: float = 0.03,
-                 max_position_size: float = 0.05,
-                 max_correlation: float = 0.7):
+    def __init__(
+        self,
+        max_portfolio_risk: float = 0.02,
+        max_daily_loss: float = 0.03,
+        max_position_size: float = 0.05,
+        max_correlation: float = 0.7,
+    ):
         """
         Initialiser le risk manager
-        
+
         Args:
             max_portfolio_risk: Risque max par trade (2% par défaut)
             max_daily_loss: Perte quotidienne max (3% par défaut)
@@ -42,21 +45,23 @@ class RiskManager:
         logger.info(f"   Max daily loss: {max_daily_loss*100:.1f}%")
         logger.info(f"   Max position: {max_position_size*100:.1f}%")
 
-    def calculate_position_size(self,
-                               portfolio_value: float,
-                               entry_price: float,
-                               stop_loss_pct: float,
-                               risk_pct: float | None = None) -> tuple[int, float]:
+    def calculate_position_size(
+        self,
+        portfolio_value: float,
+        entry_price: float,
+        stop_loss_pct: float,
+        risk_pct: float | None = None,
+    ) -> tuple[int, float]:
         """
         Calculer la taille optimale d'une position basée sur le risque
         Position Sizing = Risk Amount / Stop Loss Distance
-        
+
         Args:
             portfolio_value: Valeur totale du portfolio
             entry_price: Prix d'entrée prévu
             stop_loss_pct: Stop loss en % (ex: 0.05 pour 5%)
             risk_pct: Risque par trade (utilise max_portfolio_risk si None)
-        
+
         Returns:
             (quantity, position_value): Quantité et valeur de la position
         """
@@ -85,18 +90,22 @@ class RiskManager:
 
             logger.info(f"⚠️  Position réduite à {self.max_position_size*100:.0f}% max")
 
-        logger.info(f"📊 Position sizing: {quantity} actions @ ${entry_price:.2f} = ${position_value:,.2f} ({position_value/portfolio_value*100:.1f}%)")
-        logger.info(f"   Risk: ${risk_amount:,.2f} ({risk_pct*100:.1f}%) | Stop: {stop_loss_pct*100:.0f}%")
+        logger.info(
+            f"📊 Position sizing: {quantity} actions @ ${entry_price:.2f} = ${position_value:,.2f} ({position_value/portfolio_value*100:.1f}%)"
+        )
+        logger.info(
+            f"   Risk: ${risk_amount:,.2f} ({risk_pct*100:.1f}%) | Stop: {stop_loss_pct*100:.0f}%"
+        )
 
         return quantity, position_value
 
     def check_daily_loss_limit(self, current_value: float) -> bool:
         """
         Vérifier si la perte quotidienne dépasse la limite (Circuit Breaker)
-        
+
         Args:
             current_value: Valeur actuelle du portfolio
-        
+
         Returns:
             True si trading autorisé, False si circuit breaker activé
         """
@@ -132,18 +141,20 @@ class RiskManager:
     def calculate_portfolio_exposure(self, positions: list[dict], portfolio_value: float) -> float:
         """
         Calculer l'exposition totale du portfolio
-        
+
         Returns:
             Exposition en % (0.0 à 1.0)
         """
-        total_exposure = sum(pos['market_value'] for pos in positions)
+        total_exposure = sum(pos["market_value"] for pos in positions)
         exposure_pct = total_exposure / portfolio_value if portfolio_value > 0 else 0
         return exposure_pct
 
-    def should_reduce_exposure(self, positions: list[dict], portfolio_value: float) -> tuple[bool, str]:
+    def should_reduce_exposure(
+        self, positions: list[dict], portfolio_value: float
+    ) -> tuple[bool, str]:
         """
         Déterminer si on doit réduire l'exposition
-        
+
         Returns:
             (should_reduce, reason)
         """
@@ -154,7 +165,7 @@ class RiskManager:
             return True, f"Exposition élevée: {exposure_pct*100:.1f}%"
 
         # Trop de positions perdantes
-        losing_positions = [p for p in positions if p['unrealized_plpc'] < -0.05]
+        losing_positions = [p for p in positions if p["unrealized_plpc"] < -0.05]
         if len(losing_positions) >= len(positions) * 0.6:
             return True, f"{len(losing_positions)}/{len(positions)} positions en perte >5%"
 
@@ -165,12 +176,12 @@ class RiskManager:
         Calculer le Kelly Criterion pour position sizing optimal
         Kelly% = W - [(1-W) / R]
         où W = win rate, R = avg_win / avg_loss
-        
+
         Args:
             win_rate: Taux de réussite (0.0 à 1.0)
             avg_win: Gain moyen en %
             avg_loss: Perte moyenne en % (positif)
-        
+
         Returns:
             Position size optimal en % (0.0 à 1.0)
         """
@@ -189,7 +200,9 @@ class RiskManager:
         # Limiter entre 0 et max_portfolio_risk
         kelly_capped = max(0, min(half_kelly, self.max_portfolio_risk))
 
-        logger.info(f"📈 Kelly Criterion: {kelly_pct*100:.1f}% (Half: {half_kelly*100:.1f}%, Used: {kelly_capped*100:.1f}%)")
+        logger.info(
+            f"📈 Kelly Criterion: {kelly_pct*100:.1f}% (Half: {half_kelly*100:.1f}%, Used: {kelly_capped*100:.1f}%)"
+        )
 
         return kelly_capped
 
@@ -197,11 +210,11 @@ class RiskManager:
         """
         Calculer le Sharpe Ratio
         Sharpe = (Mean Return - Risk Free Rate) / Std Dev of Returns
-        
+
         Args:
             returns: Liste des returns quotidiens
             risk_free_rate: Taux sans risque annuel (4% par défaut)
-        
+
         Returns:
             Sharpe ratio
         """
@@ -226,10 +239,10 @@ class RiskManager:
     def calculate_max_drawdown(self, portfolio_values: list[float]) -> tuple[float, float]:
         """
         Calculer le maximum drawdown
-        
+
         Args:
             portfolio_values: Liste des valeurs historiques du portfolio
-        
+
         Returns:
             (max_drawdown_pct, max_drawdown_amount)
         """
@@ -253,15 +266,17 @@ class RiskManager:
 
         return max_dd_pct, max_dd_amount
 
-    def assess_position_risk(self,
-                            symbol: str,
-                            position_value: float,
-                            portfolio_value: float,
-                            unrealized_plpc: float,
-                            days_held: int) -> dict:
+    def assess_position_risk(
+        self,
+        symbol: str,
+        position_value: float,
+        portfolio_value: float,
+        unrealized_plpc: float,
+        days_held: int,
+    ) -> dict:
         """
         Évaluer le risque d'une position existante
-        
+
         Returns:
             Dict avec score de risque et recommandations
         """
@@ -302,20 +317,19 @@ class RiskManager:
             risk_level = "FAIBLE"
 
         return {
-            'symbol': symbol,
-            'risk_score': risk_score,
-            'risk_level': risk_level,
-            'recommendation': recommendation,
-            'warnings': warnings
+            "symbol": symbol,
+            "risk_score": risk_score,
+            "risk_level": risk_level,
+            "recommendation": recommendation,
+            "warnings": warnings,
         }
 
-    def get_risk_report(self,
-                       positions: list[dict],
-                       portfolio_value: float,
-                       daily_returns: list[float] = None) -> dict:
+    def get_risk_report(
+        self, positions: list[dict], portfolio_value: float, daily_returns: list[float] = None
+    ) -> dict:
         """
         Générer un rapport de risque complet
-        
+
         Returns:
             Dict avec métriques de risque
         """
@@ -327,33 +341,37 @@ class RiskManager:
         for pos in positions:
             # Calculer les jours de détention (days_held)
             days_held = 0
-            purchase_date = pos.get('purchase_date') or pos.get('created_at')
+            purchase_date = pos.get("purchase_date") or pos.get("created_at")
 
             if purchase_date:
                 try:
                     if isinstance(purchase_date, str):
                         # Gérer le format ISO avec ou sans 'Z'
-                        dt_str = purchase_date.replace('Z', '+00:00')
+                        dt_str = purchase_date.replace("Z", "+00:00")
                         purchase_dt = datetime.fromisoformat(dt_str)
                     else:
                         purchase_dt = purchase_date
 
                     if purchase_dt:
                         # Calculer la différence de jours
-                        now = datetime.now(purchase_dt.tzinfo) if purchase_dt.tzinfo else datetime.now()
+                        now = (
+                            datetime.now(purchase_dt.tzinfo)
+                            if purchase_dt.tzinfo
+                            else datetime.now()
+                        )
                         delta = now - purchase_dt
                         days_held = max(0, delta.days)
                 except Exception as e:
                     logger.warning(f"⚠️ Erreur calcul days_held pour {pos.get('symbol')}: {e}")
 
             risk = self.assess_position_risk(
-                symbol=pos['symbol'],
-                position_value=pos['market_value'],
+                symbol=pos["symbol"],
+                position_value=pos["market_value"],
                 portfolio_value=portfolio_value,
-                unrealized_plpc=pos['unrealized_plpc'],
-                days_held=days_held
+                unrealized_plpc=pos["unrealized_plpc"],
+                days_held=days_held,
             )
-            if risk['risk_score'] >= 2:
+            if risk["risk_score"] >= 2:
                 risky_positions.append(risk)
 
         # Sharpe ratio
@@ -369,20 +387,20 @@ class RiskManager:
             daily_pl_pct = daily_pl / self.daily_start_value
 
         report = {
-            'timestamp': datetime.now().isoformat(),
-            'portfolio_value': portfolio_value,
-            'exposure_pct': exposure_pct,
-            'positions_count': len(positions),
-            'risky_positions': risky_positions,
-            'risky_positions_count': len(risky_positions),
-            'sharpe_ratio': sharpe,
-            'daily_pl': daily_pl,
-            'daily_pl_pct': daily_pl_pct,
-            'circuit_breaker': self.circuit_breaker_triggered,
-            'max_daily_loss': self.max_daily_loss,
-            'daily_trades': self.daily_trades,
-            'daily_wins': self.daily_wins,
-            'daily_losses': self.daily_losses
+            "timestamp": datetime.now().isoformat(),
+            "portfolio_value": portfolio_value,
+            "exposure_pct": exposure_pct,
+            "positions_count": len(positions),
+            "risky_positions": risky_positions,
+            "risky_positions_count": len(risky_positions),
+            "sharpe_ratio": sharpe,
+            "daily_pl": daily_pl,
+            "daily_pl_pct": daily_pl_pct,
+            "circuit_breaker": self.circuit_breaker_triggered,
+            "max_daily_loss": self.max_daily_loss,
+            "daily_trades": self.daily_trades,
+            "daily_wins": self.daily_wins,
+            "daily_losses": self.daily_losses,
         }
 
         return report
@@ -399,27 +417,33 @@ class RiskManager:
 
     def print_risk_summary(self, report: dict):
         """Afficher un résumé du risque"""
-        logger.info("\n" + "="*70)
+        logger.info("\n" + "=" * 70)
         logger.info("🛡️ RISK MANAGEMENT REPORT")
-        logger.info("="*70)
+        logger.info("=" * 70)
         logger.info(f"Portfolio: ${report['portfolio_value']:,.2f}")
         logger.info(f"Exposition: {report['exposure_pct']*100:.1f}%")
-        logger.info(f"Positions: {report['positions_count']} ({report['risky_positions_count']} à risque)")
+        logger.info(
+            f"Positions: {report['positions_count']} ({report['risky_positions_count']} à risque)"
+        )
 
-        if report['sharpe_ratio'] != 0:
+        if report["sharpe_ratio"] != 0:
             logger.info(f"Sharpe Ratio: {report['sharpe_ratio']:.2f}")
 
-        logger.info(f"P&L quotidien: ${report['daily_pl']:+,.2f} ({report['daily_pl_pct']*100:+.2f}%)")
-        logger.info(f"Trades aujourd'hui: {report['daily_trades']} (W:{report['daily_wins']} L:{report['daily_losses']})")
+        logger.info(
+            f"P&L quotidien: ${report['daily_pl']:+,.2f} ({report['daily_pl_pct']*100:+.2f}%)"
+        )
+        logger.info(
+            f"Trades aujourd'hui: {report['daily_trades']} (W:{report['daily_wins']} L:{report['daily_losses']})"
+        )
 
-        if report['circuit_breaker']:
+        if report["circuit_breaker"]:
             logger.error("🚨 CIRCUIT BREAKER ACTIF - Trading suspendu")
 
-        if report['risky_positions']:
+        if report["risky_positions"]:
             logger.warning("\n⚠️  POSITIONS À RISQUE:")
-            for pos in report['risky_positions']:
+            for pos in report["risky_positions"]:
                 logger.warning(f"   {pos['symbol']}: {pos['risk_level']} - {pos['recommendation']}")
-                for warning in pos['warnings']:
+                for warning in pos["warnings"]:
                     logger.warning(f"      • {warning}")
 
-        logger.info("="*70)
+        logger.info("=" * 70)

@@ -388,7 +388,7 @@ class TradingEnv(gym.Env):
         total_reward = 0.0
         trades_executed = 0
 
-        for i, (ticker, action) in enumerate(zip(self.tickers, actions)):
+        for i, (ticker, action) in enumerate(zip(self.tickers, actions, strict=False)):
             reward = self._execute_trade(ticker, action, i)
             total_reward += reward
             if action != 0:

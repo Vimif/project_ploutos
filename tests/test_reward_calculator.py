@@ -25,7 +25,7 @@ class TestBasicReward:
         assert reward == 0.0
 
     def test_reward_not_nan(self, calc):
-        for i in range(50):
+        for _i in range(50):
             equity = 100000 + np.random.randn() * 100
             reward = calc.calculate(100000, equity, max(100000, equity), 0)
             assert not np.isnan(reward)
@@ -69,9 +69,7 @@ class TestPenalties:
             calc.calculate(100000, 100100, 100100, 0)
         r_no_dd = calc.calculate(100000, 80000, 100000, 0)
 
-        calc2 = RewardCalculator(
-            use_drawdown_penalty=True, drawdown_penalty_factor=10.0
-        )
+        calc2 = RewardCalculator(use_drawdown_penalty=True, drawdown_penalty_factor=10.0)
         for _ in range(5):
             calc2.calculate(100000, 100100, 100100, 0)
         r_dd = calc2.calculate(100000, 80000, 100000, 0)

@@ -17,10 +17,13 @@ class TestSharedMemory(unittest.TestCase):
         """Vérifie que les données stockées sont identiques aux données rechargées."""
 
         # 1. Créer données dummy
-        df = pd.DataFrame({
-            "A": np.random.rand(100).astype(np.float32),
-            "B": np.random.rand(100).astype(np.float32)
-        }, index=pd.date_range("2020-01-01", periods=100))
+        df = pd.DataFrame(
+            {
+                "A": np.random.rand(100).astype(np.float32),
+                "B": np.random.rand(100).astype(np.float32),
+            },
+            index=pd.date_range("2020-01-01", periods=100),
+        )
 
         data_src = {"TEST": df}
 
@@ -47,6 +50,7 @@ class TestSharedMemory(unittest.TestCase):
 
         finally:
             manager.cleanup()
+
 
 if __name__ == "__main__":
     unittest.main()

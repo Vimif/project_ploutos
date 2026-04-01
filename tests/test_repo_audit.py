@@ -82,7 +82,7 @@ class TestCheckVersionMarkers:
         scripts_dir = tmp_path / "scripts"
         scripts_dir.mkdir()
         (scripts_dir / "paper_trade.py").write_text(
-            ('\n' * 45) + "api_version='v2'\n",
+            ("\n" * 45) + "api_version='v2'\n",
             encoding="utf-8",
         )
 

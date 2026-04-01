@@ -6,10 +6,9 @@ from __future__ import annotations
 import argparse
 import ast
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
-
 
 SCRIPT_ENTRY_RE = re.compile(r'^\s*([A-Za-z0-9._-]+)\s*=\s*"([^"]+)"\s*$')
 PYTHON_CMD_RE = re.compile(r"(?m)^\s*(?:python|python3)\s+([A-Za-z0-9_./\\-]+\.py)\b")
@@ -85,7 +84,9 @@ def check_readme_command_paths(project_root: Path, readme_path: Path) -> list[Fi
         candidate = project_root / Path(rel_path.replace("\\", "/"))
         if not candidate.exists():
             findings.append(
-                Finding("ERROR", "README.md", f"Documented command points to missing path: {rel_path}")
+                Finding(
+                    "ERROR", "README.md", f"Documented command points to missing path: {rel_path}"
+                )
             )
     return findings
 

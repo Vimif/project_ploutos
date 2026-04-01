@@ -13,30 +13,35 @@ Usage:
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import argparse
 import glob
 import time
 
-from core.utils import setup_logging
 from config.hardware import detect_hardware
+from core.utils import setup_logging
 
-logger = setup_logging(__name__, 'pipeline.log')
+logger = setup_logging(__name__, "pipeline.log")
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Ploutos Full Training Pipeline')
-    parser.add_argument('--config', type=str, default='config/config.yaml')
-    parser.add_argument('--recurrent', action='store_true', help='Use RecurrentPPO (LSTM)')
-    parser.add_argument('--ensemble', type=int, default=1, help='Ensemble size')
-    parser.add_argument('--auto-scale', action='store_true', help='Auto-detect hardware')
-    parser.add_argument('--shared-memory', action='store_true', help='Use Shared Memory for training (V9)')
+    parser = argparse.ArgumentParser(description="Ploutos Full Training Pipeline")
+    parser.add_argument("--config", type=str, default="config/config.yaml")
+    parser.add_argument("--recurrent", action="store_true", help="Use RecurrentPPO (LSTM)")
+    parser.add_argument("--ensemble", type=int, default=1, help="Ensemble size")
+    parser.add_argument("--auto-scale", action="store_true", help="Auto-detect hardware")
     parser.add_argument(
-        '--mc-sims', type=int, default=1000,
-        help='Monte Carlo simulations (default: 1000)',
+        "--shared-memory", action="store_true", help="Use Shared Memory for training (V9)"
     )
-    parser.add_argument('--skip-robustness', action='store_true', help='Skip robustness tests')
+    parser.add_argument(
+        "--mc-sims",
+        type=int,
+        default=1000,
+        help="Monte Carlo simulations (default: 1000)",
+    )
+    parser.add_argument("--skip-robustness", action="store_true", help="Skip robustness tests")
 
     args = parser.parse_args()
 
@@ -85,7 +90,7 @@ def main():
         logger.info("PHASE 2: ROBUSTNESS TESTS")
         logger.info("=" * 70)
 
-        output_dir = results.get('output_dir')
+        output_dir = results.get("output_dir")
         if not output_dir:
             logger.error("No output_dir in results, skipping robustness")
             return
@@ -96,30 +101,34 @@ def main():
             logger.warning("No model.zip found in folds, skipping robustness")
             return
 
-        from scripts.robustness_tests import (
-            load_model, monte_carlo_test, stress_test_crash,
-            _load_vecnormalize,
-        )
+        import json
+        import os
+
+        import pandas as pd
+        import yaml
+
         from config.hardware import compute_optimal_params
         from core.data_fetcher import download_data
         from core.features import FeatureEngineer
         from core.macro_data import MacroDataFetcher
-        import pandas as pd
-        import yaml
-        import json
-        import os
+        from scripts.robustness_tests import (
+            _load_vecnormalize,
+            load_model,
+            monte_carlo_test,
+            stress_test_crash,
+        )
 
         # Load config and data
-        with open(args.config, 'r') as f:
+        with open(args.config) as f:
             config = yaml.safe_load(f)
 
-        env_kwargs = {k: v for k, v in config.get('environment', {}).items()}
+        env_kwargs = {k: v for k, v in config.get("environment", {}).items()}
 
         data = download_data(
-            tickers=config['data']['tickers'],
-            period=config['data'].get('period', '5y'),
-            interval=config['data'].get('interval', '1h'),
-            dataset_path=config['data'].get('dataset_path'),
+            tickers=config["data"]["tickers"],
+            period=config["data"].get("period", "5y"),
+            interval=config["data"].get("interval", "1h"),
+            dataset_path=config["data"].get("dataset_path"),
         )
 
         # Auto-scale workers
@@ -135,13 +144,13 @@ def main():
             logger.info(f"\n--- Robustness: {fold_name} ---")
 
             # Load fold metadata for test period alignment
-            metadata_path = os.path.join(fold_dir, 'fold_metadata.json')
+            metadata_path = os.path.join(fold_dir, "fold_metadata.json")
             test_data = None
             if os.path.exists(metadata_path):
-                with open(metadata_path, 'r') as f:
+                with open(metadata_path) as f:
                     metadata = json.load(f)
-                ts_start = pd.Timestamp(metadata['test_start'])
-                ts_end = pd.Timestamp(metadata['test_end'])
+                ts_start = pd.Timestamp(metadata["test_start"])
+                ts_end = pd.Timestamp(metadata["test_end"])
                 logger.info(f"  Using fold test period: {ts_start.date()} -> {ts_end.date()}")
                 test_data = {}
                 for ticker, df in data.items():
@@ -153,6 +162,7 @@ def main():
             if not test_data:
                 logger.warning("  No fold metadata or empty slice, using DataSplitter")
                 from core.data_pipeline import DataSplitter
+
                 splits = DataSplitter.split(data)
                 test_data = splits.test
 
@@ -164,7 +174,7 @@ def main():
                 macro_data = macro_fetcher.fetch_all(
                     start_date=str(ref_df.index[0].date()),
                     end_date=str(ref_df.index[-1].date()),
-                    interval=config['data'].get('interval', '1h'),
+                    interval=config["data"].get("interval", "1h"),
                 )
                 if macro_data.empty:
                     macro_data = None
@@ -182,10 +192,10 @@ def main():
                 precomputed_test[ticker] = feat_df
 
             # Load VecNormalize per fold
-            vecnorm_path = os.path.join(fold_dir, 'vecnormalize.pkl')
+            vecnorm_path = os.path.join(fold_dir, "vecnormalize.pkl")
             vecnorm_env = None
             if os.path.exists(vecnorm_path):
-                precomputed_env_kwargs = {**env_kwargs, 'features_precomputed': True}
+                precomputed_env_kwargs = {**env_kwargs, "features_precomputed": True}
                 vecnorm_env = _load_vecnormalize(
                     vecnorm_path, precomputed_test, macro_data, precomputed_env_kwargs
                 )
@@ -197,7 +207,9 @@ def main():
             model = load_model(model_path, use_recurrent=args.recurrent)
 
             mc_report = monte_carlo_test(
-                model, test_data, macro_data,
+                model,
+                test_data,
+                macro_data,
                 n_simulations=args.mc_sims,
                 env_kwargs=env_kwargs,
                 n_workers=n_workers,
@@ -208,15 +220,17 @@ def main():
             )
 
             st_report = stress_test_crash(
-                model, test_data, macro_data,
+                model,
+                test_data,
+                macro_data,
                 env_kwargs=env_kwargs,
                 vecnorm_env=vecnorm_env,
             )
 
             # Save per fold
-            report = {'monte_carlo': mc_report, 'stress_test': st_report}
-            report_path = os.path.join(fold_dir, 'robustness_report.json')
-            with open(report_path, 'w') as f:
+            report = {"monte_carlo": mc_report, "stress_test": st_report}
+            report_path = os.path.join(fold_dir, "robustness_report.json")
+            with open(report_path, "w") as f:
                 json.dump(report, f, indent=2)
             logger.info(f"  Report: {report_path}")
 
@@ -229,5 +243,5 @@ def main():
     logger.info(f"Output: {results.get('output_dir', 'N/A')}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
