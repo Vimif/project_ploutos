@@ -656,7 +656,6 @@ def main():
     logger.info("Pre-computing features for test data...")
     precomputed_test = _precompute_features(test_data)
 
-
     # VecNormalize
     vecnorm_env = None
     vecnorm_path = None

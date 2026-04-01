@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 import shutil
 from pathlib import Path
 from unittest.mock import patch

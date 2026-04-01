@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """
 Data Fetcher Multi-Sources avec Fallback Automatique
 Priorise Alpaca → yfinance → Polygon.io

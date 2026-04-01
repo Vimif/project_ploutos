@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 # core/macro_data.py
 """Récupération des données macroéconomiques (VIX, TNX, DXY).
 

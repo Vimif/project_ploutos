@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 #!/usr/bin/env python3
 # scripts/validate_pipeline.py
 """Pipeline de validation automatique: train → val → backtest → certification.
@@ -77,6 +78,7 @@ def run_validation(
             raise ValueError("Aucune donnée récupérée")
 
         # V9: Calculate Features immediately
+        # type: ignore
         fe = FeatureEngineer()
         for t, df in data.items():
             data[t] = fe.calculate_all_features(df)
