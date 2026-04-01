@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -20,9 +20,9 @@ def predict_with_optional_recurrence(
     observation: np.ndarray,
     *,
     deterministic: bool = True,
-    recurrent_state: Optional[Any] = None,
-    episode_start: Optional[np.ndarray] = None,
-) -> Tuple[np.ndarray, Optional[Any]]:
+    recurrent_state: Any | None = None,
+    episode_start: np.ndarray | None = None,
+) -> tuple[np.ndarray, Any | None]:
     """Predict an action while preserving recurrent state when needed."""
 
     if HAS_RECURRENT and RecurrentPPO is not None and isinstance(model, RecurrentPPO):

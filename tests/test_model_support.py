@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """Tests for recurrent/non-recurrent model prediction support."""
 
 from unittest.mock import patch

@@ -1,10 +1,12 @@
-import pytest
-import pandas as pd
-import numpy as np
-import yaml
 import shutil
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
+
+import numpy as np
+import pandas as pd
+import pytest
+import yaml
+
 from training.train import run_walk_forward
 
 # Setup paths
@@ -17,7 +19,7 @@ def setup_config():
     # 1. Create Config
     if OUTPUT_DIR.exists():
         shutil.rmtree(OUTPUT_DIR)
-        
+
     config = {
         "data": {
             "tickers": ["TEST"],
@@ -48,22 +50,23 @@ def setup_config():
             "step_months": 3
         }
     }
-    
+
     with open(CONFIG_PATH, "w") as f:
         yaml.dump(config, f)
-        
+
     yield
-    
+
     if CONFIG_PATH.exists(): os.remove(CONFIG_PATH)
     if OUTPUT_DIR.exists(): shutil.rmtree(OUTPUT_DIR)
 
 import os
 
+
 @patch('training.train.download_data')
 @patch('training.train.MacroDataFetcher')
 def test_full_pipeline_execution(mock_macro_cls, mock_download, setup_config):
     """Lance un training complet avec Mock Data."""
-    
+
     # 1. Mock Market Data
     dates = pd.date_range("2020-01-01", "2022-01-01", freq="h")
     fake_df = pd.DataFrame({
@@ -75,13 +78,13 @@ def test_full_pipeline_execution(mock_macro_cls, mock_download, setup_config):
     }, index=dates)
     fake_df.index.name = "Date"
     mock_download.return_value = {"TEST": fake_df}
-    
+
     # 2. Mock Macro Data
     mock_macro_instance = mock_macro_cls.return_value
     mock_macro_instance.fetch_all.return_value = pd.DataFrame() # Empty macro
-    
+
     print("\n--- STARTING E2E TRAINING (MOCKED) ---")
-    
+
     # Run Training
     results = run_walk_forward(
         config_path=str(CONFIG_PATH),
@@ -90,13 +93,13 @@ def test_full_pipeline_execution(mock_macro_cls, mock_download, setup_config):
         auto_scale=False,
         use_shared_memory=False
     )
-    
+
     # Assertions
     assert results is not None, "Training returned None"
     assert results["n_folds"] > 0
-    
+
     # Check Index Preservation in Train Loop (indirectly via success)
     out_path = Path(results["output_dir"])
     assert (out_path / "walk_forward_results.json").exists()
-    
+
     print("\n--- E2E TRAINING SUCCESS ---")

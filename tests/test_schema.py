@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """Tests for strict YAML config validation."""
 
 from pathlib import Path

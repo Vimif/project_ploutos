@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 import sys
 from pathlib import Path
 
@@ -8,7 +9,6 @@ sys.path.insert(0, str(project_root))
 import numpy as np
 import pandas as pd
 import pytest
-
 
 # ============================================================================
 # Shared data generators

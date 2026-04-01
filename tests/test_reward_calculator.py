@@ -1,7 +1,9 @@
+# ruff: noqa: E402
 """Tests for RewardCalculator (DSR + penalties)."""
 
 import numpy as np
 import pytest
+
 from core.reward_calculator import RewardCalculator
 
 

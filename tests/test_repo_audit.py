@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """Tests for the repository audit helpers."""
 
 from scripts.audit_repo import (

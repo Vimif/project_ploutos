@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """Lightweight tests for the paper trading decision wrapper."""
 
 import sys
@@ -6,14 +7,14 @@ from unittest.mock import MagicMock
 
 import numpy as np
 
-
 for mod in [
     "stable_baselines3",
     "stable_baselines3.common",
     "stable_baselines3.common.vec_env",
     "dotenv",
 ]:
-    sys.modules.setdefault(mod, MagicMock())
+    if mod not in sys.modules:
+        sys.modules[mod] = MagicMock()
 
 
 from scripts.paper_trade import get_model_actions

@@ -1,16 +1,18 @@
+# ruff: noqa: E402
 """Tests du pipeline de données avec split temporel."""
 
 import sys
 from unittest.mock import MagicMock
 
 # Mock torch pour éviter l'import GPU
-sys.modules.setdefault("torch", MagicMock())
+if "torch" not in sys.modules:
+    sys.modules["torch"] = MagicMock()
 
-import pytest
 import numpy as np
 import pandas as pd
-from core.data_pipeline import DataSplitter, DataSplit
+import pytest
 
+from core.data_pipeline import DataSplitter
 
 # ============================================================================
 # Fixtures
