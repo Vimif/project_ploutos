@@ -13,8 +13,7 @@ for mod in [
     "stable_baselines3.common.vec_env",
     "dotenv",
 ]:
-    if mod not in sys.modules:
-        sys.modules[mod] = MagicMock()
+    sys.modules.setdefault(mod, MagicMock())
 
 
 from scripts.paper_trade import get_model_actions
