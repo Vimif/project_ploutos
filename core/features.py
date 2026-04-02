@@ -9,10 +9,10 @@ Date: Feb 2026
 """
 
 import warnings
+
 import numpy as np
 import pandas as pd
 import polars as pl
-from typing import Optional, Union
 
 warnings.filterwarnings("ignore")
 
@@ -27,8 +27,8 @@ class FeatureEngineer:
         self.features_calculated = []
 
     def calculate_all_features(
-        self, df: Union[pd.DataFrame, pl.DataFrame], return_pandas: bool = True
-    ) -> Union[pd.DataFrame, pl.DataFrame]:
+        self, df: pd.DataFrame | pl.DataFrame, return_pandas: bool = True
+    ) -> pd.DataFrame | pl.DataFrame:
         """
         Calcule TOUTES les features optimisées.
         Accepte Pandas ou Polars en entrée.
@@ -397,12 +397,12 @@ class FeatureEngineer:
         valid_sell_signals = [s for s in sell_signals if s in cols]
 
         buy_score = (
-            sum([pl.col(s).fill_null(0) for s in valid_buy_signals])
+            pl.sum_horizontal([pl.col(s).fill_null(0) for s in valid_buy_signals])
             if valid_buy_signals
             else pl.lit(0)
         )
         sell_score = (
-            sum([pl.col(s).fill_null(0) for s in valid_sell_signals])
+            pl.sum_horizontal([pl.col(s).fill_null(0) for s in valid_sell_signals])
             if valid_sell_signals
             else pl.lit(0)
         )
