@@ -1,11 +1,9 @@
-# ruff: noqa: E402
 import sys
 from unittest.mock import MagicMock
 
 # Mock missing dependencies before importing Portfolio
 mock_torch = MagicMock()
-if "torch" not in sys.modules:
-    sys.modules["torch"] = mock_torch
+sys.modules["torch"] = mock_torch
 
 import pytest
 from unittest.mock import patch
