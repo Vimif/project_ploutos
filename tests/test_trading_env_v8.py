@@ -1,9 +1,11 @@
 """Tests unitaires pour TradingEnv."""
 
+# ruff: noqa: E402
 import sys
 from unittest.mock import MagicMock
 
-sys.modules.setdefault("torch", MagicMock())
+if "torch" not in sys.modules:
+    sys.modules["torch"] = MagicMock()
 
 import pytest
 import numpy as np
