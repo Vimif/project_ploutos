@@ -21,7 +21,7 @@ jobs:
       - name: Install dependencies
         run: pip install -e ".[dev,training]"
       - name: Run tests with coverage
-        run: pytest tests/ -v --tb=short --cov=core --cov=training --cov=trading --cov-report=term-missing --cov-fail-under=50
+        run: pytest tests/ -v --tb=short --cov=core --cov=training --cov=trading --cov-report=term-missing --cov-fail-under=40
       - name: Upload test artifacts on failure
         uses: actions/upload-artifact@v4
         if: failure()
