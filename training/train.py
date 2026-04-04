@@ -226,7 +226,15 @@ def train_single_fold(
         # Architecture réseau
         net_arch = config.get("network", {}).get("net_arch", [512, 512, 256])
         activation_name = config.get("network", {}).get("activation_fn", "tanh")
-        activation_fn = torch.nn.Tanh if activation_name == "tanh" else torch.nn.ReLU
+
+        # SB3 needs nn.Module classes, not strings or instances, for activation_fn
+        import torch.nn as nn
+        if activation_name == "tanh":
+            activation_fn = nn.Tanh
+        elif activation_name == "relu":
+            activation_fn = nn.ReLU
+        else:
+            activation_fn = nn.ReLU
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
