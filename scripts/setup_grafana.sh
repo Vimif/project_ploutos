@@ -68,7 +68,12 @@ echo ""
 echo "4️⃣ Connexion Grafana -> Prometheus..."
 sleep 10  # Attendre un peu plus que Grafana soit prêt
 
-curl -X POST http://admin:admin@localhost:3000/api/datasources \
+GRAFANA_URL=${GRAFANA_URL:-"http://localhost:3000"}
+GRAFANA_USER=${GRAFANA_USER:-"admin"}
+GRAFANA_PASSWORD=${GRAFANA_PASSWORD:-"admin"}
+
+curl -X POST "${GRAFANA_URL}/api/datasources" \
+  -u "${GRAFANA_USER}:${GRAFANA_PASSWORD}" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Prometheus",
