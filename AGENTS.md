@@ -68,7 +68,7 @@ scripts/         CLI tools
   optimize_hyperparams.py  Optuna hyperparameter search
   robustness_tests.py  Monte Carlo (parallelized) + stress tests
 trading/         Broker integrations (eToro, Alpaca)
-tests/           pytest test suite (116 tests: env, ensemble, features, pipeline, transaction costs, reward, config)
+tests/           pytest test suite (run `pytest --collect-only -q` for current count)
 .github/workflows/tests.yml  CI: pytest + black + ruff + mypy (Python 3.10/3.11 matrix)
 ```
 

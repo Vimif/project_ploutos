@@ -73,6 +73,7 @@ SCHEMA: dict[str, dict[str, FieldSpec]] = {
         "train_years": (int, 1, 30),
         "test_months": (int, 1, 60),
         "step_months": (int, 1, 60),
+        "embargo_months": (int, 0, 24),
     },
     "network": {
         "net_arch": (list, None, None),
@@ -127,7 +128,9 @@ def _validate_bounds(section_name: str, key: str, value: Any, min_val: Any, max_
         raise ConfigValidationError(f"'{section_name}.{key}': {value} > maximum {max_val}")
 
 
-def _validate_section(section_name: str, section: dict[str, Any], fields: dict[str, FieldSpec]) -> None:
+def _validate_section(
+    section_name: str, section: dict[str, Any], fields: dict[str, FieldSpec]
+) -> None:
     known_keys = set(fields)
     unknown_keys = sorted(set(section) - known_keys)
     if unknown_keys:
@@ -183,9 +186,7 @@ def validate_config(config: dict) -> list[str]:
 
     missing_sections = sorted(section for section in REQUIRED_SECTIONS if section not in config)
     if missing_sections:
-        raise ConfigValidationError(
-            f"Missing required section(s): {', '.join(missing_sections)}"
-        )
+        raise ConfigValidationError(f"Missing required section(s): {', '.join(missing_sections)}")
 
     for section_name, fields in SCHEMA.items():
         section = config.get(section_name)

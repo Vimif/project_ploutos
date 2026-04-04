@@ -183,17 +183,20 @@ def train_single_fold(
     n_envs = config.get("training", {}).get("n_envs", 4)
     use_shared_memory = config.get("training", {}).get("use_shared_memory", False)
     shm_manager = None
-    
+
     # [FAST] V9 Shared Memory: Optimisation RAM
     if use_shared_memory:
         try:
-            logger.info(f"  [FAST] V9: Loading TRAIN data into Shared Memory for {n_envs} workers...")
+            logger.info(
+                f"  [FAST] V9: Loading TRAIN data into Shared Memory for {n_envs} workers..."
+            )
             shm_manager = SharedDataManager()
             # On remplace le gros dict de DF par un petit dict de Metadata
             train_data = shm_manager.put_data(train_data)
         except Exception as e:
             logger.error(f"Failed to init Shared Memory: {e}")
-            if shm_manager: shm_manager.cleanup()
+            if shm_manager:
+                shm_manager.cleanup()
             raise e
 
     try:
@@ -202,14 +205,18 @@ def train_single_fold(
             # RecurrentPPO necessite DummyVecEnv (pas SubprocVecEnv)
             envs = DummyVecEnv(
                 [
-                    make_env(train_data, macro_data, config, mode="train", features_precomputed=True)
+                    make_env(
+                        train_data, macro_data, config, mode="train", features_precomputed=True
+                    )
                     for _ in range(n_envs)
                 ]
             )
         else:
             envs = SubprocVecEnv(
                 [
-                    make_env(train_data, macro_data, config, mode="train", features_precomputed=True)
+                    make_env(
+                        train_data, macro_data, config, mode="train", features_precomputed=True
+                    )
                     for _ in range(n_envs)
                 ]
             )
@@ -304,9 +311,7 @@ def train_single_fold(
             _progress_bar = True
         except ImportError:
             _progress_bar = False
-        model.learn(
-            total_timesteps=timesteps, callback=[checkpoint_cb], progress_bar=_progress_bar
-        )
+        model.learn(total_timesteps=timesteps, callback=[checkpoint_cb], progress_bar=_progress_bar)
 
         # Sauvegarder le modele
         model_path = os.path.join(fold_dir, "model")
@@ -477,7 +482,7 @@ def run_walk_forward(
         )
     except Exception as e:
         logger.warning(f"Failed to fetch macro data (index issue?): {e}")
-        macro_data = pd.DataFrame() # Empty DF
+        macro_data = pd.DataFrame()  # Empty DF
 
     if macro_data.empty:
         logger.warning("No macro data available, proceeding without")
@@ -491,6 +496,7 @@ def run_walk_forward(
         train_years=wf_cfg.get("train_years", 1),
         test_months=wf_cfg.get("test_months", 6),
         step_months=wf_cfg.get("step_months", 6),
+        embargo_months=wf_cfg.get("embargo_months", 1),
     )
 
     if not splits:
