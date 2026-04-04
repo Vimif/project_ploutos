@@ -1,37 +1,17 @@
 """Tests unitaires pour EnsemblePredictor."""
 
-import sys
-from unittest.mock import MagicMock, patch
-
-# Mock torch et stable_baselines3 pour éviter l'import GPU
-for mod in [
-    "torch",
-    "torch.nn",
-    "torch.nn.functional",
-    "torch.optim",
-    "torch.utils",
-    "torch.utils.data",
-    "torch.distributions",
-    "stable_baselines3",
-    "stable_baselines3.common",
-    "stable_baselines3.common.vec_env",
-    "stable_baselines3.common.monitor",
-    "stable_baselines3.common.callbacks",
-    "sb3_contrib",
-]:
-    if mod not in sys.modules:
-        sys.modules[mod] = MagicMock()
+from unittest.mock import patch
 
 import pytest
+
+pytest.importorskip("torch")
+pytest.importorskip("stable_baselines3")
+pytest.importorskip("sb3_contrib")
+
 import numpy as np
 
 import core.ensemble as ensemble_module
 from core.ensemble import EnsemblePredictor
-
-# sb3_contrib est mocké → RecurrentPPO est un MagicMock (pas un type).
-# Désactiver HAS_RECURRENT par défaut pour éviter isinstance() crash.
-ensemble_module.HAS_RECURRENT = False
-
 
 # ============================================================================
 # Fixtures

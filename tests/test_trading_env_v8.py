@@ -1,16 +1,12 @@
 """Tests unitaires pour TradingEnv."""
 
-import sys
-from unittest.mock import MagicMock
-
-if "torch" not in sys.modules:
-    sys.modules["torch"] = MagicMock()
 
 import pytest
-import numpy as np
-from core.environment import TradingEnv, VALID_MODES
-from conftest import make_market_data, make_macro_data
 
+pytest.importorskip("torch")
+import numpy as np
+
+from core.environment import VALID_MODES, TradingEnv
 
 # ============================================================================
 # Fixtures (env-specific, using shared data generators from conftest)

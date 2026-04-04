@@ -1,20 +1,11 @@
 """Lightweight tests for the paper trading decision wrapper."""
 
-import sys
 from types import SimpleNamespace
-from unittest.mock import MagicMock
 
 import numpy as np
+import pytest
 
-
-for mod in [
-    "stable_baselines3",
-    "stable_baselines3.common",
-    "stable_baselines3.common.vec_env",
-    "dotenv",
-]:
-    if mod not in sys.modules:
-        sys.modules[mod] = MagicMock()
+pytest.importorskip("stable_baselines3")
 
 
 from scripts.paper_trade import get_model_actions

@@ -1,23 +1,16 @@
 import sys
-from pathlib import Path
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock
-
-# Mock numpy before it's imported by core.risk_manager
-mock_np = MagicMock()
-sys.modules["numpy"] = mock_np
-
-# Mock core.utils to avoid import errors
-mock_utils = MagicMock()
-sys.modules["core.utils"] = mock_utils
-# Ensure setup_logging returns a mock logger
-mock_logger = MagicMock()
-mock_utils.setup_logging.return_value = mock_logger
+from pathlib import Path
 
 # Ajouter la racine du projet au path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import pytest
+
+pytest.importorskip("numpy")
+
 from core.risk_manager import RiskManager
+
 
 def test_days_held_calculation():
     rm = RiskManager()
