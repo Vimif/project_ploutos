@@ -88,6 +88,21 @@ class TestPenalties:
 
         assert r_no_trade > r_with_trade
 
+    def test_trade_reward_is_added(self):
+        calc = RewardCalculator(reward_scaling=1.0)
+        for _ in range(5):
+            calc.calculate(100000, 100000, 100000, 0)
+
+        reward = calc.calculate(
+            100000,
+            100000,
+            100000,
+            0,
+            trade_reward=0.25,
+        )
+
+        assert reward >= 0.25
+
 
 class TestReset:
     def test_reset_clears_state(self, calc):

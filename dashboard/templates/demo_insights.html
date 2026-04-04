@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Improvement Insights - Ploutos Demo Monitor{% endblock %}
+
+{% block content %}
+<div class="grid">
+    <div class="card">
+        <h2>Diagnostics</h2>
+        <div id="diagnostics" class="list"><div class="loading">Loading...</div></div>
+    </div>
+    <div class="card">
+        <h2>Historical Context</h2>
+        <div id="historical" class="list"><div class="loading">Loading...</div></div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Prioritized Recommendations</h2>
+    <div id="recommendations" class="list"><div class="loading">Loading...</div></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function loadInsights() {
+    const [diagnosticsResponse, recommendationsResponse, contextResponse] = await Promise.all([
+        fetch("/api/demo/diagnostics"),
+        fetch("/api/demo/recommendations"),
+        fetch("/api/demo/historical-context")
+    ]);
+    const diagnosticsPayload = await diagnosticsResponse.json();
+    const recommendationsPayload = await recommendationsResponse.json();
+    const contextPayload = await contextResponse.json();
+
+    const diagnostics = diagnosticsPayload.data.diagnostics;
+    document.getElementById("diagnostics").innerHTML = `
+        <div class="item"><strong>Drawdown</strong><div class="muted">${formatPercent(diagnostics.drawdown || 0)}</div></div>
+        <div class="item"><strong>Daily loss</strong><div class="muted">${formatPercent(diagnostics.daily_loss || 0)}</div></div>
+        <div class="item"><strong>Rejections</strong><div class="muted">${JSON.stringify(diagnostics.rejections_by_reason || {})}</div></div>
+        <div class="item"><strong>Signals</strong><div class="muted">${JSON.stringify(diagnostics.signals_by_action || {})}</div></div>
+    `;
+
+    const context = contextPayload.data;
+    document.getElementById("historical").innerHTML = `
+        <div class="item">
+            <strong>Latest strategy compare</strong>
+            <div class="muted">${context.latest_strategy_compare.winner_family || "-"} / ${context.latest_strategy_compare.winner_interval || "-"}</div>
+            <div class="muted">${context.latest_strategy_compare.winner_verdict || "-"}</div>
+        </div>
+        <div class="item">
+            <strong>Latest profitability audit</strong>
+            <div class="muted">${context.latest_profitability_audit.verdict || "-"}</div>
+            <div class="muted">Score: ${context.latest_profitability_audit.profitability_score || "-"}</div>
+        </div>
+    `;
+
+    const recommendations = recommendationsPayload.data.recommendations || [];
+    document.getElementById("recommendations").innerHTML = recommendations.length ? recommendations.map((item) => `
+        <div class="item">
+            <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:8px;">
+                <strong>${item.title}</strong>
+                <span class="pill">${item.confidence}</span>
+            </div>
+            <div class="muted">${item.justification}</div>
+        </div>
+    `).join("") : '<div class="item muted">No recommendation yet.</div>';
+}
+
+loadInsights();
+setInterval(loadInsights, 5000);
+</script>
+{% endblock %}

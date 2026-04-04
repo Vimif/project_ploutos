@@ -1,219 +1,297 @@
 # core/macro_data.py
-"""Récupération des données macroéconomiques (VIX, TNX, DXY).
+"""Free-friendly macro data fetching for VIX, TNX, and DXY.
 
-Ces indicateurs fournissent le contexte de marché :
-- VIX (^VIX) : Volatilité implicite S&P 500 → quand être défensif
-- TNX (^TNX) : Taux 10 ans US → impact Tech/Growth
-- DXY (DX-Y.NYB) : Dollar Index → impact matières premières
+Primary source:
+- FRED daily series (free API key)
 
-Usage:
-    from core.macro_data import MacroDataFetcher
+Fallback source:
+- Yahoo Finance daily closes
 
-    macro = MacroDataFetcher()
-    macro_data = macro.fetch_all(start_date='2023-01-01')
-    # Returns: pd.DataFrame with columns [vix, tnx, dxy, vix_ma20, ...]
+The macro series are daily by nature, so we align them onto intraday ticker bars
+with forward-fill in ``align_to_ticker``.
 """
 
-import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
-import warnings
+from __future__ import annotations
 
-warnings.filterwarnings('ignore')
+import os
+import warnings
+from datetime import datetime, timedelta
+from typing import Optional
+
+import numpy as np
+import pandas as pd
+import requests
+from dotenv import load_dotenv
 
 from core.utils import setup_logging
 
+warnings.filterwarnings("ignore")
+
+load_dotenv()
+
 logger = setup_logging(__name__)
 
-# Tickers Yahoo Finance pour les données macro
-MACRO_TICKERS = {
-    'vix': '^VIX',
-    'tnx': '^TNX',
-    'dxy': 'DX-Y.NYB',
+YAHOO_MACRO_TICKERS = {
+    "vix": "^VIX",
+    "tnx": "^TNX",
+    "dxy": "DX-Y.NYB",
 }
+
+FRED_MACRO_SERIES = {
+    "vix": "VIXCLS",
+    "tnx": "DGS10",
+    "dxy": "DTWEXBGS",
+}
+
+FRED_API_URL = "https://api.stlouisfed.org/fred/series/observations"
+YAHOO_INTRADAY_LIMIT_DAYS = 729
+VALID_MACRO_PROVIDERS = {"auto", "fred", "yahoo"}
 
 
 class MacroDataFetcher:
-    """Récupère et transforme les données macroéconomiques."""
+    """Fetch and transform macro-economic data."""
+
+    def __init__(
+        self,
+        source: Optional[str] = None,
+        fred_api_key: Optional[str] = None,
+    ):
+        env_source = os.getenv("MACRO_DATA_PROVIDER", "auto").strip().lower()
+        resolved_source = (source or env_source or "auto").strip().lower()
+        self.source = resolved_source if resolved_source in VALID_MACRO_PROVIDERS else "auto"
+        self.fred_api_key = fred_api_key or os.getenv("FRED_API_KEY", "").strip()
 
     def fetch_all(
         self,
         start_date: str = None,
         end_date: str = None,
-        interval: str = '1h',
+        interval: str = "1h",
     ) -> pd.DataFrame:
-        """Récupère VIX, TNX, DXY et calcule les features dérivées.
+        """Fetch VIX, TNX, and DXY then compute derived macro features."""
 
-        Args:
-            start_date: Date début (str 'YYYY-MM-DD' ou None pour 730j).
-            end_date: Date fin (str ou None pour aujourd'hui).
-            interval: '1h' ou '1d'.
+        end_dt = self._coerce_date(end_date) or datetime.now()
+        start_dt = self._coerce_date(start_date) or (end_dt - timedelta(days=729))
+        provider_order = self._provider_order()
 
-        Returns:
-            DataFrame avec colonnes macro (vix, tnx, dxy + dérivées).
-        """
+        logger.info(
+            "Fetch macro data (%s -> %s, %s) via %s",
+            start_dt.date(),
+            end_dt.date(),
+            interval,
+            " -> ".join(provider_order),
+        )
+
+        for provider in provider_order:
+            if provider == "fred":
+                raw = self._fetch_all_fred(start_dt, end_dt)
+            else:
+                raw = self._fetch_all_yahoo(start_dt, end_dt, interval)
+
+            if raw:
+                macro_df = pd.DataFrame(raw).sort_index()
+                macro_df = macro_df.ffill().bfill()
+
+                if hasattr(macro_df.index, "tz") and macro_df.index.tz is not None:
+                    macro_df.index = macro_df.index.tz_localize(None)
+
+                macro_df = self._compute_features(macro_df)
+                macro_df = macro_df.replace([np.inf, -np.inf], np.nan)
+                macro_df = macro_df.ffill().fillna(0.0)
+                logger.info(
+                    "Macro data ready from %s: %s bars, %s features",
+                    provider,
+                    len(macro_df),
+                    len(macro_df.columns),
+                )
+                return macro_df
+
+        logger.error("No macro data source succeeded")
+        return pd.DataFrame()
+
+    def _provider_order(self) -> list[str]:
+        if self.source == "fred":
+            return ["fred", "yahoo"]
+        if self.source == "yahoo":
+            return ["yahoo"]
+        if self.fred_api_key:
+            return ["fred", "yahoo"]
+        return ["yahoo"]
+
+    def _coerce_date(self, value) -> Optional[datetime]:
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, pd.Timestamp):
+            return value.to_pydatetime()
+        if isinstance(value, str):
+            return datetime.strptime(value, "%Y-%m-%d")
+        raise TypeError(f"Unsupported date type for macro fetch: {type(value).__name__}")
+
+    def _resolve_yahoo_interval(self, interval: str, start_dt: datetime, end_dt: datetime) -> str:
+        requested = str(interval).lower()
+        requested_days = max((end_dt - start_dt).days, 0)
+        daily_like_intervals = {"1d", "1wk", "1mo", "3mo"}
+        if requested not in daily_like_intervals and requested_days > YAHOO_INTRADAY_LIMIT_DAYS:
+            logger.warning(
+                "Yahoo macro intraday limit hit for %s over %sd; falling back to daily bars",
+                requested,
+                requested_days,
+            )
+            return "1d"
+        return requested
+
+    def _fetch_all_fred(self, start_dt: datetime, end_dt: datetime) -> dict[str, pd.Series]:
+        if not self.fred_api_key:
+            logger.info("FRED API key missing; skipping FRED macro source")
+            return {}
+
+        raw: dict[str, pd.Series] = {}
+        for name, series_id in FRED_MACRO_SERIES.items():
+            series = self._fetch_fred_series(series_id, start_dt, end_dt)
+            if series is not None and not series.empty:
+                series.name = name
+                raw[name] = series
+                logger.info("  %s (%s): %s daily bars from FRED", name, series_id, len(series))
+            else:
+                logger.warning("  %s (%s): no FRED data", name, series_id)
+        return raw
+
+    def _fetch_fred_series(
+        self,
+        series_id: str,
+        start_dt: datetime,
+        end_dt: datetime,
+    ) -> Optional[pd.Series]:
+        try:
+            response = requests.get(
+                FRED_API_URL,
+                params={
+                    "series_id": series_id,
+                    "api_key": self.fred_api_key,
+                    "file_type": "json",
+                    "observation_start": start_dt.strftime("%Y-%m-%d"),
+                    "observation_end": end_dt.strftime("%Y-%m-%d"),
+                    "sort_order": "asc",
+                },
+                timeout=30,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            observations = payload.get("observations", [])
+            rows = []
+            for item in observations:
+                value = item.get("value")
+                if value in {None, ".", ""}:
+                    continue
+                try:
+                    rows.append((pd.Timestamp(item["date"]), float(value)))
+                except (KeyError, ValueError):
+                    continue
+            if not rows:
+                return pd.Series(dtype=float)
+            index = pd.DatetimeIndex([row[0] for row in rows])
+            values = [row[1] for row in rows]
+            return pd.Series(values, index=index, dtype=float)
+        except requests.RequestException as exc:
+            logger.warning("FRED fetch failed for %s: %s", series_id, exc)
+            return pd.Series(dtype=float)
+
+    def _fetch_all_yahoo(
+        self,
+        start_dt: datetime,
+        end_dt: datetime,
+        interval: str,
+    ) -> dict[str, pd.Series]:
         import yfinance as yf
 
-        if end_date is None:
-            end_dt = datetime.now()
-        elif isinstance(end_date, str):
-            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
-        else:
-            end_dt = end_date
-
-        if start_date is None:
-            start_dt = end_dt - timedelta(days=729)
-        elif isinstance(start_date, str):
-            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
-        else:
-            start_dt = start_date
-
-        # Yahoo limite les données horaires à 730 jours
-        if interval in ['1h', '30m', '15m'] and (end_dt - start_dt).days > 729:
-            start_dt = end_dt - timedelta(days=729)
-            logger.warning(f"Limite Yahoo 730j pour {interval}, ajusté à {start_dt.date()}")
-
-        start_str = start_dt.strftime('%Y-%m-%d')
-        end_str = end_dt.strftime('%Y-%m-%d')
-
-        logger.info(f"Fetch macro data ({start_str} -> {end_str}, {interval})")
-
-        raw = {}
-        for name, ticker in MACRO_TICKERS.items():
+        macro_interval = self._resolve_yahoo_interval(interval, start_dt, end_dt)
+        raw: dict[str, pd.Series] = {}
+        for name, ticker in YAHOO_MACRO_TICKERS.items():
             try:
                 df = yf.download(
                     ticker,
-                    start=start_str,
-                    end=end_str,
-                    interval=interval,
+                    start=start_dt.strftime("%Y-%m-%d"),
+                    end=end_dt.strftime("%Y-%m-%d"),
+                    interval=macro_interval,
                     progress=False,
                     auto_adjust=True,
                 )
-                # Gestion du MultiIndex (nouveau yfinance)
+                if df is None or df.empty:
+                    logger.warning("  %s (%s): no Yahoo data", name, ticker)
+                    continue
                 if isinstance(df.columns, pd.MultiIndex):
-                    # Essayer de récupérer 'Close' pour ce ticker s'il est présent en niveau 1
                     try:
-                         # Si format : Price | Ticker
-                         #             Close | ^VIX
-                         series = df.xs('Close', axis=1, level=0)
-                         if isinstance(series, pd.DataFrame):
-                             series = series.iloc[:, 0] # Prendre la première colonne si encore DataFrame
+                        series = df.xs("Close", axis=1, level=0)
+                        if isinstance(series, pd.DataFrame):
+                            series = series.iloc[:, 0]
                     except KeyError:
-                         # Si format plat ou autre, on prend juste la colonne 'Close'
-                         series = df['Close']
+                        series = df["Close"]
                 else:
-                    series = df['Close']
-
+                    series = df["Close"]
                 if len(series) > 0:
-                    series.name = name # Renommer la Série
+                    series.name = name
                     raw[name] = series
-                    logger.info(f"  {name} ({ticker}): {len(series)} bars")
-                else:
-                    logger.warning(f"  {name} ({ticker}): aucune donnée")
-            except Exception:
-                logger.warning(f"  {name} ({ticker}): fetch échoué", exc_info=True)
-
-        if not raw:
-            logger.error("Aucune donnée macro récupérée")
-            return pd.DataFrame()
-
-        # Combiner sur le même index
-        macro_df = pd.DataFrame(raw)
-
-        # Forward-fill pour aligner les timestamps (marchés différents)
-        macro_df = macro_df.ffill().bfill()
-
-        # Retirer timezone si présente
-        if hasattr(macro_df.index, 'tz') and macro_df.index.tz is not None:
-            macro_df.index = macro_df.index.tz_localize(None)
-
-        # Calculer features dérivées
-        macro_df = self._compute_features(macro_df)
-
-        # Cleanup
-        macro_df = macro_df.replace([np.inf, -np.inf], np.nan)
-        macro_df = macro_df.ffill().fillna(0)
-
-        logger.info(f"Macro data: {len(macro_df)} bars, {len(macro_df.columns)} features")
-        return macro_df
+                    logger.info(
+                        "  %s (%s): %s bars from Yahoo at %s",
+                        name,
+                        ticker,
+                        len(series),
+                        macro_interval,
+                    )
+            except Exception as exc:
+                logger.warning("  %s (%s): Yahoo fetch failed: %s", name, ticker, exc)
+        return raw
 
     def _compute_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Calcule les features dérivées des données macro."""
-        for col in ['vix', 'tnx', 'dxy']:
+        """Compute derived macro features."""
+
+        for col in ["vix", "tnx", "dxy"]:
             if col not in df.columns:
                 continue
 
             series = df[col]
+            df[f"{col}_ma20"] = series.rolling(20, min_periods=1).mean()
+            df[f"{col}_ma50"] = series.rolling(50, min_periods=1).mean()
+            df[f"{col}_pct_1"] = series.pct_change(1)
+            df[f"{col}_pct_5"] = series.pct_change(5)
 
-            # Moyennes mobiles
-            df[f'{col}_ma20'] = series.rolling(20, min_periods=1).mean()
-            df[f'{col}_ma50'] = series.rolling(50, min_periods=1).mean()
-
-            # Variation
-            df[f'{col}_pct_1'] = series.pct_change(1)
-            df[f'{col}_pct_5'] = series.pct_change(5)
-
-            # Z-score (distance à la moyenne)
-            ma = df[f'{col}_ma20']
+            ma = df[f"{col}_ma20"]
             std = series.rolling(20, min_periods=1).std()
-            df[f'{col}_zscore'] = (series - ma) / (std + 1e-8)
+            df[f"{col}_zscore"] = (series - ma) / (std + 1e-8)
 
-        # VIX spécifique : régimes de peur
-        if 'vix' in df.columns:
-            df['vix_fear'] = (df['vix'] > 25).astype(np.float32)
-            df['vix_extreme_fear'] = (df['vix'] > 35).astype(np.float32)
-            df['vix_complacent'] = (df['vix'] < 15).astype(np.float32)
+        if "vix" in df.columns:
+            df["vix_fear"] = (df["vix"] > 25).astype(np.float32)
+            df["vix_extreme_fear"] = (df["vix"] > 35).astype(np.float32)
+            df["vix_complacent"] = (df["vix"] < 15).astype(np.float32)
 
-        # TNX spécifique : environnement de taux
-        if 'tnx' in df.columns:
-            df['tnx_rising'] = (df['tnx_pct_5'] > 0.02).astype(np.float32)
-            df['tnx_falling'] = (df['tnx_pct_5'] < -0.02).astype(np.float32)
+        if "tnx" in df.columns:
+            df["tnx_rising"] = (df["tnx_pct_5"] > 0.02).astype(np.float32)
+            df["tnx_falling"] = (df["tnx_pct_5"] < -0.02).astype(np.float32)
 
-        # DXY spécifique : force du dollar
-        if 'dxy' in df.columns:
-            df['dxy_strong'] = (df['dxy_zscore'] > 1.0).astype(np.float32)
-            df['dxy_weak'] = (df['dxy_zscore'] < -1.0).astype(np.float32)
+        if "dxy" in df.columns:
+            df["dxy_strong"] = (df["dxy_zscore"] > 1.0).astype(np.float32)
+            df["dxy_weak"] = (df["dxy_zscore"] < -1.0).astype(np.float32)
 
         return df
 
     def align_to_ticker(
         self, macro_df: pd.DataFrame, ticker_df: pd.DataFrame
     ) -> pd.DataFrame:
-        """Aligne les données macro sur l'index d'un ticker.
+        """Align macro data to the ticker index using forward-fill."""
 
-        Utilise merge_asof pour aligner sur le timestamp le plus proche
-        (les marchés macro et actions n'ont pas exactement les mêmes horaires).
-
-        Args:
-            macro_df: DataFrame des données macro (output de fetch_all).
-            ticker_df: DataFrame d'un ticker (OHLCV).
-
-        Returns:
-            DataFrame macro réindexé sur ticker_df.index.
-        """
         if macro_df.empty:
             return pd.DataFrame(index=ticker_df.index)
 
-        # 1. Aligner les Timezones
-        ticker_tz = getattr(ticker_df.index, 'tz', None)
-        macro_tz = getattr(macro_df.index, 'tz', None)
-
-        # Copie pour ne pas modifier l'original
+        ticker_tz = getattr(ticker_df.index, "tz", None)
+        macro_tz = getattr(macro_df.index, "tz", None)
         macro_df = macro_df.copy()
 
         if ticker_tz is not None and macro_tz is None:
-            # Ticker est UTC (aware), Macro est naïf -> Localize UTC
-            macro_df.index = macro_df.index.tz_localize('UTC')
+            macro_df.index = macro_df.index.tz_localize("UTC")
         elif ticker_tz is None and macro_tz is not None:
-            # Ticker est naïf, Macro est UTC -> Remove TZ
             macro_df.index = macro_df.index.tz_localize(None)
-        
-        # 2. Réindexer sur l'index du ticker, forward-fill
-        # Utiliser reindex avec la méthode 'ffill' (pad) pour propager la dernière valeur connue
-        # limit=None pour propager indéfiniment (la macro change peu)
-        aligned = macro_df.reindex(ticker_df.index, method='ffill')
-        
-        # Remplir les nan initiaux (backfill) et finaux (0)
-        aligned = aligned.bfill().fillna(0)
 
+        aligned = macro_df.reindex(ticker_df.index, method="ffill")
+        aligned = aligned.bfill().fillna(0.0)
         return aligned

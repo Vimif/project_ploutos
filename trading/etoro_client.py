@@ -1,884 +1,817 @@
-# trading/etoro_client.py
-"""Client pour l'API eToro avec logging JSON"""
+"""Client eToro aligned with the current public API."""
 
-import os
+from __future__ import annotations
+
 import json
+import os
 import time
-import requests
+import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
+
+import requests
 from dotenv import load_dotenv
 
-from trading.broker_interface import BrokerInterface
 from core.utils import setup_logging
+from trading.broker_interface import BrokerInterface
 
-logger = setup_logging(__name__, 'etoro.log')
+logger = setup_logging(__name__, "etoro.log")
 
-# Charger variables d'environnement
 load_dotenv()
 
-# Dossier logs trades
-TRADES_LOG_DIR = 'logs/trades'
+TRADES_LOG_DIR = "logs/trades"
 os.makedirs(TRADES_LOG_DIR, exist_ok=True)
 
 
-def log_trade_to_json(symbol, action, quantity, price, amount, reason='', portfolio_value=None, order_id=None):
-    """Logger un trade en JSON."""
+def log_trade_to_json(
+    symbol,
+    action,
+    quantity,
+    price,
+    amount,
+    reason="",
+    portfolio_value=None,
+    order_id=None,
+):
+    """Persist a trade event as JSON for lightweight local audit trails."""
+
     try:
         trade_data = {
-            'timestamp': datetime.now().isoformat(),
-            'symbol': symbol,
-            'action': action,
-            'quantity': quantity,
-            'price': price,
-            'amount': amount,
-            'reason': reason,
-            'portfolio_value': portfolio_value,
-            'order_id': order_id,
-            'broker': 'etoro'
+            "timestamp": datetime.now().isoformat(),
+            "symbol": symbol,
+            "action": action,
+            "quantity": quantity,
+            "price": price,
+            "amount": amount,
+            "reason": reason,
+            "portfolio_value": portfolio_value,
+            "order_id": order_id,
+            "broker": "etoro",
         }
 
         filename = f"{TRADES_LOG_DIR}/trades_{datetime.now().strftime('%Y-%m-%d')}.json"
-
         if os.path.exists(filename):
-            with open(filename, 'r') as f:
-                trades = json.load(f)
+            with open(filename, "r", encoding="utf-8") as handle:
+                trades = json.load(handle)
         else:
             trades = []
 
         trades.append(trade_data)
-
-        with open(filename, 'w') as f:
-            json.dump(trades, f, indent=2)
-
-        logger.debug(f"Trade logged: {symbol} {action}")
-
-    except Exception as e:
-        logger.warning(f"Failed to log trade to JSON: {e}")
+        with open(filename, "w", encoding="utf-8") as handle:
+            json.dump(trades, handle, indent=2)
+    except Exception as exc:
+        logger.warning("Failed to log trade to JSON: %s", exc)
 
 
 class EToroClient(BrokerInterface):
-    """
-    Client eToro pour le trading via l'API publique.
+    """Broker adapter for the current eToro Public API."""
 
-    API eToro:
-    - Base URL: https://api.etoro.com
-    - Auth: Ocp-Apim-Subscription-Key header + Login tokens
-    - Trading: POST /EntryOrder/{System}, POST /ExitOrder/{System}
-    - Positions: GET /Trade/{System}
-    - Account: GET /Credit/{System}, GET /Equity/{System}
-
-    System = "Demo" pour paper trading, "Real" pour live
-    """
-
-    BASE_URL = "https://api.etoro.com"
+    BASE_URL = "https://public-api.etoro.com/api/v1"
 
     def __init__(self, paper_trading: bool = True):
-        """
-        Initialiser le client eToro.
-
-        Args:
-            paper_trading: True pour Demo, False pour Real
-
-        Env vars requises:
-            ETORO_SUBSCRIPTION_KEY: Clé d'abonnement API (Ocp-Apim-Subscription-Key)
-            ETORO_USERNAME: Nom d'utilisateur eToro
-            ETORO_PASSWORD: Mot de passe eToro
-            ETORO_API_KEY: Clé API développeur (optionnelle, certaines routes)
-        """
         self.paper_trading = paper_trading
-        self.system = "Demo" if paper_trading else "Real"
+        self.account_scope = "demo" if paper_trading else "real"
+        self.execution_scope = f"/trading/execution/{self.account_scope}"
+        self.info_scope = f"/trading/info/{self.account_scope}"
 
-        # Récupérer les credentials
-        self.subscription_key = os.getenv('ETORO_SUBSCRIPTION_KEY')
-        self.username = os.getenv('ETORO_USERNAME')
-        self.password = os.getenv('ETORO_PASSWORD')
-        self.api_key = os.getenv('ETORO_API_KEY', '')
+        self.public_api_key = (
+            os.getenv("ETORO_PUBLIC_API_KEY")
+            or os.getenv("ETORO_SUBSCRIPTION_KEY")
+            or ""
+        ).strip()
+        self.user_key = (
+            os.getenv("ETORO_USER_KEY")
+            or os.getenv("ETORO_API_KEY")
+            or ""
+        ).strip()
 
-        if not self.subscription_key:
+        self.username = (os.getenv("ETORO_USERNAME") or "").strip()
+        self.password = (os.getenv("ETORO_PASSWORD") or "").strip()
+
+        if not self.public_api_key:
             raise ValueError(
-                "ETORO_SUBSCRIPTION_KEY manquante dans .env. "
-                "Obtenez-la sur https://api-portal.etoro.com/"
+                "ETORO_PUBLIC_API_KEY manquante. "
+                "Configure ETORO_PUBLIC_API_KEY ou reuse ETORO_SUBSCRIPTION_KEY "
+                "avec la cle publique actuelle du portail eToro."
+            )
+        if not self.user_key:
+            raise ValueError(
+                "ETORO_USER_KEY manquante. "
+                "L'API publique eToro actuelle utilise x-api-key + x-user-key; "
+                "le login username/password n'est plus supporte par ce client. "
+                "Genere une user key dans le portail eToro puis renseigne "
+                "ETORO_USER_KEY (ou ETORO_API_KEY en alias legacy)."
             )
 
-        if not self.username or not self.password:
-            raise ValueError(
-                "ETORO_USERNAME et ETORO_PASSWORD requis dans .env"
-            )
-
-        # Session HTTP avec retry
         self.session = requests.Session()
-        self.session.headers.update({
-            'Ocp-Apim-Subscription-Key': self.subscription_key,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-        })
-
-        # Tokens d'authentification
-        self._token = None
-        self._csrf_token = None
-
-        # Cache instruments (InstrumentId <-> Symbol)
-        self._instrument_cache = {}
-        self._symbol_cache = {}
-
-        # Login
-        self._login()
-
-        logger.info(f"Client eToro initialise ({'Demo' if paper_trading else 'LIVE'})")
-        logger.info(f"Trades logges dans: {TRADES_LOG_DIR}/")
-
-    # ========== AUTHENTIFICATION ==========
-
-    def _login(self):
-        """S'authentifier et obtenir les tokens de session."""
-        try:
-            payload = {
-                'Username': self.username,
-                'Password': self.password,
+        self.session.headers.update(
+            {
+                "x-api-key": self.public_api_key,
+                "x-user-key": self.user_key,
+                "Accept": "application/json",
+                "Content-Type": "application/json",
             }
-            if self.api_key:
-                payload['ApiKey'] = self.api_key
+        )
 
-            resp = self._request('POST', '/Account/Login', json_data=payload, auth_required=False)
+        self._identity: dict[str, Any] = {}
+        self._instrument_cache: dict[str, int] = {}
+        self._symbol_cache: dict[int, str] = {}
 
-            if resp and resp.status_code == 200:
-                data = resp.json() if resp.text else {}
-                # Les tokens peuvent venir du body ou des headers
-                self._token = (
-                    data.get('Token')
-                    or data.get('token')
-                    or resp.headers.get('x-token')
-                )
-                self._csrf_token = (
-                    data.get('CsrfToken')
-                    or data.get('csrf_token')
-                    or resp.headers.get('x-csrf-token')
-                )
+        self._authenticate()
+        logger.info(
+            "Client eToro initialised (%s)",
+            "Demo" if paper_trading else "Real",
+        )
 
-                if self._token:
-                    self.session.headers.update({
-                        'x-token': self._token,
-                    })
-                if self._csrf_token:
-                    self.session.headers.update({
-                        'x-csrf-token': self._csrf_token,
-                    })
+    def warmup_instruments(self, symbols: list[str]) -> None:
+        for symbol in symbols:
+            try:
+                self._get_instrument_id(symbol)
+            except Exception as exc:
+                logger.warning("Warmup instrument failed for %s: %s", symbol, exc)
 
-                logger.info("Authentification eToro reussie")
-            else:
-                status = resp.status_code if resp else 'no response'
-                raise ConnectionError(f"Login eToro echoue (status: {status})")
+    def _authenticate(self) -> None:
+        """Validate API keys against the current identity endpoint."""
 
-        except requests.exceptions.RequestException as e:
-            raise ConnectionError(f"Impossible de se connecter a eToro: {e}")
+        response = self._request("GET", "/me", auth_required=False, retries=1)
+        if response is None:
+            raise ConnectionError("Authentication check to eToro returned no response")
+        if response.status_code != 200:
+            raise ConnectionError(
+                "eToro authentication failed "
+                f"(HTTP {response.status_code}): {self._extract_error_message(response)}"
+            )
 
-    def _ensure_auth(self):
-        """Re-login si le token a expiré."""
-        if not self._token:
-            self._login()
+        payload = self._safe_json(response)
+        if isinstance(payload, dict):
+            self._identity = payload
+        else:
+            self._identity = {"raw": payload}
 
-    # ========== HTTP HELPER ==========
+    def _ensure_auth(self) -> None:
+        if not self._identity:
+            self._authenticate()
 
-    def _request(self, method: str, path: str, json_data=None, params=None,
-                 auth_required=True, retries=3) -> Optional[requests.Response]:
-        """
-        Effectuer une requête HTTP vers l'API eToro avec retry.
-
-        Args:
-            method: GET, POST, PUT, DELETE
-            path: Chemin API (ex: /Trade/Demo)
-            json_data: Body JSON
-            params: Query params
-            auth_required: Si True, vérifie l'auth
-            retries: Nombre de tentatives
-
-        Returns:
-            Response ou None
-        """
+    def _request(
+        self,
+        method: str,
+        path: str,
+        json_data=None,
+        params=None,
+        auth_required: bool = True,
+        retries: int = 3,
+    ) -> Optional[requests.Response]:
         if auth_required:
             self._ensure_auth()
 
         url = f"{self.BASE_URL}{path}"
+        retried_auth = False
 
-        for attempt in range(retries):
+        for attempt in range(max(retries, 1)):
             try:
-                resp = self.session.request(
+                response = self.session.request(
                     method=method,
                     url=url,
                     json=json_data,
                     params=params,
                     timeout=30,
+                    headers={"x-request-id": str(uuid.uuid4())},
                 )
 
-                # Token expiré → re-login
-                if resp.status_code == 401 and auth_required:
-                    logger.warning("Token expire, re-authentification...")
-                    self._login()
+                if response.status_code == 401 and auth_required and not retried_auth:
+                    logger.warning("eToro returned 401, refreshing authentication context")
+                    self._identity = {}
+                    self._authenticate()
+                    retried_auth = True
                     continue
 
-                if resp.status_code == 429:
-                    # Rate limit
-                    wait = 2 ** attempt
-                    logger.warning(f"Rate limit eToro, attente {wait}s...")
-                    time.sleep(wait)
+                if response.status_code == 429 and attempt < retries - 1:
+                    wait_seconds = 2**attempt or 1
+                    logger.warning("eToro rate limit hit, waiting %ss", wait_seconds)
+                    time.sleep(wait_seconds)
                     continue
 
-                return resp
-
-            except requests.exceptions.RequestException as e:
-                logger.error(f"Erreur HTTP ({method} {path}): {e}")
+                return response
+            except requests.exceptions.RequestException as exc:
+                logger.error("HTTP error during %s %s: %s", method, path, exc)
                 if attempt < retries - 1:
-                    time.sleep(2 ** attempt)
+                    time.sleep(2**attempt or 1)
 
         return None
 
-    # ========== INSTRUMENTS ==========
+    def _safe_json(self, response: requests.Response) -> Any:
+        if not getattr(response, "text", ""):
+            return {}
+        try:
+            return response.json()
+        except Exception:
+            return {}
+
+    def _extract_error_message(self, response: Optional[requests.Response]) -> str:
+        if response is None:
+            return "no response"
+
+        payload = self._safe_json(response)
+        if isinstance(payload, dict):
+            for key in ("message", "error", "details", "title", "description"):
+                value = payload.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+            errors = payload.get("errors")
+            if isinstance(errors, list) and errors:
+                first = errors[0]
+                if isinstance(first, dict):
+                    for key in ("message", "error", "details"):
+                        value = first.get(key)
+                        if isinstance(value, str) and value.strip():
+                            return value.strip()
+                if isinstance(first, str) and first.strip():
+                    return first.strip()
+
+        text = getattr(response, "text", "") or ""
+        return text[:200].strip() or "unknown error"
+
+    def _get_portfolio_snapshot(self) -> dict[str, Any]:
+        response = self._request("GET", f"{self.info_scope}/pnl")
+        if response is None or response.status_code != 200:
+            raise ConnectionError(
+                "Unable to retrieve eToro portfolio snapshot: "
+                f"{self._extract_error_message(response)}"
+            )
+
+        payload = self._safe_json(response)
+        if isinstance(payload, dict):
+            portfolio = payload.get("clientPortfolio")
+            if isinstance(portfolio, dict):
+                return portfolio
+        return {}
+
+    def _iter_instrument_candidates(self, payload: Any) -> list[dict[str, Any]]:
+        if isinstance(payload, list):
+            return [item for item in payload if isinstance(item, dict)]
+        if not isinstance(payload, dict):
+            return []
+
+        if any(
+            key in payload
+            for key in ("instrumentId", "InstrumentId", "instrumentID", "InstrumentID")
+        ):
+            return [payload]
+
+        for key in ("items", "results", "searchResults", "instruments", "data"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                return [item for item in value if isinstance(item, dict)]
+        return []
+
+    def _normalize_symbol(self, instrument: dict[str, Any]) -> str:
+        for key in (
+            "internalSymbolFull",
+            "InternalSymbolFull",
+            "symbolFull",
+            "SymbolFull",
+            "symbol",
+            "Symbol",
+        ):
+            value = instrument.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip().upper()
+        return ""
+
+    def _normalize_instrument_id(self, instrument: dict[str, Any]) -> Optional[int]:
+        for key in ("instrumentId", "InstrumentId", "instrumentID", "InstrumentID"):
+            value = instrument.get(key)
+            if value is None:
+                continue
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                continue
+        return None
 
     def _get_instrument_id(self, symbol: str) -> Optional[int]:
-        """
-        Convertir un symbole ticker en InstrumentId eToro.
-        Utilise un cache pour éviter les appels répétés.
-        """
-        if symbol in self._instrument_cache:
-            return self._instrument_cache[symbol]
+        normalized_symbol = symbol.upper()
+        if normalized_symbol in self._instrument_cache:
+            return self._instrument_cache[normalized_symbol]
 
-        try:
-            resp = self._request('GET', f'/Metadata/{self.system}')
-            if resp and resp.status_code == 200:
-                instruments = resp.json()
-                if isinstance(instruments, list):
-                    for inst in instruments:
-                        sym = inst.get('SymbolFull', '') or inst.get('Symbol', '')
-                        inst_id = inst.get('InstrumentID') or inst.get('InstrumentId')
-                        if sym and inst_id:
-                            self._instrument_cache[sym.upper()] = inst_id
-                            self._symbol_cache[inst_id] = sym.upper()
-
-            # Essayer aussi l'endpoint Metadata/V1/Instruments
-            if symbol not in self._instrument_cache:
-                resp = self._request(
-                    'GET', '/Metadata/V1/Instruments',
-                    params={'InstrumentIds': ''},
-                    auth_required=True
-                )
-                if resp and resp.status_code == 200:
-                    instruments = resp.json()
-                    if isinstance(instruments, list):
-                        for inst in instruments:
-                            sym = inst.get('SymbolFull', '') or inst.get('Symbol', '')
-                            inst_id = inst.get('InstrumentID') or inst.get('InstrumentId')
-                            if sym and inst_id:
-                                self._instrument_cache[sym.upper()] = inst_id
-                                self._symbol_cache[inst_id] = sym.upper()
-
-        except Exception as e:
-            logger.error(f"Erreur chargement instruments: {e}")
-
-        return self._instrument_cache.get(symbol.upper())
-
-    def _get_symbol(self, instrument_id: int) -> str:
-        """Convertir un InstrumentId en symbole ticker."""
-        if instrument_id in self._symbol_cache:
-            return self._symbol_cache[instrument_id]
-        # Forcer le chargement du cache
-        self._get_instrument_id('__LOAD__')
-        return self._symbol_cache.get(instrument_id, f'ID:{instrument_id}')
-
-    # ========== COMPTE ==========
-
-    def get_account(self) -> Optional[dict]:
-        """Obtenir les infos du compte eToro."""
-        try:
-            # Récupérer credit (cash disponible)
-            credit_resp = self._request('GET', f'/Credit/{self.system}')
-            equity_resp = self._request('GET', f'/Equity/{self.system}')
-
-            cash = 0.0
-            equity = 0.0
-            portfolio_value = 0.0
-
-            if credit_resp and credit_resp.status_code == 200:
-                credit_data = credit_resp.json()
-                cash = float(
-                    credit_data.get('Credit', 0)
-                    or credit_data.get('credit', 0)
-                    or credit_data.get('AvailableBalance', 0)
-                    or credit_data
-                    if isinstance(credit_data, (int, float)) else 0
-                )
-
-            if equity_resp and equity_resp.status_code == 200:
-                equity_data = equity_resp.json()
-                equity = float(
-                    equity_data.get('Equity', 0)
-                    or equity_data.get('equity', 0)
-                    or equity_data
-                    if isinstance(equity_data, (int, float)) else 0
-                )
-
-            # Portfolio value = equity (includes positions)
-            portfolio_value = equity if equity > 0 else cash
-
-            return {
-                'cash': cash,
-                'portfolio_value': portfolio_value,
-                'buying_power': cash,  # eToro: buying power ~ cash disponible
-                'equity': equity,
-                'last_equity': equity,
-                'daytrade_count': 0,  # eToro n'a pas de PDT rule
-                'pattern_day_trader': False,
-            }
-
-        except Exception as e:
-            logger.error(f"Erreur recuperation compte: {e}")
+        response = self._request(
+            "GET",
+            "/market-data/search",
+            params={"internalSymbolFull": normalized_symbol},
+        )
+        if response is None or response.status_code != 200:
             return None
 
-    # ========== POSITIONS ==========
+        payload = self._safe_json(response)
+        for instrument in self._iter_instrument_candidates(payload):
+            candidate_symbol = self._normalize_symbol(instrument)
+            instrument_id = self._normalize_instrument_id(instrument)
+            if not candidate_symbol or instrument_id is None:
+                continue
+            self._instrument_cache[candidate_symbol] = instrument_id
+            self._symbol_cache[instrument_id] = candidate_symbol
+            if candidate_symbol == normalized_symbol:
+                return instrument_id
+
+        return self._instrument_cache.get(normalized_symbol)
+
+    def _get_symbol(self, instrument_id: int) -> str:
+        return self._symbol_cache.get(int(instrument_id), f"ID:{instrument_id}")
+
+    def _normalize_positions(self, positions_payload: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        grouped: dict[int, list[dict[str, Any]]] = {}
+        for position in positions_payload:
+            try:
+                instrument_id = int(position.get("instrumentId"))
+            except (TypeError, ValueError):
+                continue
+            grouped.setdefault(instrument_id, []).append(position)
+
+        positions: list[dict[str, Any]] = []
+        for instrument_id, entries in grouped.items():
+            symbol = self._get_symbol(instrument_id)
+            total_qty = 0.0
+            total_cost_basis = 0.0
+            total_market_value = 0.0
+            total_pnl = 0.0
+            position_ids: list[str] = []
+            entry_dates: list[str] = []
+            weighted_entry_price = 0.0
+
+            for entry in entries:
+                units = float(
+                    entry.get("units")
+                    or entry.get("initialUnits")
+                    or 0.0
+                )
+                if units <= 0:
+                    open_rate = float(entry.get("openRate") or 0.0)
+                    amount = float(
+                        entry.get("initialAmountInDollars")
+                        or entry.get("amount")
+                        or 0.0
+                    )
+                    units = amount / open_rate if open_rate > 0 else 0.0
+
+                cost_basis = float(
+                    entry.get("initialAmountInDollars")
+                    or entry.get("amount")
+                    or 0.0
+                )
+                pnl = float(entry.get("pnL") or entry.get("pnl") or 0.0)
+                close_rate = float(entry.get("closeRate") or 0.0)
+                open_rate = float(entry.get("openRate") or 0.0)
+
+                market_value = cost_basis + pnl
+                if market_value <= 0 and close_rate > 0 and units > 0:
+                    market_value = units * close_rate
+                if cost_basis <= 0 and open_rate > 0 and units > 0:
+                    cost_basis = units * open_rate
+
+                total_qty += units
+                total_cost_basis += cost_basis
+                total_market_value += market_value
+                total_pnl += pnl
+                weighted_entry_price += open_rate * units
+
+                position_id = entry.get("positionId")
+                if position_id is not None:
+                    position_ids.append(str(position_id))
+                open_date = entry.get("openDateTime")
+                if isinstance(open_date, str) and open_date:
+                    entry_dates.append(open_date)
+
+            avg_entry_price = weighted_entry_price / total_qty if total_qty > 0 else 0.0
+            current_price = total_market_value / total_qty if total_qty > 0 else 0.0
+            unrealized_plpc = total_pnl / total_cost_basis if total_cost_basis > 0 else 0.0
+
+            positions.append(
+                {
+                    "symbol": symbol,
+                    "qty": round(total_qty, 6),
+                    "market_value": round(total_market_value, 2),
+                    "cost_basis": round(total_cost_basis, 2),
+                    "unrealized_pl": round(total_pnl, 2),
+                    "unrealized_plpc": round(unrealized_plpc, 6),
+                    "current_price": round(current_price, 6),
+                    "avg_entry_price": round(avg_entry_price, 6),
+                    "purchase_date": min(entry_dates) if entry_dates else None,
+                    "_etoro_instrument_id": instrument_id,
+                    "_etoro_position_ids": position_ids,
+                }
+            )
+
+        return positions
+
+    def _status_from_id(self, status_id: Any) -> str:
+        mapping = {
+            1: "open",
+            2: "filled",
+            3: "cancelled",
+            4: "rejected",
+            5: "expired",
+        }
+        try:
+            return mapping.get(int(status_id), "open")
+        except (TypeError, ValueError):
+            return "open"
+
+    def _normalize_orders(
+        self,
+        orders_payload: list[dict[str, Any]],
+        *,
+        default_status: str,
+        cancel_path_template: str,
+    ) -> list[dict[str, Any]]:
+        orders: list[dict[str, Any]] = []
+        for order in orders_payload:
+            try:
+                instrument_id = int(order.get("instrumentId"))
+            except (TypeError, ValueError):
+                instrument_id = 0
+
+            status = self._status_from_id(order.get("statusId")) or default_status
+            order_id = order.get("orderId")
+            orders.append(
+                {
+                    "id": str(order_id or ""),
+                    "symbol": self._get_symbol(instrument_id) if instrument_id else "UNKNOWN",
+                    "qty": float(order.get("units") or order.get("amountInUnits") or 0.0),
+                    "side": "buy" if bool(order.get("isBuy", True)) else "sell",
+                    "status": status,
+                    "order_type": str(order.get("orderType", "")),
+                    "filled_avg_price": float(order.get("rate") or 0.0),
+                    "filled_at": "",
+                    "created_at": str(order.get("openDateTime") or ""),
+                    "_cancel_path": cancel_path_template.format(order_id=order_id),
+                    "_etoro_instrument_id": instrument_id,
+                }
+            )
+        return orders
+
+    def get_account(self) -> Optional[dict]:
+        try:
+            snapshot = self._get_portfolio_snapshot()
+            positions = self._normalize_positions(snapshot.get("positions") or [])
+            cash = float(snapshot.get("credit") or 0.0)
+            position_value = sum(float(position["market_value"]) for position in positions)
+            equity = cash + position_value
+            return {
+                "cash": cash,
+                "portfolio_value": equity,
+                "buying_power": cash,
+                "equity": equity,
+                "last_equity": equity,
+                "daytrade_count": 0,
+                "pattern_day_trader": False,
+            }
+        except Exception as exc:
+            logger.error("Erreur recuperation compte: %s", exc)
+            return None
 
     def get_positions(self) -> list:
-        """Obtenir toutes les positions ouvertes."""
         try:
-            resp = self._request('GET', f'/Trade/{self.system}')
-
-            if not resp or resp.status_code != 200:
-                return []
-
-            trades_data = resp.json()
-            if not isinstance(trades_data, list):
-                trades_data = trades_data.get('Positions', []) if isinstance(trades_data, dict) else []
-
-            positions = []
-            # Regrouper par instrument
-            grouped = {}
-            for trade in trades_data:
-                inst_id = trade.get('InstrumentID') or trade.get('InstrumentId')
-                if inst_id not in grouped:
-                    grouped[inst_id] = []
-                grouped[inst_id].append(trade)
-
-            for inst_id, trades in grouped.items():
-                symbol = self._get_symbol(inst_id)
-
-                total_qty = 0.0
-                total_invested = 0.0
-                total_current_value = 0.0
-
-                for trade in trades:
-                    amount = float(trade.get('Amount', 0) or trade.get('amount', 0))
-                    open_rate = float(trade.get('OpenRate', 0) or trade.get('openRate', 0))
-                    current_rate = float(trade.get('CurrentRate', 0) or trade.get('currentRate', open_rate))
-                    leverage = float(trade.get('Leverage', 1) or trade.get('leverage', 1))
-                    is_buy = trade.get('IsBuy', True) if 'IsBuy' in trade else trade.get('isBuy', True)
-
-                    # eToro utilise Amount (en $), pas qty d'actions directement
-                    if open_rate > 0:
-                        qty = amount / open_rate
-                    else:
-                        qty = 0
-
-                    total_qty += qty
-                    total_invested += amount
-                    if current_rate > 0 and open_rate > 0:
-                        total_current_value += amount * (current_rate / open_rate)
-                    else:
-                        total_current_value += amount
-
-                unrealized_pl = total_current_value - total_invested
-                unrealized_plpc = unrealized_pl / total_invested if total_invested > 0 else 0
-                avg_entry = total_invested / total_qty if total_qty > 0 else 0
-                current_price = total_current_value / total_qty if total_qty > 0 else 0
-
-                # Trouver la date d'achat la plus ancienne pour cet instrument
-                open_dates = []
-                for t in trades:
-                    od = t.get('OpenDateTime') or t.get('openDateTime')
-                    if od:
-                        open_dates.append(od)
-                purchase_date = min(open_dates) if open_dates else None
-
-                positions.append({
-                    'symbol': symbol,
-                    'qty': round(total_qty, 6),
-                    'market_value': round(total_current_value, 2),
-                    'cost_basis': round(total_invested, 2),
-                    'unrealized_pl': round(unrealized_pl, 2),
-                    'unrealized_plpc': round(unrealized_plpc, 6),
-                    'current_price': round(current_price, 2),
-                    'avg_entry_price': round(avg_entry, 2),
-                    'purchase_date': purchase_date,
-                    # Métadonnées eToro-spécifiques
-                    '_etoro_instrument_id': inst_id,
-                    '_etoro_position_ids': [
-                        t.get('PositionID') or t.get('positionId') for t in trades
-                    ],
-                })
-
-            return positions
-
-        except Exception as e:
-            logger.error(f"Erreur recuperation positions: {e}")
+            snapshot = self._get_portfolio_snapshot()
+            return self._normalize_positions(snapshot.get("positions") or [])
+        except Exception as exc:
+            logger.error("Erreur recuperation positions: %s", exc)
             return []
 
     def get_position(self, symbol: str) -> Optional[dict]:
-        """Obtenir une position spécifique."""
-        positions = self.get_positions()
-        for pos in positions:
-            if pos['symbol'].upper() == symbol.upper():
-                return pos
+        normalized_symbol = symbol.upper()
+        for position in self.get_positions():
+            if position["symbol"].upper() == normalized_symbol:
+                return position
         return None
 
-    # ========== PRIX ==========
-
     def get_current_price(self, symbol: str) -> Optional[float]:
-        """
-        Obtenir le prix actuel d'un ticker.
-        Utilise les endpoints de rates/metadata eToro.
-        """
-        try:
-            inst_id = self._get_instrument_id(symbol)
-            if not inst_id:
-                logger.warning(f"Instrument non trouve pour {symbol}")
-                return None
+        instrument_id = self._get_instrument_id(symbol)
+        if instrument_id is None:
+            return None
 
-            # Essayer l'endpoint rates
-            resp = self._request(
-                'GET', f'/Rates/{self.system}',
-                params={'InstrumentIds': str(inst_id)}
+        response = self._request(
+            "GET",
+            "/market-data/instruments/rates",
+            params={"instrumentIds": str(instrument_id)},
+        )
+        if response is None or response.status_code != 200:
+            return None
+
+        payload = self._safe_json(response)
+        rates = payload.get("rates") if isinstance(payload, dict) else payload
+        if not isinstance(rates, list) or not rates:
+            return None
+
+        rate = rates[0]
+        ask = float(rate.get("ask") or 0.0)
+        bid = float(rate.get("bid") or 0.0)
+        if ask > 0 and bid > 0:
+            return (ask + bid) / 2
+
+        last_execution = float(rate.get("lastExecution") or 0.0)
+        return last_execution if last_execution > 0 else None
+
+    def place_market_order(
+        self,
+        symbol: str,
+        qty: int,
+        side: str = "buy",
+        reason: str = "",
+    ) -> Optional[dict]:
+        normalized_side = side.lower()
+        if normalized_side == "sell":
+            success = self.close_position(symbol, reason=reason)
+            return {
+                "id": "",
+                "symbol": symbol.upper(),
+                "qty": float(qty),
+                "side": "sell",
+                "status": "filled" if success else "rejected",
+                "filled_avg_price": float(self.get_current_price(symbol) or 0.0),
+            } if success else None
+
+        instrument_id = self._get_instrument_id(symbol)
+        current_price = self.get_current_price(symbol)
+        if instrument_id is None or current_price is None or current_price <= 0:
+            logger.error("Prix ou instrument indisponible pour %s", symbol)
+            return None
+
+        amount = round(float(qty) * float(current_price), 2)
+        payload = {
+            "InstrumentId": instrument_id,
+            "Amount": amount,
+            "Leverage": 1,
+            "IsBuy": True,
+        }
+        response = self._request(
+            "POST",
+            f"{self.execution_scope}/market-open-orders/by-amount",
+            json_data=payload,
+        )
+        if response is None or response.status_code not in {200, 201, 202}:
+            logger.error(
+                "Erreur ordre BUY %s: HTTP %s - %s",
+                symbol,
+                response.status_code if response else "N/A",
+                self._extract_error_message(response),
             )
-
-            if resp and resp.status_code == 200:
-                rates = resp.json()
-                if isinstance(rates, list) and rates:
-                    rate = rates[0]
-                    ask = float(rate.get('Ask', 0) or rate.get('ask', 0))
-                    bid = float(rate.get('Bid', 0) or rate.get('bid', 0))
-                    if ask > 0 and bid > 0:
-                        return (ask + bid) / 2
-                    last = float(rate.get('LastExecution', 0) or rate.get('lastExecution', 0))
-                    if last > 0:
-                        return last
-
-            # Fallback: utiliser le prix depuis les positions
-            pos = self.get_position(symbol)
-            if pos and pos['current_price'] > 0:
-                return pos['current_price']
-
             return None
 
-        except Exception as e:
-            logger.error(f"Erreur prix pour {symbol}: {e}")
+        data = self._safe_json(response)
+        order_id = (
+            data.get("orderId")
+            or data.get("positionId")
+            or data.get("token")
+            or data.get("id")
+            or ""
+            if isinstance(data, dict)
+            else ""
+        )
+        account = self.get_account()
+        log_trade_to_json(
+            symbol=symbol.upper(),
+            action="BUY",
+            quantity=float(qty),
+            price=float(current_price),
+            amount=amount,
+            reason=reason,
+            portfolio_value=account["portfolio_value"] if account else None,
+            order_id=str(order_id),
+        )
+        return {
+            "id": str(order_id),
+            "symbol": symbol.upper(),
+            "qty": float(qty),
+            "side": "buy",
+            "status": "submitted",
+            "filled_avg_price": float(current_price),
+        }
+
+    def place_limit_order(
+        self,
+        symbol: str,
+        qty: int,
+        limit_price: float,
+        side: str = "buy",
+    ) -> Optional[dict]:
+        instrument_id = self._get_instrument_id(symbol)
+        if instrument_id is None:
             return None
 
-    # ========== ORDRES ==========
-
-    def place_market_order(self, symbol: str, qty: int, side: str = 'buy',
-                           reason: str = '') -> Optional[dict]:
-        """
-        Passer un ordre au marché via eToro.
-
-        eToro utilise des montants en $, pas des quantités d'actions.
-        On convertit qty * current_price pour obtenir le montant.
-        """
-        try:
-            inst_id = self._get_instrument_id(symbol)
-            if not inst_id:
-                logger.error(f"Instrument non trouve pour {symbol}")
-                return None
-
-            current_price = self.get_current_price(symbol)
-            if not current_price or current_price <= 0:
-                logger.error(f"Prix indisponible pour {symbol}")
-                return None
-
-            amount = round(qty * current_price, 2)
-            is_buy = side.lower() == 'buy'
-
-            # Construire l'ordre eToro (EntryOrder)
-            order_payload = {
-                'InstrumentID': inst_id,
-                'OrderType': 'MKT',        # Market order
-                'ExecutionType': 'IOC',     # Immediate-or-Cancel
-                'IsBuy': is_buy,
-                'Amount': amount,
-                'Leverage': 1,              # Pas de levier (achat réel d'actions)
-            }
-
-            resp = self._request('POST', f'/EntryOrder/{self.system}', json_data=order_payload)
-
-            if not resp:
-                logger.error(f"Pas de reponse pour ordre {side} {symbol}")
-                return None
-
-            if resp.status_code in (200, 201):
-                data = resp.json() if resp.text else {}
-
-                order_id = (
-                    data.get('OrderId')
-                    or data.get('orderId')
-                    or data.get('PositionID')
-                    or data.get('positionId')
-                    or ''
-                )
-
-                filled_price = float(
-                    data.get('ExecutionRate', 0)
-                    or data.get('executionRate', 0)
-                    or current_price
-                )
-
-                order_dict = {
-                    'id': str(order_id),
-                    'symbol': symbol,
-                    'qty': qty,
-                    'side': side.lower(),
-                    'status': 'filled',
-                    'filled_avg_price': filled_price,
-                }
-
-                logger.info(f"Ordre {side.upper()} place: {symbol} x{qty} (~${amount})")
-
-                # Logger en JSON
-                account = self.get_account()
-                log_trade_to_json(
-                    symbol=symbol,
-                    action=side.upper(),
-                    quantity=qty,
-                    price=filled_price,
-                    amount=qty * filled_price,
-                    reason=reason,
-                    portfolio_value=account['portfolio_value'] if account else None,
-                    order_id=str(order_id),
-                )
-
-                return order_dict
-
-            else:
-                error_text = resp.text[:200] if resp.text else 'Unknown error'
-                logger.error(f"Erreur ordre {side} {symbol}: HTTP {resp.status_code} - {error_text}")
-                return None
-
-        except Exception as e:
-            logger.error(f"Erreur ordre {side} pour {symbol}: {e}")
+        payload = {
+            "InstrumentId": instrument_id,
+            "Amount": round(float(qty) * float(limit_price), 2),
+            "Rate": float(limit_price),
+            "Leverage": 1,
+            "IsBuy": side.lower() == "buy",
+        }
+        response = self._request(
+            "POST",
+            f"{self.execution_scope}/limit-orders",
+            json_data=payload,
+        )
+        if response is None or response.status_code not in {200, 201, 202}:
             return None
 
-    def place_limit_order(self, symbol: str, qty: int, limit_price: float,
-                          side: str = 'buy') -> Optional[dict]:
-        """Passer un ordre limite via eToro."""
-        try:
-            inst_id = self._get_instrument_id(symbol)
-            if not inst_id:
-                logger.error(f"Instrument non trouve pour {symbol}")
-                return None
+        data = self._safe_json(response)
+        order_id = data.get("orderId") or data.get("id") or "" if isinstance(data, dict) else ""
+        return {
+            "id": str(order_id),
+            "symbol": symbol.upper(),
+            "qty": float(qty),
+            "limit_price": float(limit_price),
+            "status": "pending",
+        }
 
-            amount = round(qty * limit_price, 2)
-            is_buy = side.lower() == 'buy'
-
-            order_payload = {
-                'InstrumentID': inst_id,
-                'OrderType': 'LMT',        # Limit order
-                'ExecutionType': 'GTC',     # Good-Till-Cancelled
-                'IsBuy': is_buy,
-                'Amount': amount,
-                'Leverage': 1,
-                'Rate': limit_price,        # Prix limite
-            }
-
-            resp = self._request('POST', f'/EntryOrder/{self.system}', json_data=order_payload)
-
-            if resp and resp.status_code in (200, 201):
-                data = resp.json() if resp.text else {}
-
-                order_id = (
-                    data.get('OrderId')
-                    or data.get('orderId')
-                    or ''
-                )
-
-                logger.info(f"Ordre LIMIT {side.upper()} place: {symbol} x{qty} @ ${limit_price}")
-
-                return {
-                    'id': str(order_id),
-                    'symbol': symbol,
-                    'qty': qty,
-                    'limit_price': limit_price,
-                    'status': 'pending',
-                }
-
-            else:
-                error_text = resp.text[:200] if resp and resp.text else 'Unknown error'
-                status = resp.status_code if resp else 'N/A'
-                logger.error(f"Erreur ordre limite {symbol}: HTTP {status} - {error_text}")
-                return None
-
-        except Exception as e:
-            logger.error(f"Erreur ordre limite pour {symbol}: {e}")
-            return None
-
-    # ========== FERMETURE POSITIONS ==========
-
-    def close_position(self, symbol: str, reason: str = '') -> bool:
-        """
-        Fermer complètement une position eToro.
-        Crée un ExitOrder pour chaque position ouverte sur l'instrument.
-        """
-        try:
-            position = self.get_position(symbol)
-            if not position:
-                logger.warning(f"{symbol}: Pas de position a fermer")
-                return False
-
-            qty = position['qty']
-            current_price = position['current_price']
-            position_ids = position.get('_etoro_position_ids', [])
-
-            if not position_ids:
-                logger.error(f"{symbol}: Pas de PositionID pour fermer")
-                return False
-
-            # Annuler les ordres en attente
-            self.cancel_orders_for_symbol(symbol)
-            time.sleep(0.5)
-
-            # Fermer chaque sous-position
-            all_closed = True
-            for pos_id in position_ids:
-                if not pos_id:
-                    continue
-
-                exit_payload = {
-                    'PositionID': pos_id,
-                    'ExecutionType': 'IOC',
-                }
-
-                resp = self._request('POST', f'/ExitOrder/{self.system}', json_data=exit_payload)
-
-                if resp and resp.status_code in (200, 201):
-                    logger.info(f"Position fermee: {symbol} (ID: {pos_id})")
-                else:
-                    error_text = resp.text[:200] if resp and resp.text else 'Unknown'
-                    status = resp.status_code if resp else 'N/A'
-                    logger.error(f"Echec fermeture {symbol} (ID: {pos_id}): HTTP {status} - {error_text}")
-                    all_closed = False
-
-            if all_closed:
-                # Logger le SELL
-                account = self.get_account()
-                log_trade_to_json(
-                    symbol=symbol,
-                    action='SELL',
-                    quantity=qty,
-                    price=current_price,
-                    amount=qty * current_price,
-                    reason=reason or 'Fermeture position',
-                    portfolio_value=account['portfolio_value'] if account else None,
-                )
-                logger.info(f"Position fermee: {symbol}")
-                return True
-
+    def close_position(self, symbol: str, reason: str = "") -> bool:
+        position = self.get_position(symbol)
+        if not position:
+            logger.warning("%s: no position to close", symbol)
             return False
 
-        except Exception as e:
-            logger.error(f"Erreur fermeture position {symbol}: {e}")
-            return False
+        current_price = float(position.get("current_price", 0.0))
+        qty = float(position.get("qty", 0.0))
+        all_closed = True
+
+        for position_id in position.get("_etoro_position_ids", []):
+            response = self._request(
+                "POST",
+                f"{self.execution_scope}/market-close-orders/positions/{position_id}",
+                json_data={"UnitsToDeduct": None},
+            )
+            if response is None or response.status_code not in {200, 201, 202}:
+                logger.error(
+                    "Erreur fermeture %s (%s): HTTP %s - %s",
+                    symbol,
+                    position_id,
+                    response.status_code if response else "N/A",
+                    self._extract_error_message(response),
+                )
+                all_closed = False
+
+        if all_closed:
+            account = self.get_account()
+            log_trade_to_json(
+                symbol=symbol.upper(),
+                action="SELL",
+                quantity=qty,
+                price=current_price,
+                amount=qty * current_price,
+                reason=reason or "close_position",
+                portfolio_value=account["portfolio_value"] if account else None,
+            )
+        return all_closed
 
     def close_all_positions(self) -> bool:
-        """Fermer toutes les positions."""
+        success = True
+        for position in self.get_positions():
+            if not self.close_position(position["symbol"], reason="close_all_positions"):
+                success = False
+        return success
+
+    def get_orders(self, status: str = "open", limit: int = 50) -> list:
         try:
-            positions = self.get_positions()
-            if not positions:
-                logger.info("Aucune position a fermer")
-                return True
+            snapshot = self._get_portfolio_snapshot()
+            all_orders = []
+            all_orders.extend(
+                self._normalize_orders(
+                    snapshot.get("ordersForOpen") or [],
+                    default_status="open",
+                    cancel_path_template=f"{self.execution_scope}/market-open-orders/{{order_id}}",
+                )
+            )
+            all_orders.extend(
+                self._normalize_orders(
+                    snapshot.get("ordersForClose") or [],
+                    default_status="open",
+                    cancel_path_template=f"{self.execution_scope}/market-close-orders/{{order_id}}",
+                )
+            )
+            all_orders.extend(
+                self._normalize_orders(
+                    snapshot.get("orders") or [],
+                    default_status="open",
+                    cancel_path_template=f"{self.execution_scope}/market-open-orders/{{order_id}}",
+                )
+            )
 
-            success = True
-            for pos in positions:
-                if not self.close_position(pos['symbol'], reason='Fermeture globale'):
-                    success = False
-
-            if success:
-                logger.info("Toutes les positions fermees")
-            else:
-                logger.warning("Certaines positions n'ont pas pu etre fermees")
-
-            return success
-
-        except Exception as e:
-            logger.error(f"Erreur fermeture globale: {e}")
-            return False
-
-    # ========== GESTION ORDRES ==========
-
-    def get_orders(self, status: str = 'open', limit: int = 50) -> list:
-        """Obtenir les ordres en attente (entry orders)."""
-        try:
-            resp = self._request('GET', f'/EntryOrder/{self.system}')
-
-            if not resp or resp.status_code != 200:
-                return []
-
-            orders_data = resp.json()
-            if not isinstance(orders_data, list):
-                orders_data = orders_data.get('Orders', []) if isinstance(orders_data, dict) else []
-
-            orders = []
-            for order in orders_data[:limit]:
-                inst_id = order.get('InstrumentID') or order.get('InstrumentId')
-                symbol = self._get_symbol(inst_id) if inst_id else 'UNKNOWN'
-                is_buy = order.get('IsBuy', True)
-                order_type = order.get('OrderType', 'MKT')
-
-                orders.append({
-                    'id': str(order.get('OrderId') or order.get('orderId', '')),
-                    'symbol': symbol,
-                    'qty': 0,  # eToro utilise des montants, pas des quantités
-                    'side': 'buy' if is_buy else 'sell',
-                    'status': 'open',
-                    'order_type': order_type,
-                    'filled_avg_price': 0,
-                    'filled_at': '',
-                    'created_at': str(order.get('CreationTime', '') or order.get('creationTime', '')),
-                    '_etoro_instrument_id': inst_id,
-                })
-
-            return orders
-
-        except Exception as e:
-            logger.error(f"Erreur recuperation ordres: {e}")
+            if status != "all":
+                all_orders = [
+                    order
+                    for order in all_orders
+                    if (status == "open" and order["status"] == "open")
+                    or (status == "closed" and order["status"] != "open")
+                ]
+            return all_orders[:limit]
+        except Exception as exc:
+            logger.error("Erreur recuperation ordres: %s", exc)
             return []
 
     def cancel_order(self, order_id: str) -> bool:
-        """Annuler un ordre en attente."""
-        try:
-            resp = self._request('DELETE', f'/EntryOrder/{self.system}/{order_id}')
-
-            if resp and resp.status_code in (200, 204):
-                logger.info(f"Ordre annule: {order_id}")
-                return True
-            else:
-                error_text = resp.text[:200] if resp and resp.text else 'Unknown'
-                status = resp.status_code if resp else 'N/A'
-                logger.error(f"Erreur annulation ordre {order_id}: HTTP {status} - {error_text}")
-                return False
-
-        except Exception as e:
-            logger.error(f"Erreur annulation ordre {order_id}: {e}")
-            return False
+        for order in self.get_orders(status="all"):
+            if order.get("id") != str(order_id):
+                continue
+            cancel_path = order.get("_cancel_path")
+            if not cancel_path:
+                break
+            response = self._request("DELETE", cancel_path)
+            return response is not None and response.status_code in {200, 202, 204}
+        return False
 
     def cancel_orders_for_symbol(self, symbol: str) -> int:
-        """Annuler tous les ordres pour un symbole."""
-        try:
-            orders = self.get_orders(status='open')
-            cancelled = 0
-
-            for order in orders:
-                if order['symbol'].upper() == symbol.upper():
-                    if self.cancel_order(order['id']):
-                        cancelled += 1
-
-            if cancelled > 0:
-                logger.info(f"{symbol}: {cancelled} ordre(s) annule(s)")
-
-            return cancelled
-
-        except Exception as e:
-            logger.error(f"Erreur annulation ordres pour {symbol}: {e}")
-            return 0
-
-    # ========== TRADE HISTORY ==========
+        cancelled = 0
+        normalized_symbol = symbol.upper()
+        for order in self.get_orders(status="open"):
+            if order.get("symbol", "").upper() != normalized_symbol:
+                continue
+            if self.cancel_order(order.get("id", "")):
+                cancelled += 1
+        return cancelled
 
     def get_trade_history(self) -> list:
-        """Obtenir l'historique des trades fermés."""
         try:
-            resp = self._request('GET', f'/Trade/{self.system}/History')
-
-            if not resp or resp.status_code != 200:
-                return []
-
-            data = resp.json()
-            if not isinstance(data, list):
-                data = data.get('Trades', []) if isinstance(data, dict) else []
-
-            return data
-
-        except Exception as e:
-            logger.error(f"Erreur historique trades: {e}")
+            snapshot = self._get_portfolio_snapshot()
+            return list(snapshot.get("closedPositions") or [])
+        except Exception as exc:
+            logger.error("Erreur historique trades: %s", exc)
             return []
 
-    # ========== MODIFY POSITION ==========
+    def wait_for_order_fill(
+        self,
+        order_id: str,
+        symbol: str | None = None,
+        timeout: int = 30,
+        poll_interval: float = 1.0,
+        expect_position_closed: bool = False,
+    ) -> bool:
+        deadline = time.time() + timeout
+        normalized_symbol = symbol.upper() if symbol else None
 
-    def modify_position(self, position_id: str, stop_loss_rate: float = None,
-                        take_profit_rate: float = None) -> bool:
-        """
-        Modifier le SL/TP d'une position.
+        while time.time() < deadline:
+            if normalized_symbol:
+                position = self.get_position(normalized_symbol)
+                if expect_position_closed and position is None:
+                    return True
+                if not expect_position_closed and position is not None:
+                    return True
 
-        Args:
-            position_id: ID de la position eToro
-            stop_loss_rate: Nouveau taux de stop loss
-            take_profit_rate: Nouveau taux de take profit
-        """
-        try:
-            payload = {}
-            if stop_loss_rate is not None:
-                payload['StopLossRate'] = stop_loss_rate
-            if take_profit_rate is not None:
-                payload['TakeProfitRate'] = take_profit_rate
+            if order_id:
+                for order in self.get_orders(status="all"):
+                    if order.get("id") != str(order_id):
+                        continue
+                    if order.get("status") in {"filled", "closed", "completed"}:
+                        return True
+                    if order.get("status") in {"rejected", "cancelled", "expired"}:
+                        return False
 
-            if not payload:
-                return True
+            time.sleep(poll_interval)
+        return False
 
-            resp = self._request('PUT', f'/Trade/{self.system}/{position_id}', json_data=payload)
+    def modify_position(
+        self,
+        position_id: str,
+        stop_loss_rate: float = None,
+        take_profit_rate: float = None,
+    ) -> bool:
+        payload = {}
+        if stop_loss_rate is not None:
+            payload["StopLossRate"] = float(stop_loss_rate)
+        if take_profit_rate is not None:
+            payload["TakeProfitRate"] = float(take_profit_rate)
+        if not payload:
+            return True
 
-            if resp and resp.status_code == 200:
-                logger.info(f"Position {position_id} modifiee (SL={stop_loss_rate}, TP={take_profit_rate})")
-                return True
-
-            return False
-
-        except Exception as e:
-            logger.error(f"Erreur modification position {position_id}: {e}")
-            return False
-
-    # ========== FEES ==========
+        response = self._request(
+            "PATCH",
+            f"{self.execution_scope}/positions/{position_id}",
+            json_data=payload,
+        )
+        return response is not None and response.status_code in {200, 202, 204}
 
     def get_fees(self) -> Optional[dict]:
-        """Obtenir les frais de trading."""
-        try:
-            resp = self._request('GET', f'/Fees/{self.system}')
-            if resp and resp.status_code == 200:
-                return resp.json()
+        response = self._request("GET", "/market-data/fees")
+        if response is None or response.status_code != 200:
             return None
-        except Exception as e:
-            logger.error(f"Erreur recuperation frais: {e}")
-            return None
-
-    # ========== LOGGING ==========
+        payload = self._safe_json(response)
+        return payload if isinstance(payload, dict) else None
 
     def log_current_positions(self):
-        """Logger les positions actuelles."""
         try:
             positions = self.get_positions()
-            if positions:
-                filename = f"{TRADES_LOG_DIR}/positions_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.json"
-                with open(filename, 'w') as f:
-                    json.dump(positions, f, indent=2)
-                logger.info(f"{len(positions)} positions loggees: {filename}")
-        except Exception as e:
-            logger.warning(f"Echec log positions: {e}")
-
-    # ========== LOGOUT ==========
+            if not positions:
+                return
+            filename = (
+                f"{TRADES_LOG_DIR}/positions_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.json"
+            )
+            with open(filename, "w", encoding="utf-8") as handle:
+                json.dump(positions, handle, indent=2)
+        except Exception as exc:
+            logger.warning("Echec log positions: %s", exc)
 
     def logout(self):
-        """Se déconnecter de l'API eToro."""
-        try:
-            self._request('DELETE', '/Account/Login')
-            self._token = None
-            self._csrf_token = None
-            logger.info("Deconnexion eToro")
-        except Exception:
-            pass
+        self._identity = {}
 
     def __del__(self):
-        """Cleanup."""
         try:
             self.logout()
         except Exception:

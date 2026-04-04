@@ -39,6 +39,11 @@ from core.macro_data import MacroDataFetcher
 from core.data_fetcher import download_data
 from core.data_pipeline import DataSplitter
 from core.model_support import predict_with_optional_recurrence
+from core.promotion_gate import (
+    evaluate_robustness_promotion,
+    promotion_thresholds_from_config,
+)
+from core.evidence_hardening import evaluate_robustness_artifact
 from core.utils import setup_logging
 from config.hardware import detect_hardware, compute_optimal_params
 
@@ -254,6 +259,8 @@ def run_backtest(
     sharpe = 0.0
     if len(returns) > 1 and returns.std() > 0:
         sharpe = (returns.mean() / returns.std()) * np.sqrt(252 * 6.5)
+    closed_trades = info.get('winning_trades', 0) + info.get('losing_trades', 0)
+    win_rate = info.get('winning_trades', 0) / closed_trades if closed_trades > 0 else 0.0
 
     return {
         'total_return': float(total_return),
@@ -263,6 +270,7 @@ def run_backtest(
         'total_trades': info.get('total_trades', 0),
         'winning_trades': info.get('winning_trades', 0),
         'losing_trades': info.get('losing_trades', 0),
+        'win_rate': float(win_rate),
     }
 
 
@@ -361,6 +369,7 @@ def monte_carlo_test(
     returns = [r['total_return'] for r in results]
     sharpes = [r['sharpe_ratio'] for r in results]
     drawdowns = [r['max_drawdown'] for r in results]
+    win_rates = [r.get('win_rate', 0.0) for r in results]
 
     n_losses = sum(1 for r in returns if r < 0)
     loss_rate = n_losses / n_simulations
@@ -381,6 +390,7 @@ def monte_carlo_test(
         'p95_return': float(np.percentile(returns, 95)),
         'avg_sharpe': float(np.mean(sharpes)),
         'avg_max_drawdown': float(np.mean(drawdowns)),
+        'avg_win_rate': float(np.mean(win_rates)),
     }
 
     psr = calculate_psr(np.array(returns), benchmark_sr=0.0)
@@ -400,6 +410,7 @@ def monte_carlo_test(
     logger.info(f"  Range:       [{report['min_return']:+.2%}, {report['max_return']:+.2%}]")
     logger.info(f"  P5/P95:      [{report['p5_return']:+.2%}, {report['p95_return']:+.2%}]")
     logger.info(f"  Avg Sharpe:  {report['avg_sharpe']:.2f}")
+    logger.info(f"  Avg WinRate: {report['avg_win_rate']:.1%}")
     logger.info(f"  PSR (Prob):  {report['psr']:.4f} (>{'0.95 OK' if report['psr']>0.95 else 'FAIL'})")
     logger.info(f"  Avg MaxDD:   {report['avg_max_drawdown']:.2%}")
 
@@ -464,6 +475,8 @@ def stress_test_crash(
         'baseline_max_drawdown': baseline['max_drawdown'],
         'crash_max_drawdown': crash_result['max_drawdown'],
         'crash_trades': crash_result['total_trades'],
+        'baseline_win_rate': baseline.get('win_rate', 0.0),
+        'crash_win_rate': crash_result.get('win_rate', 0.0),
         'survives': crash_result['max_drawdown'] < 0.50,  # Ne perd pas tout
         'acceptable_drawdown': crash_result['max_drawdown'] < 0.25,
     }
@@ -550,6 +563,7 @@ def main():
     # Load config
     with open(args.config, 'r') as f:
         config = yaml.safe_load(f)
+    promotion_thresholds = promotion_thresholds_from_config(config)
 
     env_kwargs = {k: v for k, v in config.get('environment', {}).items()}
 
@@ -648,6 +662,10 @@ def main():
             use_recurrent=args.recurrent,
             vecnorm_path=vecnorm_path,
         )
+        mc_report['promotion_gate'] = evaluate_robustness_promotion(
+            mc_report,
+            thresholds=promotion_thresholds,
+        )
         all_results['monte_carlo'] = mc_report
 
     # Stress Test (uses precomputed features)
@@ -658,7 +676,16 @@ def main():
             vecnorm_env=vecnorm_env,
             env_kwargs=env_kwargs,
         )
+        st_report['promotion_gate'] = {
+            'passed': st_report['acceptable_drawdown'],
+            'thresholds': promotion_thresholds,
+            'checks': {
+                'max_drawdown': st_report['crash_max_drawdown'] <= promotion_thresholds['max_drawdown'],
+            },
+        }
         all_results['stress_test'] = st_report
+
+    all_results['evidence'] = evaluate_robustness_artifact(all_results)
 
     # Save
     results_path = os.path.join(output_dir, 'robustness_report.json')

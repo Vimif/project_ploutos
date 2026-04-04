@@ -51,7 +51,9 @@ def get_available_brokers() -> list:
     brokers = []
 
     # Check eToro
-    if os.getenv('ETORO_SUBSCRIPTION_KEY') and os.getenv('ETORO_USERNAME'):
+    etoro_public_key = os.getenv('ETORO_PUBLIC_API_KEY') or os.getenv('ETORO_SUBSCRIPTION_KEY')
+    etoro_user_key = os.getenv('ETORO_USER_KEY') or os.getenv('ETORO_API_KEY')
+    if etoro_public_key and etoro_user_key:
         brokers.append('etoro')
 
     # Check Alpaca

@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}Session Analysis - Ploutos Demo Monitor{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Equity Curve</h2>
+    <canvas id="equity-chart"></canvas>
+</div>
+
+<div class="card">
+    <h2>Live Timeline</h2>
+    <div id="timeline"><div class="loading">Loading...</div></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let equityChart = null;
+
+async function loadEquity() {
+    const response = await fetch("/api/demo/equity");
+    const payload = await response.json();
+    const curve = payload.data.equity_curve || [];
+
+    if (!curve.length) {
+        document.getElementById("timeline").innerHTML = '<div class="item muted">No session equity yet.</div>';
+        return;
+    }
+
+    const labels = curve.map((point) => formatDate(point.timestamp));
+    const values = curve.map((point) => point.equity || 0);
+    const ctx = document.getElementById("equity-chart").getContext("2d");
+    if (equityChart) {
+        equityChart.destroy();
+    }
+    equityChart = new Chart(ctx, {
+        type: "line",
+        data: {
+            labels,
+            datasets: [{
+                label: "Equity",
+                data: values,
+                borderColor: "#7dd3fc",
+                backgroundColor: "rgba(125, 211, 252, 0.12)",
+                fill: true,
+                tension: 0.25
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { labels: { color: "#cbd5e1" } } },
+            scales: {
+                x: { ticks: { color: "#94a3b8" }, grid: { color: "#1e293b" } },
+                y: {
+                    ticks: {
+                        color: "#94a3b8",
+                        callback: (value) => "$" + Number(value).toLocaleString()
+                    },
+                    grid: { color: "#1e293b" }
+                }
+            }
+        }
+    });
+}
+
+async function loadTimeline() {
+    const response = await fetch("/api/demo/timeline?limit=120");
+    const payload = await response.json();
+    const events = payload.data.events || [];
+    document.getElementById("timeline").innerHTML = events.length ? `
+        <table>
+            <thead><tr><th>Time</th><th>Type</th><th>Symbol</th><th>Action</th><th>Reason</th><th>Details</th></tr></thead>
+            <tbody>
+                ${events.map((event) => `
+                    <tr>
+                        <td>${formatDate(event.timestamp)}</td>
+                        <td>${event.type || "-"}</td>
+                        <td>${event.symbol || event.ticker || "-"}</td>
+                        <td>${event.action || event.side || "-"}</td>
+                        <td>${event.reason || "-"}</td>
+                        <td class="muted">${JSON.stringify(event.details || {})}</td>
+                    </tr>
+                `).join("")}
+            </tbody>
+        </table>
+    ` : '<div class="item muted">No session event yet.</div>';
+}
+
+async function refreshSession() {
+    await Promise.all([loadEquity(), loadTimeline()]);
+}
+
+refreshSession();
+setInterval(refreshSession, 5000);
+</script>
+{% endblock %}

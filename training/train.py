@@ -47,6 +47,15 @@ from config.hardware import auto_scale_config, detect_hardware, compute_optimal_
 from config.schema import validate_config
 from core.features import FeatureEngineer  # Turbo Init
 from core.model_support import predict_with_optional_recurrence
+from core.promotion_gate import (
+    evaluate_walk_forward_promotion,
+    promotion_thresholds_from_config,
+)
+from core.evidence_hardening import (
+    evaluate_backtest_artifact,
+    evaluate_walk_forward_artifact,
+    reconcile_equity,
+)
 from core.shared_memory_manager import SharedDataManager  # V9 Shared Memory
 
 logger = setup_logging(__name__, "train.log")
@@ -183,17 +192,20 @@ def train_single_fold(
     n_envs = config.get("training", {}).get("n_envs", 4)
     use_shared_memory = config.get("training", {}).get("use_shared_memory", False)
     shm_manager = None
-    
+
     # [FAST] V9 Shared Memory: Optimisation RAM
     if use_shared_memory:
         try:
-            logger.info(f"  [FAST] V9: Loading TRAIN data into Shared Memory for {n_envs} workers...")
+            logger.info(
+                f"  [FAST] V9: Loading TRAIN data into Shared Memory for {n_envs} workers..."
+            )
             shm_manager = SharedDataManager()
             # On remplace le gros dict de DF par un petit dict de Metadata
             train_data = shm_manager.put_data(train_data)
         except Exception as e:
             logger.error(f"Failed to init Shared Memory: {e}")
-            if shm_manager: shm_manager.cleanup()
+            if shm_manager:
+                shm_manager.cleanup()
             raise e
 
     try:
@@ -202,14 +214,18 @@ def train_single_fold(
             # RecurrentPPO necessite DummyVecEnv (pas SubprocVecEnv)
             envs = DummyVecEnv(
                 [
-                    make_env(train_data, macro_data, config, mode="train", features_precomputed=True)
+                    make_env(
+                        train_data, macro_data, config, mode="train", features_precomputed=True
+                    )
                     for _ in range(n_envs)
                 ]
             )
         else:
             envs = SubprocVecEnv(
                 [
-                    make_env(train_data, macro_data, config, mode="train", features_precomputed=True)
+                    make_env(
+                        train_data, macro_data, config, mode="train", features_precomputed=True
+                    )
                     for _ in range(n_envs)
                 ]
             )
@@ -304,9 +320,7 @@ def train_single_fold(
             _progress_bar = True
         except ImportError:
             _progress_bar = False
-        model.learn(
-            total_timesteps=timesteps, callback=[checkpoint_cb], progress_bar=_progress_bar
-        )
+        model.learn(total_timesteps=timesteps, callback=[checkpoint_cb], progress_bar=_progress_bar)
 
         # Sauvegarder le modele
         model_path = os.path.join(fold_dir, "model")
@@ -375,8 +389,10 @@ def evaluate_on_test(
     obs, info = test_env.reset()
     done = False
     equity_curve = [test_env.initial_balance]
+    timestamps = [test_data[test_env.tickers[0]].index[min(test_env.current_step, len(test_data[test_env.tickers[0]]) - 1)]]
     recurrent_state = None
     episode_start = np.array([True], dtype=bool)
+    max_equity_error = 0.0
 
     while not done:
         # Normaliser l'observation comme pendant le training
@@ -388,12 +404,24 @@ def evaluate_on_test(
             recurrent_state=recurrent_state,
             episode_start=episode_start,
         )
+        current_prices = {
+            ticker: float(test_env._get_current_price(ticker)) for ticker in test_env.tickers
+        }
         obs, reward, done, truncated, info = test_env.step(action)
         episode_start = np.array([done], dtype=bool)
         equity_curve.append(info["equity"])
+        reconciliation = reconcile_equity(
+            balance=float(test_env.balance),
+            positions=test_env.portfolio,
+            prices=current_prices,
+            reported_equity=float(info["equity"]),
+        )
+        max_equity_error = max(max_equity_error, float(reconciliation["error"]))
+        current_idx = min(test_env.current_step, len(test_data[test_env.tickers[0]]) - 1)
+        timestamps.append(test_data[test_env.tickers[0]].index[current_idx])
 
     # Calculer metriques
-    equity_series = pd.Series(equity_curve)
+    equity_series = pd.Series(equity_curve, index=pd.Index(timestamps[: len(equity_curve)]))
     returns = equity_series.pct_change().dropna()
 
     total_return = (equity_series.iloc[-1] - equity_series.iloc[0]) / equity_series.iloc[0]
@@ -403,6 +431,11 @@ def evaluate_on_test(
     interval = config.get("data", {}).get("interval", "1h")
     if len(returns) > 1 and returns.std() > 0:
         sharpe_ratio = (returns.mean() / returns.std()) * _annualization_factor(interval)
+    daily_equity = equity_series.groupby(pd.to_datetime(equity_series.index).normalize()).last()
+    daily_returns = daily_equity.pct_change().dropna()
+    max_daily_loss = abs(float(daily_returns.min())) if not daily_returns.empty and daily_returns.min() < 0 else 0.0
+    closed_trades = info.get("winning_trades", 0) + info.get("losing_trades", 0)
+    win_rate = info.get("winning_trades", 0) / closed_trades if closed_trades > 0 else 0.0
 
     return {
         "total_return": float(total_return),
@@ -411,7 +444,10 @@ def evaluate_on_test(
         "total_trades": info.get("total_trades", 0),
         "winning_trades": info.get("winning_trades", 0),
         "losing_trades": info.get("losing_trades", 0),
+        "win_rate": float(win_rate),
         "final_equity": float(equity_series.iloc[-1]),
+        "max_daily_loss": float(max_daily_loss),
+        "max_equity_error": float(max_equity_error),
         "n_steps": len(equity_curve),
     }
 
@@ -477,7 +513,7 @@ def run_walk_forward(
         )
     except Exception as e:
         logger.warning(f"Failed to fetch macro data (index issue?): {e}")
-        macro_data = pd.DataFrame() # Empty DF
+        macro_data = pd.DataFrame()  # Empty DF
 
     if macro_data.empty:
         logger.warning("No macro data available, proceeding without")
@@ -491,6 +527,7 @@ def run_walk_forward(
         train_years=wf_cfg.get("train_years", 1),
         test_months=wf_cfg.get("test_months", 6),
         step_months=wf_cfg.get("step_months", 6),
+        embargo_months=wf_cfg.get("embargo_months", 1),
     )
 
     if not splits:
@@ -573,6 +610,16 @@ def run_walk_forward(
             avg_metrics["fold_idx"] = fold_idx
             avg_metrics["train_period"] = f"{split['train_start']}->{split['train_end']}"
             avg_metrics["test_period"] = f"{split['test_start']}->{split['test_end']}"
+            avg_metrics["accounting"] = {
+                "max_equity_error": float(avg_metrics.get("max_equity_error", 0.0))
+            }
+            avg_metrics["evidence"] = evaluate_backtest_artifact(
+                avg_metrics,
+                interval=config.get("data", {}).get("interval", "1h"),
+                test_period=avg_metrics["test_period"],
+                accounting=avg_metrics["accounting"],
+                initial_balance=float(config.get("environment", {}).get("initial_balance", 0.0)),
+            )
             all_metrics.append(avg_metrics)
         else:
             metrics = train_single_fold(
@@ -589,6 +636,14 @@ def run_walk_forward(
             metrics["fold_idx"] = fold_idx
             metrics["train_period"] = f"{split['train_start']}->{split['train_end']}"
             metrics["test_period"] = f"{split['test_start']}->{split['test_end']}"
+            metrics["accounting"] = {"max_equity_error": float(metrics.get("max_equity_error", 0.0))}
+            metrics["evidence"] = evaluate_backtest_artifact(
+                metrics,
+                interval=config.get("data", {}).get("interval", "1h"),
+                test_period=metrics["test_period"],
+                accounting=metrics["accounting"],
+                initial_balance=float(config.get("environment", {}).get("initial_balance", 0.0)),
+            )
             all_metrics.append(metrics)
 
     # 6. Rapport final
@@ -599,6 +654,8 @@ def run_walk_forward(
     returns = [m["total_return"] for m in all_metrics]
     sharpes = [m["sharpe_ratio"] for m in all_metrics]
     drawdowns = [m["max_drawdown"] for m in all_metrics]
+    win_rates = [m.get("win_rate", 0.0) for m in all_metrics]
+    max_daily_losses = [m.get("max_daily_loss", 0.0) for m in all_metrics]
 
     for m in all_metrics:
         logger.info(
@@ -613,8 +670,21 @@ def run_walk_forward(
     logger.info(f"  Avg Return:  {np.mean(returns):+.2%} (std: {np.std(returns):.2%})")
     logger.info(f"  Avg Sharpe:  {np.mean(sharpes):.2f} (std: {np.std(sharpes):.2f})")
     logger.info(f"  Avg MaxDD:   {np.mean(drawdowns):.2%}")
+    logger.info(f"  Avg Daily Loss: {np.mean(max_daily_losses):.2%}")
+    logger.info(f"  Avg WinRate: {np.mean(win_rates):.1%}")
     logger.info(f"  Win Folds:   {sum(1 for r in returns if r > 0)}/{len(returns)}")
     logger.info(f"  Cumulative:  {np.prod([1 + r for r in returns]) - 1:+.2%}")
+
+    promotion_gate = evaluate_walk_forward_promotion(
+        returns=returns,
+        sharpes=sharpes,
+        drawdowns=drawdowns,
+        thresholds=promotion_thresholds_from_config(config),
+    )
+    logger.info(
+        "  Promotion:   %s",
+        "PASS" if promotion_gate["passed"] else "FAIL",
+    )
 
     # Sauvegarder resultats
     results = {
@@ -625,8 +695,16 @@ def run_walk_forward(
         "avg_return": float(np.mean(returns)),
         "avg_sharpe": float(np.mean(sharpes)),
         "avg_max_drawdown": float(np.mean(drawdowns)),
+        "avg_max_daily_loss": float(np.mean(max_daily_losses)),
+        "avg_win_rate": float(np.mean(win_rates)),
         "cumulative_return": float(np.prod([1 + r for r in returns]) - 1),
         "win_fold_ratio": sum(1 for r in returns if r > 0) / len(returns),
+        "promotion_gate": promotion_gate,
+        "evidence": evaluate_walk_forward_artifact(
+            all_metrics,
+            interval=config.get("data", {}).get("interval", "1h"),
+            initial_balance=float(config.get("environment", {}).get("initial_balance", 0.0)),
+        ),
         "folds": all_metrics,
     }
 

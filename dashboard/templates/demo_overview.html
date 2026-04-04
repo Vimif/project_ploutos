@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block title %}Overview - Ploutos Demo Monitor{% endblock %}
+
+{% block content %}
+<div class="grid">
+    <div class="card"><div id="equity" class="stat-value neutral">-</div><div class="stat-label">Equity</div></div>
+    <div class="card"><div id="cash" class="stat-value neutral">-</div><div class="stat-label">Cash</div></div>
+    <div class="card"><div id="positions-count" class="stat-value neutral">-</div><div class="stat-label">Open Positions</div></div>
+    <div class="card"><div id="orders-count" class="stat-value neutral">-</div><div class="stat-label">Open Orders</div></div>
+</div>
+
+<div class="grid">
+    <div class="card">
+        <h2>Critical Alerts</h2>
+        <div id="alerts" class="list"><div class="loading">Loading...</div></div>
+    </div>
+    <div class="card">
+        <h2>Session Health</h2>
+        <div id="health" class="list"><div class="loading">Loading...</div></div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Positions</h2>
+    <div id="positions"><div class="loading">Loading...</div></div>
+</div>
+
+<div class="card">
+    <h2>Open Orders</h2>
+    <div id="orders"><div class="loading">Loading...</div></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function loadOverview() {
+    const response = await fetch("/api/demo/overview");
+    const payload = await response.json();
+    const data = payload.data;
+
+    document.getElementById("equity").textContent = formatCurrency(data.account.portfolio_value || data.account.equity || 0);
+    document.getElementById("cash").textContent = formatCurrency(data.account.cash || 0);
+    document.getElementById("positions-count").textContent = (data.positions || []).length;
+    document.getElementById("orders-count").textContent = (data.open_orders || []).length;
+
+    const alerts = data.alerts || [];
+    document.getElementById("alerts").innerHTML = alerts.length ? alerts.map((alert) => `
+        <div class="item">
+            <span class="pill ${alert.level || 'warning'}">${alert.level || 'warning'}</span>
+            <strong style="margin-left:10px">${alert.reason}</strong>
+        </div>
+    `).join("") : '<div class="item muted">No critical alert at the moment.</div>';
+
+    const health = [
+        { label: "Broker connected", value: data.data_health.broker_connected ? "Yes" : "No" },
+        { label: "Broker error", value: data.data_health.broker_error || "-" },
+        { label: "Session id", value: data.session.session_id || "-" },
+        { label: "Latest event", value: formatDate(data.session.latest_event_at) },
+        { label: "Latest equity", value: formatDate(data.session.latest_equity_at) },
+    ];
+    document.getElementById("health").innerHTML = health.map((row) => `
+        <div class="item"><strong>${row.label}</strong><div class="muted">${row.value}</div></div>
+    `).join("");
+
+    document.getElementById("positions").innerHTML = (data.positions || []).length ? `
+        <table>
+            <thead><tr><th>Symbol</th><th>Qty</th><th>Entry</th><th>Current</th><th>Unrealized PnL</th></tr></thead>
+            <tbody>
+                ${(data.positions || []).map((position) => `
+                    <tr>
+                        <td>${position.symbol}</td>
+                        <td>${Number(position.qty || 0).toFixed(4)}</td>
+                        <td>${formatCurrency(position.avg_entry_price || 0)}</td>
+                        <td>${formatCurrency(position.current_price || 0)}</td>
+                        <td class="${Number(position.unrealized_pl || 0) >= 0 ? 'positive' : 'negative'}">${formatCurrency(position.unrealized_pl || 0)}</td>
+                    </tr>
+                `).join("")}
+            </tbody>
+        </table>
+    ` : '<div class="item muted">No open position.</div>';
+
+    document.getElementById("orders").innerHTML = (data.open_orders || []).length ? `
+        <table>
+            <thead><tr><th>Symbol</th><th>Side</th><th>Status</th><th>Qty</th></tr></thead>
+            <tbody>
+                ${(data.open_orders || []).map((order) => `
+                    <tr>
+                        <td>${order.symbol || "-"}</td>
+                        <td>${order.side || "-"}</td>
+                        <td>${order.status || "-"}</td>
+                        <td>${order.qty || "-"}</td>
+                    </tr>
+                `).join("")}
+            </tbody>
+        </table>
+    ` : '<div class="item muted">No open order.</div>';
+}
+
+loadOverview();
+setInterval(loadOverview, 5000);
+</script>
+{% endblock %}

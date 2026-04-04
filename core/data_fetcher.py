@@ -17,6 +17,110 @@ load_dotenv()
 from core.utils import setup_logging
 logger = setup_logging(__name__)
 
+
+def _interval_to_minutes(interval):
+    if not interval:
+        return None
+    mapping = {
+        '1m': 1,
+        '5m': 5,
+        '15m': 15,
+        '30m': 30,
+        '1h': 60,
+        '4h': 240,
+        '1d': 1440,
+    }
+    return mapping.get(str(interval).lower())
+
+
+def _extract_interval_from_filename(filepath, ticker):
+    stem = os.path.splitext(os.path.basename(filepath))[0]
+    prefix = f"{ticker}_"
+    if stem.lower().startswith(prefix.lower()):
+        return stem[len(prefix):].lower()
+    return None
+
+
+def _select_local_dataset_file(files, ticker, interval):
+    if not files:
+        return None, None
+
+    requested_interval = str(interval).lower()
+    for filepath in sorted(files):
+        source_interval = _extract_interval_from_filename(filepath, ticker)
+        if source_interval == requested_interval:
+            return filepath, source_interval
+
+    requested_minutes = _interval_to_minutes(requested_interval)
+    downsample_candidates = []
+    for filepath in sorted(files):
+        source_interval = _extract_interval_from_filename(filepath, ticker)
+        source_minutes = _interval_to_minutes(source_interval)
+        if (
+            requested_minutes
+            and source_minutes
+            and source_minutes < requested_minutes
+            and requested_minutes % source_minutes == 0
+        ):
+            downsample_candidates.append((source_minutes, filepath, source_interval))
+
+    if downsample_candidates:
+        source_minutes, filepath, source_interval = max(
+            downsample_candidates, key=lambda item: item[0]
+        )
+        del source_minutes
+        return filepath, source_interval
+
+    fallback = sorted(files)[0]
+    return fallback, _extract_interval_from_filename(fallback, ticker)
+
+
+def _normalize_local_dataframe(df):
+    if not isinstance(df.index, pd.DatetimeIndex):
+        df.index = pd.to_datetime(df.index)
+
+    if hasattr(df.index, "tz") and df.index.tz is not None:
+        df.index = df.index.tz_localize(None)
+
+    df = df.copy()
+    df.columns = [str(col).title() for col in df.columns]
+    required = ["Open", "High", "Low", "Close", "Volume"]
+    missing = [column for column in required if column not in df.columns]
+    if missing:
+        raise ValueError(f"Missing required OHLCV columns: {missing}")
+
+    for column in required:
+        df[column] = pd.to_numeric(df[column], errors='coerce')
+
+    df = df[required]
+    df = df.dropna()
+    df = df[~df.index.duplicated(keep='first')]
+    return df.sort_index()
+
+
+def _resample_local_ohlcv(df, source_interval, target_interval):
+    source_minutes = _interval_to_minutes(source_interval)
+    target_minutes = _interval_to_minutes(target_interval)
+    if (
+        not source_minutes
+        or not target_minutes
+        or source_minutes >= target_minutes
+        or target_minutes % source_minutes != 0
+    ):
+        return df
+
+    resampled = df.resample(str(target_interval).lower()).agg(
+        {
+            "Open": "first",
+            "High": "max",
+            "Low": "min",
+            "Close": "last",
+            "Volume": "sum",
+        }
+    )
+    resampled = resampled.dropna(subset=["Open", "High", "Low", "Close"])
+    return resampled[["Open", "High", "Low", "Close", "Volume"]]
+
 class UniversalDataFetcher:
     """
     Récupère les données de marché depuis plusieurs sources
@@ -487,14 +591,24 @@ def download_data(tickers, period='2y', interval='1h', max_workers=3, dataset_pa
                 logger.warning(f"⚠️ {ticker} not found in {dataset_path}")
                 continue
                 
-            # Prendre le premier fichier correspondant
-            filepath = files[0]
+            filepath, source_interval = _select_local_dataset_file(files, ticker, interval)
             try:
                 df = pd.read_csv(filepath, index_col=0, parse_dates=True)
-                # Standardisation colonnes
-                df.columns = df.columns.str.title() # Open, High...
+                df = _normalize_local_dataframe(df)
+                requested_interval = str(interval).lower()
+                if source_interval and source_interval != requested_interval:
+                    resampled = _resample_local_ohlcv(df, source_interval, requested_interval)
+                    if not resampled.equals(df):
+                        logger.warning(
+                            f"⚠️ {ticker}: resampled local {source_interval} data to {requested_interval}"
+                        )
+                        df = resampled
+                    else:
+                        logger.warning(
+                            f"⚠️ {ticker}: requested {requested_interval} but only {source_interval} local data is available"
+                        )
                 results[ticker] = df
-                logger.info(f"  - {ticker}: {len(df)} rows")
+                logger.info(f"  - {ticker}: {len(df)} rows ({source_interval or 'untyped'})")
             except Exception as e:
                 logger.error(f"❌ Error loading {filepath}: {e}")
                 

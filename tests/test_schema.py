@@ -64,6 +64,13 @@ class TestValidateConfig:
         config = make_valid_config()
         config["optuna"] = {"timesteps_per_trial": 1_000}
         config["wandb"] = {"enabled": False, "project": "ploutos", "entity": None}
+        config["live"] = {"ensemble_size": 3, "regime_fast_ma": 20, "regime_slow_ma": 50}
+        config["strategy"] = {
+            "family": "ppo_ensemble",
+            "candidate_families": ["ppo_single", "ppo_ensemble", "supervised_ranker"],
+            "rule_fast_ma": 20,
+            "rule_slow_ma": 50,
+        }
 
         assert validate_config(config) == []
 
@@ -109,4 +116,18 @@ class TestValidateConfig:
         config["training"]["n_envs"] = True
 
         with pytest.raises(ConfigValidationError, match="training.n_envs|got bool"):
+            validate_config(config)
+
+    def test_strategy_family_must_be_supported(self):
+        config = make_valid_config()
+        config["strategy"] = {"family": "transformer_magic"}
+
+        with pytest.raises(ConfigValidationError, match="strategy.family"):
+            validate_config(config)
+
+    def test_strategy_rule_fast_ma_must_be_lower_than_slow_ma(self):
+        config = make_valid_config()
+        config["strategy"] = {"family": "rule_momentum_regime", "rule_fast_ma": 50, "rule_slow_ma": 20}
+
+        with pytest.raises(ConfigValidationError, match="strategy.rule_fast_ma"):
             validate_config(config)

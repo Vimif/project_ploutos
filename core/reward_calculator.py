@@ -15,6 +15,7 @@ class RewardCalculator:
     def __init__(
         self,
         reward_scaling: float = 1.5,
+        use_sharpe_penalty: bool = True,
         use_drawdown_penalty: bool = True,
         drawdown_penalty_factor: float = 3.0,
         drawdown_threshold: float = 0.10,
@@ -22,6 +23,7 @@ class RewardCalculator:
         variance_floor: float = DSR_VARIANCE_FLOOR,
     ):
         self.reward_scaling = reward_scaling
+        self.use_sharpe_penalty = use_sharpe_penalty
         self.use_drawdown_penalty = use_drawdown_penalty
         self.drawdown_penalty_factor = drawdown_penalty_factor
         self.drawdown_threshold = drawdown_threshold
@@ -42,6 +44,12 @@ class RewardCalculator:
         current_equity: float,
         peak_value: float,
         trades_executed: int,
+        trade_reward: float = 0.0,
+        win_rate: float = 0.0,
+        bonus_good_return: float = 0.0,
+        bonus_high_winrate: float = 0.0,
+        good_return_threshold: float = 0.0,
+        high_winrate_threshold: float = 0.0,
     ) -> float:
         """Calculate reward for one step.
 
@@ -55,7 +63,7 @@ class RewardCalculator:
             Scaled reward value.
         """
         if prev_equity <= 0:
-            return 0.0
+            return trade_reward * self.reward_scaling
 
         ret = (current_equity - prev_equity) / prev_equity
 
@@ -75,7 +83,16 @@ class RewardCalculator:
 
         std_dev = np.sqrt(variance)
         dsr = (ret - old_mean) / std_dev
-        reward = np.clip(dsr * 0.1, -1.0, 1.0)
+        if self.use_sharpe_penalty:
+            reward = np.clip(dsr * 0.1, -1.0, 1.0)
+        else:
+            reward = np.clip(ret * 100.0, -1.0, 1.0)
+
+        reward += trade_reward
+        if ret >= good_return_threshold:
+            reward += bonus_good_return
+        if win_rate >= high_winrate_threshold:
+            reward += bonus_high_winrate
 
         # Drawdown penalty
         if self.use_drawdown_penalty and peak_value > 0:

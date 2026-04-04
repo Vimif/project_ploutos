@@ -20,8 +20,8 @@ environment:
   sec_fee: 0.0000221
   finra_taf: 0.000145
   max_steps: 2500
-  buy_pct: 0.20
-  max_position_pct: 0.25
+  buy_pct: 0.15
+  max_position_pct: 0.15
   max_trades_per_day: 10
   min_holding_period: 2
   slippage_model: realistic
@@ -37,25 +37,20 @@ environment:
   steps_per_trading_week: 78
   drawdown_threshold: 0.10
   max_features_per_ticker: 30  # 0 = all features, >0 = top N by variance (reduces obs dims)
-  stop_loss_pct: 0.05  # Auto-sell positions at -5% loss (0 = disabled)
+  stop_loss_pct: 0.06  # Auto-sell positions at -6% loss (0 = disabled)
 
 data:
   tickers:
     - NVDA
     - MSFT
     - AAPL
-    - GOOGL
     - AMZN
     - META
     - TSLA
     - SPY
     - QQQ
-    - VOO
-    - VTI
-    - XLE
-    - XLF
     - XLK
-    - XLV
+    - XLF
   period: '6y'
   interval: '1h'
   dataset_path: ./data/dataset_v8/
@@ -90,3 +85,50 @@ eval:
   eval_freq: 10000
   n_eval_episodes: 5
   best_model_save_path: ./models/v8_best/
+
+live:
+  ensemble_size: 3
+  min_confidence: 0.67
+  buy_pct: 0.15
+  max_position_pct: 0.15
+  max_open_positions: 5
+  stop_loss_pct: 0.06
+  take_profit_pct: 0.15
+  max_cost_pct: 0.005
+  max_drawdown: 0.12
+  max_daily_loss: 0.03
+  inactivity_hours: 4
+  interval_minutes: 60
+  regime_fast_ma: 20
+  regime_slow_ma: 50
+  regime_vix_threshold: 30.0
+  dedupe_window_seconds: 3300
+  history_days: 30
+  order_fill_timeout_seconds: 30
+  order_poll_interval_seconds: 1.0
+  promotion_sharpe_min: 0.8
+  promotion_win_fold_ratio_min: 0.60
+  promotion_cumulative_return_min: 0.0
+  promotion_loss_rate_max: 0.20
+  order_min_notional: 10.0
+
+strategy:
+  family: ppo_ensemble
+  candidate_families:
+    - ppo_single
+    - ppo_ensemble
+    - recurrent_ppo
+    - supervised_ranker
+    - rule_momentum_regime
+  phase2_interval: '4h'
+  phase2_top_k: 2
+  monte_carlo_sims: 20
+  monte_carlo_noise_std: 0.005
+  supervised_forward_bars: 4
+  supervised_buy_threshold: 0.002
+  supervised_sell_threshold: 0.0
+  rule_fast_ma: 20
+  rule_slow_ma: 50
+  rule_momentum_lookback: 4
+  ensemble_size: 3
+  extreme_return_threshold: 5.0

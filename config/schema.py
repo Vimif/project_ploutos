@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from core.exceptions import ConfigValidationError
+from training.strategy_policies import SUPPORTED_STRATEGY_FAMILIES
 
 FieldType = type | tuple[type, ...]
 FieldSpec = tuple[FieldType, float | int | None, float | int | None]
@@ -73,6 +74,7 @@ SCHEMA: dict[str, dict[str, FieldSpec]] = {
         "train_years": (int, 1, 30),
         "test_months": (int, 1, 60),
         "step_months": (int, 1, 60),
+        "embargo_months": (int, 0, 24),
     },
     "network": {
         "net_arch": (list, None, None),
@@ -96,6 +98,48 @@ SCHEMA: dict[str, dict[str, FieldSpec]] = {
         "enabled": (bool, None, None),
         "project": (str, None, None),
         "entity": ((str, type(None)), None, None),
+    },
+    "live": {
+        "ensemble_size": (int, 1, 32),
+        "min_confidence": (float, 0.0, 1.0),
+        "buy_pct": (float, 0.01, 1.0),
+        "max_position_pct": (float, 0.01, 1.0),
+        "max_open_positions": (int, 1, 100),
+        "stop_loss_pct": (float, 0.0, 1.0),
+        "take_profit_pct": (float, 0.0, 10.0),
+        "max_cost_pct": (float, 0.0, 1.0),
+        "max_drawdown": (float, 0.0, 1.0),
+        "max_daily_loss": (float, 0.0, 1.0),
+        "inactivity_hours": ((int, float), 0.0, 168.0),
+        "interval_minutes": (int, 1, 1_440),
+        "regime_fast_ma": (int, 2, 500),
+        "regime_slow_ma": (int, 2, 500),
+        "regime_vix_threshold": ((int, float), 1.0, 100.0),
+        "dedupe_window_seconds": (int, 0, 86_400),
+        "history_days": (int, 5, 365),
+        "order_fill_timeout_seconds": (int, 1, 600),
+        "order_poll_interval_seconds": ((int, float), 0.1, 60.0),
+        "promotion_sharpe_min": ((int, float), -10.0, 10.0),
+        "promotion_win_fold_ratio_min": (float, 0.0, 1.0),
+        "promotion_cumulative_return_min": ((int, float), -1.0, 10.0),
+        "promotion_loss_rate_max": (float, 0.0, 1.0),
+        "order_min_notional": ((int, float), 0.0, 1_000_000.0),
+    },
+    "strategy": {
+        "family": (str, None, None),
+        "candidate_families": (list, None, None),
+        "phase2_interval": (str, None, None),
+        "phase2_top_k": (int, 1, 10),
+        "monte_carlo_sims": (int, 1, 1_000),
+        "monte_carlo_noise_std": (float, 0.0, 1.0),
+        "supervised_forward_bars": (int, 1, 128),
+        "supervised_buy_threshold": ((int, float), -1.0, 10.0),
+        "supervised_sell_threshold": ((int, float), -1.0, 10.0),
+        "rule_fast_ma": (int, 2, 500),
+        "rule_slow_ma": (int, 2, 500),
+        "rule_momentum_lookback": (int, 1, 252),
+        "ensemble_size": (int, 1, 32),
+        "extreme_return_threshold": ((int, float), 0.0, 1_000_000.0),
     },
 }
 
@@ -127,7 +171,9 @@ def _validate_bounds(section_name: str, key: str, value: Any, min_val: Any, max_
         raise ConfigValidationError(f"'{section_name}.{key}': {value} > maximum {max_val}")
 
 
-def _validate_section(section_name: str, section: dict[str, Any], fields: dict[str, FieldSpec]) -> None:
+def _validate_section(
+    section_name: str, section: dict[str, Any], fields: dict[str, FieldSpec]
+) -> None:
     known_keys = set(fields)
     unknown_keys = sorted(set(section) - known_keys)
     if unknown_keys:
@@ -162,6 +208,41 @@ def _validate_cross_field_constraints(config: dict[str, Any]) -> None:
             "PPO requires n_envs * n_steps >= batch_size."
         )
 
+    live = config.get("live", {})
+    fast_ma = live.get("regime_fast_ma")
+    slow_ma = live.get("regime_slow_ma")
+    if fast_ma is not None and slow_ma is not None and fast_ma >= slow_ma:
+        raise ConfigValidationError(
+            "live.regime_fast_ma must be strictly lower than live.regime_slow_ma."
+        )
+
+    strategy = config.get("strategy", {})
+    family = strategy.get("family")
+    if family is not None and family not in SUPPORTED_STRATEGY_FAMILIES:
+        raise ConfigValidationError(
+            "strategy.family must be one of "
+            f"{list(SUPPORTED_STRATEGY_FAMILIES)}."
+        )
+
+    candidate_families = strategy.get("candidate_families", [])
+    invalid_families = [
+        candidate_family
+        for candidate_family in candidate_families
+        if candidate_family not in SUPPORTED_STRATEGY_FAMILIES
+    ]
+    if invalid_families:
+        raise ConfigValidationError(
+            "strategy.candidate_families contains unsupported value(s): "
+            f"{invalid_families}. Supported families: {list(SUPPORTED_STRATEGY_FAMILIES)}"
+        )
+
+    rule_fast_ma = strategy.get("rule_fast_ma")
+    rule_slow_ma = strategy.get("rule_slow_ma")
+    if rule_fast_ma is not None and rule_slow_ma is not None and rule_fast_ma >= rule_slow_ma:
+        raise ConfigValidationError(
+            "strategy.rule_fast_ma must be strictly lower than strategy.rule_slow_ma."
+        )
+
 
 def validate_config(config: dict) -> list[str]:
     """Validate a YAML config and return non-fatal warnings.
@@ -183,9 +264,7 @@ def validate_config(config: dict) -> list[str]:
 
     missing_sections = sorted(section for section in REQUIRED_SECTIONS if section not in config)
     if missing_sections:
-        raise ConfigValidationError(
-            f"Missing required section(s): {', '.join(missing_sections)}"
-        )
+        raise ConfigValidationError(f"Missing required section(s): {', '.join(missing_sections)}")
 
     for section_name, fields in SCHEMA.items():
         section = config.get(section_name)

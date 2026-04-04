@@ -177,6 +177,15 @@ class TestConfidence:
 
         np.testing.assert_array_equal(ens.lstm_states[0], np.array([[1.0, 2.0]]))
 
+    def test_asset_confidences_returned(self, obs):
+        models = [MockModel(1), MockModel(1), MockModel(2)]
+        ens = EnsemblePredictor(models=models)
+
+        action, confidences = ens.predict_with_asset_confidences(obs)
+
+        assert action[0] == 1
+        assert abs(confidences[0] - 2 / 3) < 1e-6
+
 
 # ============================================================================
 # Tests n_models

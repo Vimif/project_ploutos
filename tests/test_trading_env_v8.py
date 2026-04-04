@@ -7,6 +7,7 @@ sys.modules.setdefault("torch", MagicMock())
 
 import pytest
 import numpy as np
+from core.evidence_hardening import reconcile_equity
 from core.environment import TradingEnv, VALID_MODES
 from conftest import make_market_data, make_macro_data
 
@@ -224,6 +225,48 @@ class TestSlippage:
 
 
 class TestTradeExecution:
+    def test_info_equity_matches_pre_step_prices(self, market_data):
+        env = TradingEnv(
+            market_data,
+            mode="backtest",
+            seed=42,
+            slippage_model="none",
+            spread_bps=0.0,
+            commission=0.0,
+            sec_fee=0.0,
+            finra_taf=0.0,
+        )
+        env.reset()
+
+        first_idx = market_data[env.tickers[0]].index[0]
+        second_idx = market_data[env.tickers[0]].index[1]
+        for offset, ticker in enumerate(env.tickers):
+            market_data[ticker].loc[first_idx, "Close"] = 100.0 + offset
+            market_data[ticker].loc[second_idx, "Close"] = 120.0 + offset
+            env.close_prices[ticker][0] = 100.0 + offset
+            env.close_prices[ticker][1] = 120.0 + offset
+
+        pre_step_prices = {ticker: float(env._get_current_price(ticker)) for ticker in env.tickers}
+        action = np.array([1] + [0] * (env.n_assets - 1))
+        _, _, _, _, info = env.step(action)
+
+        pre_step_reconciliation = reconcile_equity(
+            balance=float(env.balance),
+            positions=env.portfolio,
+            prices=pre_step_prices,
+            reported_equity=float(info["equity"]),
+        )
+        post_step_prices = {ticker: float(env._get_current_price(ticker)) for ticker in env.tickers}
+        post_step_reconciliation = reconcile_equity(
+            balance=float(env.balance),
+            positions=env.portfolio,
+            prices=post_step_prices,
+            reported_equity=float(info["equity"]),
+        )
+
+        assert pre_step_reconciliation["error"] == pytest.approx(0.0, abs=1e-6)
+        assert post_step_reconciliation["error"] > 1.0
+
     def test_reset(self, train_env):
         obs, info = train_env.reset()
         assert train_env.balance == train_env.initial_balance
@@ -361,6 +404,22 @@ class TestRewardParams:
         assert env.reward_overtrading_immediate == -0.1
         assert env.reward_invalid_trade == -0.03
         assert env.reward_bad_price == -0.1
+
+    def test_step_passes_trade_reward_to_reward_calculator(self, train_env, monkeypatch):
+        captured = {}
+
+        def fake_calculate(**kwargs):
+            captured.update(kwargs)
+            return 0.123
+
+        monkeypatch.setattr(train_env.reward_calculator, "calculate", fake_calculate)
+
+        train_env.reset()
+        action = np.array([1] + [0] * (train_env.n_assets - 1))
+        _, reward, _, _, _ = train_env.step(action)
+
+        assert captured["trade_reward"] == train_env.reward_buy_executed
+        assert abs(reward - 0.123) < 1e-9
 
 
 class TestTransactionModel:

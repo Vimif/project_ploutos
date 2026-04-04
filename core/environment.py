@@ -183,6 +183,7 @@ class TradingEnv(gym.Env):
         # Reward calculator (DSR + penalties)
         self.reward_calculator = RewardCalculator(
             reward_scaling=reward_scaling,
+            use_sharpe_penalty=use_sharpe_penalty,
             use_drawdown_penalty=use_drawdown_penalty,
             drawdown_penalty_factor=drawdown_penalty_factor,
             drawdown_threshold=drawdown_threshold,
@@ -360,6 +361,7 @@ class TradingEnv(gym.Env):
         self.entry_prices = {ticker: 0.0 for ticker in self.tickers}
         self.portfolio_value_history.clear()
         self.returns_history.clear()
+        self.portfolio_value_history.append(self.equity)
 
         self.reward_calculator.reset()
 
@@ -521,18 +523,26 @@ class TradingEnv(gym.Env):
     def _calculate_reward(self, total_reward: float, trades_executed: int) -> float:
         """Calcule la récompense basée sur le Differential Sharpe Ratio (DSR)."""
         if len(self.portfolio_value_history) < 2:
-            return 0.0
+            return float(total_reward)
 
         prev_equity = self.portfolio_value_history[-2]
 
         ret = (self.equity - prev_equity) / prev_equity if prev_equity > 0 else 0.0
         self.returns_history.append(ret)
+        closed_trades = self.winning_trades + self.losing_trades
+        win_rate = self.winning_trades / closed_trades if closed_trades > 0 else 0.0
 
         return self.reward_calculator.calculate(
             prev_equity=prev_equity,
             current_equity=self.equity,
             peak_value=self.peak_value,
             trades_executed=trades_executed,
+            trade_reward=total_reward,
+            win_rate=win_rate,
+            bonus_good_return=self.reward_good_return_bonus,
+            bonus_high_winrate=self.reward_high_winrate_bonus,
+            good_return_threshold=self.good_return_threshold,
+            high_winrate_threshold=self.high_winrate_threshold,
         )
 
     def _apply_slippage_buy(self, ticker: str, price: float) -> float:
