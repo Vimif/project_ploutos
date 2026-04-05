@@ -1,93 +1,67 @@
-# 🚀 Démarrage Rapide - Monitoring
+# Monitoring Quickstart
 
-## Installation en 5 minutes
+## 1. Install the web dependencies
 
-### 1️⃣ Installer Grafana + Prometheus
+```bash
+pip install -e ".[web]"
+```
 
-cd /root/ploutos/project_ploutos
-bash scripts/setup_grafana.sh
+## 2. Start the local dashboard
 
-text
-**⏱️ Temps : 2-3 minutes**
+```bash
+python dashboard/app.py
+```
 
-### 2️⃣ Importer le dashboard
+Open:
 
-python scripts/import_grafana_dashboard.py
+- `http://127.0.0.1:5000/demo/overview`
+- `http://127.0.0.1:5000/demo/session`
+- `http://127.0.0.1:5000/demo/insights`
 
-text
-**⏱️ Temps : 30 secondes**
+## 3. Produce a demo session
 
-### 3️⃣ Tester le système
+```bash
+python scripts/paper_trade.py --mode etoro --config config/config.yaml
+```
 
-python scripts/test_full_system.py
+If you do not want to hit the broker while testing the UI:
 
-text
-**⏱️ Temps : 1 minute**
+```bash
+python scripts/paper_trade.py --mode simulate --config config/config.yaml
+```
 
-### 4️⃣ Démarrer le bot
+## 4. Check health
 
-python -c "
-from trading.live_trader import LiveTrader
-trader = LiveTrader(paper_trading=True, monitoring_port=9090)
-Les métriques sont maintenant actives!
+```bash
+curl http://127.0.0.1:5000/api/health
+```
 
-"
+## 5. Review the important API payloads
 
-text
+```bash
+curl http://127.0.0.1:5000/api/demo/overview
+curl http://127.0.0.1:5000/api/demo/recommendations
+curl http://127.0.0.1:5000/api/demo/project-learning
+```
 
-### 5️⃣ Accéder au dashboard
+## What You Should See
 
-🌐 http://localhost:3000
-👤 Username: admin
-🔑 Password: admin
+- current account or simulated equity
+- recent trades and rejections
+- risk alerts
+- latest strategy or league context
+- recommendations grounded in both the live session and historical audits
 
-text
+## If No Session Appears
 
----
+- make sure `scripts/paper_trade.py` has written a session under `logs/paper_trading/`
+- check `http://127.0.0.1:5000/api/health`
+- inspect:
+  - `logs/dashboard_stdout.log`
+  - `logs/dashboard_stderr.log`
+  - the latest session `report.json`
 
-## ✅ Checklist de vérification
+## Historical Note
 
-- [ ] Prometheus accessible : http://localhost:9090
-- [ ] Métriques visibles : http://localhost:9090/metrics
-- [ ] Grafana accessible : http://localhost:3000
-- [ ] Dashboard importé : "Ploutos Trading Bot"
-- [ ] Alertes configurées (optionnel)
-
----
-
-## 🎯 Utilisation
-
-### Lancer le bot avec monitoring
-
-from trading.live_trader import LiveTrader
-
-trader = LiveTrader(
-paper_trading=True,
-monitoring_port=9090 # Port Prometheus
-)
-
-trader.run(check_interval_minutes=60)
-
-text
-
-### Vérifier les métriques
-
-curl http://localhost:9090/metrics | grep ploutos
-
-text
-
-### Visualiser dans Grafana
-1. Ouvrir http://localhost:3000
-2. Aller dans Dashboards
-3. Sélectionner "Ploutos Trading Bot - Live Monitoring"
-
----
-
-## 📊 Ce que vous voyez
-
-- **Portfolio en temps réel** : Valeur, cash, positions
-- **P&L quotidien** : Gains/pertes du jour
-- **Performance** : Win rate, Sharpe ratio
-- **Risques** : Circuit breaker, positions à risque
-- **Trades** : Historique et latence
-- **Erreurs** : Monitoring des erreurs système
+Older Grafana or Streamlit monitoring instructions are no longer current.
+Those assets now live under `legacy/`.

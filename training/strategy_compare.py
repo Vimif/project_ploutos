@@ -6,7 +6,6 @@ import copy
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -39,7 +38,7 @@ DEFAULT_COMPARE_OUTPUT_DIR = Path("logs") / "strategy_compare"
 def load_compare_config(config_path: str) -> dict:
     """Load and validate the compare configuration."""
 
-    with open(config_path, "r", encoding="utf-8") as handle:
+    with open(config_path, encoding="utf-8") as handle:
         config = yaml.safe_load(handle) or {}
     warnings = validate_config(config)
     for warning in warnings:
@@ -51,6 +50,14 @@ def resolve_strategy_settings(config: dict) -> dict:
     """Resolve strategy-bakeoff defaults from YAML config."""
 
     strategy_cfg = dict(config.get("strategy", {}))
+    raw_seed_offsets = strategy_cfg.get("seed_offsets", [0])
+    seed_offsets: list[int] = []
+    for offset in raw_seed_offsets:
+        normalized = int(offset)
+        if normalized not in seed_offsets:
+            seed_offsets.append(normalized)
+    if not seed_offsets:
+        seed_offsets = [0]
     return {
         "family": strategy_cfg.get("family", "ppo_ensemble"),
         "candidate_families": list(
@@ -64,6 +71,7 @@ def resolve_strategy_settings(config: dict) -> dict:
         "monte_carlo_sims": int(strategy_cfg.get("monte_carlo_sims", 20)),
         "monte_carlo_noise_std": float(strategy_cfg.get("monte_carlo_noise_std", 0.005)),
         "extreme_return_threshold": float(strategy_cfg.get("extreme_return_threshold", 5.0)),
+        "seed_offsets": seed_offsets,
     }
 
 
@@ -207,9 +215,9 @@ def _precompute_fold_features(
 def load_market_bundle(
     config: dict,
     *,
-    interval: Optional[str] = None,
+    interval: str | None = None,
     max_workers: int = 3,
-) -> tuple[dict[str, pd.DataFrame], Optional[pd.DataFrame]]:
+) -> tuple[dict[str, pd.DataFrame], pd.DataFrame | None]:
     """Load ticker OHLCV data plus aligned macro data."""
 
     runtime = _runtime_imports()
@@ -271,10 +279,12 @@ def build_protocol_snapshot(
         "phase2_top_k": strategy_settings["phase2_top_k"],
         "monte_carlo_sims": strategy_settings["monte_carlo_sims"],
         "monte_carlo_noise_std": strategy_settings["monte_carlo_noise_std"],
+        "seed_offsets": list(strategy_settings.get("seed_offsets", [0])),
+        "n_seed_variants": len(strategy_settings.get("seed_offsets", [0])),
     }
 
 
-def _macro_row(test_env, current_step: int) -> Optional[dict[str, float]]:
+def _macro_row(test_env, current_step: int) -> dict[str, float] | None:
     if not getattr(test_env, "macro_columns", None) or getattr(test_env, "macro_array", None) is None:
         return None
     if current_step >= len(test_env.macro_array):
@@ -377,7 +387,7 @@ def _apply_common_filters(
 def run_policy_backtest(
     policy,
     test_data: dict[str, pd.DataFrame],
-    macro_data: Optional[pd.DataFrame],
+    macro_data: pd.DataFrame | None,
     config: dict,
     *,
     interval: str,
@@ -527,7 +537,7 @@ def _simulate_crash(
 def run_policy_monte_carlo(
     policy,
     test_data: dict[str, pd.DataFrame],
-    macro_data: Optional[pd.DataFrame],
+    macro_data: pd.DataFrame | None,
     config: dict,
     *,
     interval: str,
@@ -567,7 +577,7 @@ def run_policy_monte_carlo(
 def run_policy_stress_test(
     policy,
     test_data: dict[str, pd.DataFrame],
-    macro_data: Optional[pd.DataFrame],
+    macro_data: pd.DataFrame | None,
     config: dict,
     *,
     interval: str,
@@ -781,11 +791,12 @@ def evaluate_candidate_family(
     *,
     config: dict,
     splits: list[dict],
-    macro_data: Optional[pd.DataFrame],
+    macro_data: pd.DataFrame | None,
     interval: str,
     monte_carlo_sims: int,
     monte_carlo_noise_std: float,
     extreme_return_threshold: float,
+    seed_offsets: list[int] | None = None,
 ) -> dict:
     """Train, evaluate, and score one candidate family across all folds."""
 
@@ -793,6 +804,7 @@ def evaluate_candidate_family(
     feature_engineer = runtime["FeatureEngineer"]()
     thresholds = promotion_thresholds_from_config(config)
     max_features = int(config.get("environment", {}).get("max_features_per_ticker", 0))
+    resolved_seed_offsets = [int(offset) for offset in (seed_offsets or [0])]
 
     fold_metrics: list[dict] = []
     monte_carlo_reports: list[dict] = []
@@ -805,52 +817,61 @@ def evaluate_candidate_family(
             feature_engineer=feature_engineer,
             max_features_per_ticker=max_features,
         )
-        fold_policy = build_strategy_policy(family, copy.deepcopy(config), seed=42 + (fold_idx * 1000))
-        fold_policy.fit(train_data, macro_data)
-        metrics = run_policy_backtest(
-            fold_policy,
-            test_data,
-            macro_data,
-            config,
-            interval=interval,
-        )
-        metrics["fold_idx"] = int(fold_idx)
-        metrics["train_period"] = f"{split['train_start']}->{split['train_end']}"
-        metrics["test_period"] = f"{split['test_start']}->{split['test_end']}"
-        metrics["feature_count"] = int(len(feature_columns))
-        metrics["evidence"] = evaluate_backtest_artifact(
-            metrics,
-            interval=interval,
-            test_period=metrics["test_period"],
-            accounting=metrics.get("accounting"),
-            initial_balance=float(config.get("environment", {}).get("initial_balance", 0.0)),
-            extreme_return_threshold=extreme_return_threshold,
-        )
-        fold_metrics.append(metrics)
-        policy_metadata.append(fold_policy.artifact_metadata())
+        for seed_offset in resolved_seed_offsets:
+            policy_seed = 42 + (fold_idx * 1000) + int(seed_offset)
+            fold_policy = build_strategy_policy(family, copy.deepcopy(config), seed=policy_seed)
+            fold_policy.fit(train_data, macro_data)
+            metrics = run_policy_backtest(
+                fold_policy,
+                test_data,
+                macro_data,
+                config,
+                interval=interval,
+            )
+            metrics["fold_idx"] = int(fold_idx)
+            metrics["seed_offset"] = int(seed_offset)
+            metrics["seed"] = int(policy_seed)
+            metrics["train_period"] = f"{split['train_start']}->{split['train_end']}"
+            metrics["test_period"] = f"{split['test_start']}->{split['test_end']}"
+            metrics["feature_count"] = int(len(feature_columns))
+            metrics["evidence"] = evaluate_backtest_artifact(
+                metrics,
+                interval=interval,
+                test_period=metrics["test_period"],
+                accounting=metrics.get("accounting"),
+                initial_balance=float(config.get("environment", {}).get("initial_balance", 0.0)),
+                extreme_return_threshold=extreme_return_threshold,
+            )
+            fold_metrics.append(metrics)
 
-        monte_carlo_reports.append(
-            run_policy_monte_carlo(
-                fold_policy,
-                test_data,
-                macro_data,
-                config,
-                interval=interval,
-                n_sims=monte_carlo_sims,
-                noise_std=monte_carlo_noise_std,
-                seed=fold_idx * 10_000,
+            metadata = fold_policy.artifact_metadata()
+            metadata["fold_idx"] = int(fold_idx)
+            metadata["seed_offset"] = int(seed_offset)
+            metadata["seed"] = int(policy_seed)
+            policy_metadata.append(metadata)
+
+            monte_carlo_reports.append(
+                run_policy_monte_carlo(
+                    fold_policy,
+                    test_data,
+                    macro_data,
+                    config,
+                    interval=interval,
+                    n_sims=monte_carlo_sims,
+                    noise_std=monte_carlo_noise_std,
+                    seed=(fold_idx * 10_000) + (int(seed_offset) * 100),
+                )
             )
-        )
-        stress_reports.append(
-            run_policy_stress_test(
-                fold_policy,
-                test_data,
-                macro_data,
-                config,
-                interval=interval,
+            stress_reports.append(
+                run_policy_stress_test(
+                    fold_policy,
+                    test_data,
+                    macro_data,
+                    config,
+                    interval=interval,
+                )
             )
-        )
-        fold_policy.close()
+            fold_policy.close()
 
     walk_forward = aggregate_walk_forward_metrics(
         fold_metrics,
@@ -870,6 +891,7 @@ def evaluate_candidate_family(
         "robustness": robustness,
         "policy_metadata": policy_metadata,
         "evidence_status": evidence_status,
+        "seed_offsets": resolved_seed_offsets,
     }
     candidate["selection_score"] = calculate_selection_score(candidate, thresholds)
     candidate["verdict"] = _candidate_verdict(candidate, thresholds)
@@ -903,9 +925,9 @@ def _beats_baseline(candidate: dict, baseline: dict) -> bool:
 def compare_strategy_families(
     *,
     config_path: str = "config/config.yaml",
-    output_dir: Optional[str] = None,
-    candidate_families: Optional[list[str]] = None,
-    phase2_top_k: Optional[int] = None,
+    output_dir: str | None = None,
+    candidate_families: list[str] | None = None,
+    phase2_top_k: int | None = None,
 ) -> dict:
     """Run the full model-family bake-off and return a leaderboard."""
 
@@ -947,6 +969,7 @@ def compare_strategy_families(
             monte_carlo_sims=strategy_settings["monte_carlo_sims"],
             monte_carlo_noise_std=strategy_settings["monte_carlo_noise_std"],
             extreme_return_threshold=strategy_settings["extreme_return_threshold"],
+            seed_offsets=strategy_settings["seed_offsets"],
         )
         for family in families
     ]
@@ -975,6 +998,7 @@ def compare_strategy_families(
                 monte_carlo_sims=strategy_settings["monte_carlo_sims"],
                 monte_carlo_noise_std=strategy_settings["monte_carlo_noise_std"],
                 extreme_return_threshold=min(strategy_settings["extreme_return_threshold"], 3.0),
+                seed_offsets=strategy_settings["seed_offsets"],
             )
             for family in phase2_families
         ]

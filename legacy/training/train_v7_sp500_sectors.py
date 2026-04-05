@@ -8,12 +8,12 @@ secteur GICS du S&P 500, puis entrainement PPO sur ces ~22 tickers.
 Usage:
     python training/train_v7_sp500_sectors.py
     python training/train_v7_sp500_sectors.py --force-rescan
-    python training/train_v7_sp500_sectors.py --config config/training_config_v7_sp500.yaml
+    python legacy/training/train_v7_sp500_sectors.py --config legacy/config/training_config_v7_sp500.yaml
 """
 
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import warnings
 warnings.filterwarnings('ignore', message='.*Gym has been unmaintained.*')
@@ -392,7 +392,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Entrainement V7 - S&P 500 Sectors')
     parser.add_argument(
         '--config', type=str,
-        default='config/training_config_v7_sp500.yaml',
+        default='legacy/config/training_config_v7_sp500.yaml',
         help='Chemin config YAML',
     )
     parser.add_argument(

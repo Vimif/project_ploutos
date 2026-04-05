@@ -1,247 +1,85 @@
-# 📊 Monitoring Ploutos Trading
+# Monitoring
 
-## 🎯 Vue d'ensemble
+The supported monitoring surface for Ploutos is the local Flask dashboard under
+`dashboard/`.
 
-Système de monitoring complet avec Prometheus + Grafana pour surveillance en temps réel.
+It is centered on the eToro demo session and stays read-only in V1.
 
----
+## Current Monitoring Stack
 
-## 🚀 Installation
+- dashboard server: `python dashboard/app.py`
+- live session source: `logs/paper_trading/<session_id>/`
+- broker truth source: eToro demo account through the live broker adapter
+- historical context:
+  - `logs/strategy_compare/**/strategy_leaderboard.json`
+  - `logs/profitability/*.json`
+  - `logs/league_batches/**/league_leaderboard.json`
+  - `logs/league_batches/**/project_learning.json`
 
-### 1. Installer Prometheus + Grafana
+The old Grafana or Streamlit monitoring stack has been archived under `legacy/`
+and is no longer the supported path.
 
-cd /root/ploutos/project_ploutos
-bash scripts/setup_grafana.sh
+## Pages
 
-text
+- `/demo/overview`
+- `/demo/session`
+- `/demo/insights`
 
-**Installation complète :**
-- ✅ Prometheus (collecte métriques)
-- ✅ Grafana (visualisation)
-- ✅ Configuration automatique
-- ✅ Démarrage automatique
+## API Endpoints
 
-### 2. Importer le dashboard
+- `GET /api/demo/overview`
+- `GET /api/demo/timeline`
+- `GET /api/demo/equity`
+- `GET /api/demo/diagnostics`
+- `GET /api/demo/recommendations`
+- `GET /api/demo/historical-context`
+- `GET /api/demo/league`
+- `GET /api/demo/project-learning`
+- `GET /api/health`
 
-python scripts/import_grafana_dashboard.py
+Compatibility endpoints backed by the same session files also remain available:
 
-text
+- `GET /api/db/trades`
+- `GET /api/db/evolution`
 
-### 3. Accéder à Grafana
+## Canonical Session Files
 
-URL: http://localhost:3000
-Username: admin
-Password: admin (à changer)
+Each demo session writes to:
 
-text
+- `session_meta.json`
+- `events.jsonl`
+- `equity.jsonl`
+- `report.json`
+- `journal.json` for legacy export compatibility
 
----
+The dashboard treats these files as the main local explanation layer.
 
-## 📈 Métriques disponibles
+## Refresh Behavior
 
-### Portfolio
-- `ploutos_portfolio_value_usd` - Valeur totale
-- `ploutos_cash_available_usd` - Cash disponible
-- `ploutos_buying_power_usd` - Buying power
-- `ploutos_positions_count` - Nombre de positions
-- `ploutos_exposure_percent` - Exposition %
+- broker cache: 15 seconds
+- UI polling: 5 seconds
+- mode: read-only
 
-### Performance
-- `ploutos_daily_pnl_usd` - P&L quotidien $
-- `ploutos_daily_pnl_percent` - P&L quotidien %
-- `ploutos_total_pnl_usd` - P&L total
-- `ploutos_unrealized_pnl_usd` - P&L non réalisé
-- `ploutos_win_rate_percent` - Taux de réussite
+## Alert Types
 
-### Trading
-- `ploutos_trades_total` - Compteur trades
-- `ploutos_trade_amount_usd` - Distribution montants
-- `ploutos_trade_latency_seconds` - Latence exécution
-- `ploutos_predictions_total` - Compteur prédictions
+The dashboard highlights:
 
-### Risk Management
-- `ploutos_circuit_breaker_active` - État circuit breaker
-- `ploutos_risky_positions_count` - Positions à risque
-- `ploutos_max_drawdown_percent` - Drawdown max
-- `ploutos_sharpe_ratio` - Sharpe ratio
+- drawdown near limit
+- daily loss near limit
+- broker/journal desync
+- price unavailable
+- duplicate signal blocked
+- observation mismatch
+- repeated rejection spikes
 
-### Système
-- `ploutos_errors_total` - Compteur erreurs
-- `ploutos_alerts_total` - Compteur alertes
-- `ploutos_api_request_duration_seconds` - Latence API
+## Improvement Insights
 
----
+The dashboard does not just show live state. It also blends:
 
-## 🎨 Dashboard Grafana
+- current session diagnostics
+- the latest profitability audit
+- the latest strategy comparison winner
+- the latest league winner
+- project-learning history alerts and good or bad patterns
 
-### Panneaux principaux
-
-1. **💰 Portfolio Value** - Évolution temps réel
-2. **📊 Daily P&L** - Profit/Loss quotidien
-3. **💼 Positions** - Nombre et exposition
-4. **🎯 Win Rate** - Gauge taux de réussite
-5. **🚨 Circuit Breaker** - État de sécurité
-6. **📈 Trades Timeline** - Historique trades
-7. **⚠️ Risk Metrics** - Positions à risque
-8. **📉 Performance** - Sharpe, Drawdown
-
----
-
-## 🔧 Configuration avancée
-
-### Modifier la fréquence de rafraîchissement
-
-Dans Grafana, en haut à droite :
-- 5s, 10s, 30s, 1m, 5m, 15m, 30m
-
-### Ajouter des alertes Grafana
-
-1. Ouvrir un panneau
-2. Alert tab
-3. Create Alert
-4. Définir conditions (ex: `portfolio_value < 95000`)
-5. Ajouter notification channel
-
-### Exporter les données
-
-Via Prometheus API
-
-curl 'http://localhost:9090/api/v1/query?query=ploutos_portfolio_value_usd'
-CSV depuis Grafana
-
-Dashboard → Panel → More → Export CSV
-
-text
-
----
-
-## 📊 Requêtes Prometheus utiles
-
-### Portfolio actuel
-
-ploutos_portfolio_value_usd
-
-text
-
-### P&L sur 24h
-
-ploutos_daily_pnl_usd
-
-text
-
-### Taux de trades par heure
-
-rate(ploutos_trades_total[1h]) * 3600
-
-text
-
-### Latence médiane trades
-
-histogram_quantile(0.5, rate(ploutos_trade_latency_seconds_bucket[5m]))
-
-text
-
-### Win rate glissant 7 jours
-
-avg_over_time(ploutos_win_rate_percent[7d])
-
-text
-
----
-
-## 🚨 Alertes recommandées
-
-### Circuit Breaker
-
-ploutos_circuit_breaker_active == 1
-
-text
-→ Alerte critique immédiate
-
-### Perte quotidienne > 2%
-
-ploutos_daily_pnl_percent < -2
-
-text
-→ Alerte warning
-
-### Win rate < 50%
-
-ploutos_win_rate_percent < 50
-
-text
-→ Alerte info
-
-### Positions à risque > 3
-
-ploutos_risky_positions_count > 3
-
-text
-→ Alerte warning
-
----
-
-## 🔍 Troubleshooting
-
-### Métriques non visibles
-
-Vérifier serveur Prometheus
-
-curl http://localhost:9090/metrics
-Vérifier bot live_trader lancé
-
-ps aux | grep live_trader
-Vérifier logs
-
-tail -f logs/live_trader.log
-
-text
-
-### Grafana ne démarre pas
-
-sudo systemctl status grafana-server
-sudo journalctl -u grafana-server -f
-
-text
-
-### Dashboard vide
-
-1. Vérifier datasource : Grafana → Configuration → Data Sources
-2. Vérifier Prometheus : http://localhost:9090
-3. Vérifier bot actif avec métriques
-
----
-
-## 📱 Accès distant
-
-### Tunnel SSH
-
-ssh -L 3000:localhost:3000 user@server
-
-text
-→ Accès via http://localhost:3000
-
-### Reverse proxy Nginx
-
-server {
-listen 80;
-server_name monitoring.ploutos.com;
-
-text
-location / {
-    proxy_pass http://localhost:3000;
-}
-
-}
-
-text
-
----
-
-## 🎯 Best Practices
-
-1. **Rétention données** : Prometheus garde 15j par défaut
-2. **Refresh rate** : 30s recommandé (pas trop fréquent)
-3. **Alertes** : Configurer pour événements critiques
-4. **Snapshots** : Prendre régulièrement des snapshots dashboard
-5. **Backup** : Sauvegarder `/var/lib/grafana`
+This is the recommended surface for deciding what to improve next.

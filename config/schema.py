@@ -130,6 +130,7 @@ SCHEMA: dict[str, dict[str, FieldSpec]] = {
         "candidate_families": (list, None, None),
         "phase2_interval": (str, None, None),
         "phase2_top_k": (int, 1, 10),
+        "seed_offsets": (list, None, None),
         "monte_carlo_sims": (int, 1, 1_000),
         "monte_carlo_noise_std": (float, 0.0, 1.0),
         "supervised_forward_bars": (int, 1, 128),
@@ -140,6 +141,16 @@ SCHEMA: dict[str, dict[str, FieldSpec]] = {
         "rule_momentum_lookback": (int, 1, 252),
         "ensemble_size": (int, 1, 32),
         "extreme_return_threshold": ((int, float), 0.0, 1_000_000.0),
+    },
+    "league": {
+        "snapshot_id": (str, None, None),
+        "candidate_families": (list, None, None),
+        "baseline_family": (str, None, None),
+        "gold_holdout_months": (int, 1, 60),
+        "batch_output_root": (str, None, None),
+        "cadence": (str, None, None),
+        "learning_granularity": (str, None, None),
+        "learning_action_mode": (str, None, None),
     },
 }
 
@@ -236,11 +247,43 @@ def _validate_cross_field_constraints(config: dict[str, Any]) -> None:
             f"{invalid_families}. Supported families: {list(SUPPORTED_STRATEGY_FAMILIES)}"
         )
 
+    seed_offsets = strategy.get("seed_offsets", [0])
+    if not seed_offsets:
+        raise ConfigValidationError("strategy.seed_offsets must contain at least one integer offset.")
+    invalid_seed_offsets = [
+        offset for offset in seed_offsets if not isinstance(offset, int) or isinstance(offset, bool)
+    ]
+    if invalid_seed_offsets:
+        raise ConfigValidationError(
+            "strategy.seed_offsets must contain only integers. "
+            f"Invalid values: {invalid_seed_offsets}"
+        )
+
     rule_fast_ma = strategy.get("rule_fast_ma")
     rule_slow_ma = strategy.get("rule_slow_ma")
     if rule_fast_ma is not None and rule_slow_ma is not None and rule_fast_ma >= rule_slow_ma:
         raise ConfigValidationError(
             "strategy.rule_fast_ma must be strictly lower than strategy.rule_slow_ma."
+        )
+
+    league = config.get("league", {})
+    league_families = league.get("candidate_families", [])
+    invalid_league_families = [
+        candidate_family
+        for candidate_family in league_families
+        if candidate_family not in SUPPORTED_STRATEGY_FAMILIES
+    ]
+    if invalid_league_families:
+        raise ConfigValidationError(
+            "league.candidate_families contains unsupported value(s): "
+            f"{invalid_league_families}. Supported families: {list(SUPPORTED_STRATEGY_FAMILIES)}"
+        )
+
+    baseline_family = league.get("baseline_family")
+    if baseline_family is not None and baseline_family not in SUPPORTED_STRATEGY_FAMILIES:
+        raise ConfigValidationError(
+            "league.baseline_family must be one of "
+            f"{list(SUPPORTED_STRATEGY_FAMILIES)}."
         )
 
 

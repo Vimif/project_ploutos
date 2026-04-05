@@ -58,6 +58,7 @@ def test_demo_monitor_recommendations_blend_live_and_historical_context(monkeypa
     paper_dir = tmp_path / "paper"
     compare_dir = tmp_path / "compare"
     profitability_dir = tmp_path / "profitability"
+    league_dir = tmp_path / "league"
     _build_session(paper_dir)
     _write_json(
         compare_dir / "fast_real_run" / "strategy_leaderboard.json",
@@ -73,11 +74,42 @@ def test_demo_monitor_recommendations_blend_live_and_historical_context(monkeypa
         profitability_dir / "audit_latest.json",
         {"verdict": "improve_robustness", "profitability_score": 68.0},
     )
+    _write_json(
+        league_dir / "20260404_140000" / "league_leaderboard.json",
+        {
+            "batch_id": "20260404_140000",
+            "snapshot_id": "snapshot_test",
+            "selection": {
+                "gold_winner_family": "supervised_ranker",
+                "gold_winner_interval": "4h",
+                "baseline_family": "rule_momentum_regime",
+            },
+        },
+    )
+    _write_json(
+        league_dir / "20260404_140000" / "project_learning.json",
+        {
+            "batch_id": "20260404_140000",
+            "snapshot_id": "snapshot_test",
+            "audit_verdict": "needs_iteration",
+            "history_alerts": [
+                {
+                    "level": "warning",
+                    "decision_key": "ppo_ensemble@4h",
+                    "message": "ppo_ensemble@4h is repeating a previously bad decision pattern.",
+                }
+            ],
+            "patterns": {"good_decisions": ["supervised_ranker@4h"], "bad_decisions": ["ppo_ensemble@4h"]},
+            "lesson_summary": ["Avoid candidate patterns: ppo_ensemble@4h."],
+            "recommendations": ["Improve Monte Carlo resilience before the next demo batch."],
+        },
+    )
 
     service = DemoMonitorService(
         paper_trading_dir=paper_dir,
         strategy_compare_dir=compare_dir,
         profitability_dir=profitability_dir,
+        league_batches_dir=league_dir,
     )
     monkeypatch.setattr(
         service.broker_cache,
@@ -91,3 +123,5 @@ def test_demo_monitor_recommendations_blend_live_and_historical_context(monkeypa
     assert payload["diagnostics"]["rejections_by_reason"]["cost_too_high"] == 1
     assert any("4h horizon" in title for title in titles)
     assert any("Reduce turnover" in title for title in titles)
+    assert payload["league_context"]["winner_family"] == "supervised_ranker"
+    assert payload["project_learning"]["history_alerts"]

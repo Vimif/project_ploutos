@@ -117,11 +117,37 @@ def test_demo_dashboard_endpoints_return_session_payload(tmp_path, monkeypatch):
     paper_dir = tmp_path / "paper"
     compare_dir = tmp_path / "compare"
     profitability_dir = tmp_path / "profitability"
+    league_dir = tmp_path / "league"
     _build_session(paper_dir)
+    _write_json(
+        league_dir / "20260404_140000" / "league_leaderboard.json",
+        {
+            "batch_id": "20260404_140000",
+            "snapshot_id": "snapshot_test",
+            "selection": {
+                "gold_winner_family": "supervised_ranker",
+                "gold_winner_interval": "4h",
+                "baseline_family": "rule_momentum_regime",
+                "stable_winner": True,
+            },
+        },
+    )
+    _write_json(
+        league_dir / "20260404_140000" / "project_learning.json",
+        {
+            "batch_id": "20260404_140000",
+            "snapshot_id": "snapshot_test",
+            "history_alerts": [],
+            "lesson_summary": ["Repeat candidate patterns: supervised_ranker@4h."],
+            "patterns": {"good_decisions": ["supervised_ranker@4h"], "bad_decisions": []},
+            "recommendations": ["Retest this candidate on the next batch with the same protocol."],
+        },
+    )
     service = DemoMonitorService(
         paper_trading_dir=paper_dir,
         strategy_compare_dir=compare_dir,
         profitability_dir=profitability_dir,
+        league_batches_dir=league_dir,
     )
     monkeypatch.setattr(
         service.broker_cache,
@@ -144,10 +170,17 @@ def test_demo_dashboard_endpoints_return_session_payload(tmp_path, monkeypatch):
     overview = client.get("/api/demo/overview")
     timeline = client.get("/api/demo/timeline")
     recommendations = client.get("/api/demo/recommendations")
+    league_payload = client.get("/api/demo/league")
+    learning_payload = client.get("/api/demo/project-learning")
 
     assert overview.status_code == 200
     assert timeline.status_code == 200
     assert recommendations.status_code == 200
+    assert league_payload.status_code == 200
+    assert learning_payload.status_code == 200
     assert overview.get_json()["data"]["session"]["session_id"] == "20260404_120000"
+    assert overview.get_json()["data"]["league"]["winner_family"] == "supervised_ranker"
     assert len(timeline.get_json()["data"]["events"]) == 3
     assert isinstance(recommendations.get_json()["data"]["recommendations"], list)
+    assert league_payload.get_json()["data"]["batch_id"] == "20260404_140000"
+    assert learning_payload.get_json()["data"]["patterns"]["good_decisions"] == ["supervised_ranker@4h"]

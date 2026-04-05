@@ -1,7 +1,9 @@
 """Tests for the repository audit helpers."""
 
 from scripts.audit_repo import (
+    check_gitignore_format,
     check_pytest_config_duplication,
+    check_removed_mainline_references,
     check_version_markers,
     check_windows_ascii_safety,
     extract_command_paths,
@@ -137,6 +139,13 @@ class TestCheckWindowsAsciiSafety:
             "audit_repo.py",
         ]:
             (scripts_dir / name).write_text("print('ok')\n", encoding="utf-8")
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        (docs_dir / "MONITORING.md").write_text("# Monitoring\n", encoding="utf-8")
+        (docs_dir / "QUICKSTART_MONITORING.md").write_text("# Quickstart\n", encoding="utf-8")
+        dashboard_dir = tmp_path / "dashboard"
+        dashboard_dir.mkdir()
+        (dashboard_dir / "README.md").write_text("# Dashboard\n", encoding="utf-8")
 
         findings = check_windows_ascii_safety(tmp_path)
 
@@ -163,7 +172,78 @@ class TestCheckWindowsAsciiSafety:
             "audit_repo.py",
         ]:
             (scripts_dir / name).write_text("print('ok')\n", encoding="utf-8")
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        (docs_dir / "MONITORING.md").write_text("# Monitoring\n", encoding="utf-8")
+        (docs_dir / "QUICKSTART_MONITORING.md").write_text("# Quickstart\n", encoding="utf-8")
+        dashboard_dir = tmp_path / "dashboard"
+        dashboard_dir.mkdir()
+        (dashboard_dir / "README.md").write_text("# Dashboard\n", encoding="utf-8")
 
         findings = check_windows_ascii_safety(tmp_path)
+
+        assert findings == []
+
+
+class TestCheckGitignoreFormat:
+    def test_warns_when_gitignore_contains_markdown_fences(self, tmp_path):
+        (tmp_path / ".gitignore").write_text(
+            """
+```ignore
+__pycache__/
+*.py[cod]
+```
+""".strip(),
+            encoding="utf-8",
+        )
+
+        findings = check_gitignore_format(tmp_path)
+
+        assert len(findings) == 1
+        assert findings[0].source == ".gitignore"
+        assert findings[0].severity == "WARN"
+
+    def test_accepts_plain_gitignore(self, tmp_path):
+        (tmp_path / ".gitignore").write_text("__pycache__/\n*.py[cod]\n", encoding="utf-8")
+
+        findings = check_gitignore_format(tmp_path)
+
+        assert findings == []
+
+
+class TestCheckRemovedMainlineReferences:
+    def test_warns_when_supported_docs_reference_removed_components(self, tmp_path):
+        (tmp_path / "README.md").write_text(
+            "Use database/ and dashboard/technical_analysis.py if needed.\n",
+            encoding="utf-8",
+        )
+        dashboard_dir = tmp_path / "dashboard"
+        dashboard_dir.mkdir()
+        (dashboard_dir / "README.md").write_text("# Dashboard\n", encoding="utf-8")
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        (docs_dir / "MONITORING.md").write_text("# Monitoring\n", encoding="utf-8")
+        (docs_dir / "QUICKSTART_MONITORING.md").write_text("# Quickstart\n", encoding="utf-8")
+        (tmp_path / "pyproject.toml").write_text("[project]\nname = \"demo\"\n", encoding="utf-8")
+        (tmp_path / "requirements.txt").write_text("numpy>=1.0\n", encoding="utf-8")
+
+        findings = check_removed_mainline_references(tmp_path)
+
+        assert len(findings) == 2
+        assert all(finding.severity == "WARN" for finding in findings)
+
+    def test_accepts_current_mainline_files(self, tmp_path):
+        (tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
+        dashboard_dir = tmp_path / "dashboard"
+        dashboard_dir.mkdir()
+        (dashboard_dir / "README.md").write_text("# Dashboard\n", encoding="utf-8")
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        (docs_dir / "MONITORING.md").write_text("# Monitoring\n", encoding="utf-8")
+        (docs_dir / "QUICKSTART_MONITORING.md").write_text("# Quickstart\n", encoding="utf-8")
+        (tmp_path / "pyproject.toml").write_text("[project]\nname = \"demo\"\n", encoding="utf-8")
+        (tmp_path / "requirements.txt").write_text("numpy>=1.0\n", encoding="utf-8")
+
+        findings = check_removed_mainline_references(tmp_path)
 
         assert findings == []

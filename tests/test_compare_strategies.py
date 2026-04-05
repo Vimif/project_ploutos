@@ -67,6 +67,7 @@ def _write_config(path: Path) -> None:
             ],
             "phase2_interval": "4h",
             "phase2_top_k": 2,
+            "seed_offsets": [0, 100],
             "monte_carlo_sims": 3,
             "monte_carlo_noise_std": 0.005,
             "rule_fast_ma": 20,
@@ -115,9 +116,10 @@ def test_compare_strategy_families_builds_leaderboard_with_phase2(tmp_path, monk
         monte_carlo_sims,
         monte_carlo_noise_std,
         extreme_return_threshold,
+        seed_offsets,
     ):
         del config, splits, macro_data, monte_carlo_sims, monte_carlo_noise_std, extreme_return_threshold
-        calls.append((family, interval))
+        calls.append((family, interval, tuple(seed_offsets)))
         score_map = {
             ("ppo_single", "1h"): 60.0,
             ("ppo_ensemble", "1h"): 55.0,
@@ -164,5 +166,14 @@ def test_compare_strategy_families_builds_leaderboard_with_phase2(tmp_path, monk
     assert leaderboard["selection"]["winner_family"] == "supervised_ranker"
     assert leaderboard["selection"]["winner_beats_ppo_ensemble"] is True
     assert [entry["family"] for entry in leaderboard["phase_2"]] == ["supervised_ranker", "ppo_single"]
-    assert ("ppo_ensemble", "4h") not in calls
+    assert ("ppo_ensemble", "4h", (0, 100)) not in calls
+    assert leaderboard["protocol"]["seed_offsets"] == [0, 100]
     assert (tmp_path / "leaderboard" / "strategy_leaderboard.json").exists()
+
+
+def test_resolve_strategy_settings_normalizes_seed_offsets():
+    settings = strategy_compare.resolve_strategy_settings(
+        {"strategy": {"seed_offsets": [0, 100, 0, -100]}}
+    )
+
+    assert settings["seed_offsets"] == [0, 100, -100]

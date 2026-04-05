@@ -37,6 +37,11 @@ class FakePredictor:
         return np.array([1, 0]), np.array([0.9, 0.95])
 
 
+class FakeSellPredictor:
+    def predict_with_asset_confidences(self, observation, deterministic=True):
+        return np.array([2, 2]), np.array([0.9, 0.9])
+
+
 class FakeObservationEngine:
     def __init__(
         self,
@@ -59,6 +64,11 @@ class FakeObservationEngine:
             prices=prices,
             volumes={ticker: float(df["Volume"].iloc[-1]) for ticker, df in market_data.items()},
             recent_prices={ticker: df["Close"].tail(20) for ticker, df in market_data.items()},
+            current_step=len(next(iter(market_data.values()))) - 1,
+            feature_columns=[],
+            macro_columns=list(macro_data.columns) if macro_data is not None else [],
+            processed_data=market_data,
+            aligned_macro=macro_data,
         )
 
 
@@ -123,7 +133,7 @@ def test_run_paper_trading_supports_etoro_mode(monkeypatch, tmp_path):
     monkeypatch.setattr(
         paper_trade,
         "load_predictor_bundle",
-        lambda model_path, live_settings, config: (
+        lambda model_path, live_settings, config, requested_models=None: (
             FakePredictor(),
             ["AAPL", "SPY"],
             2,
@@ -155,6 +165,7 @@ def test_run_paper_trading_supports_etoro_mode(monkeypatch, tmp_path):
     )
 
     assert report["mode"] == "etoro"
+    assert report["strategy_family"] == "ppo_ensemble"
     assert report["summary"]["n_trades"] == 1
     assert report["summary"]["n_rejections"] == 0
     assert report["resolved_models"] == ["model.zip"]
@@ -216,3 +227,120 @@ def test_resolve_vecnormalize_path_falls_back_to_fold_artifact(tmp_path):
     resolved = paper_trade.resolve_vecnormalize_path(model_path, None)
 
     assert resolved == vecnorm_path
+
+
+def test_run_paper_trading_supports_rule_strategy_without_model(monkeypatch, tmp_path):
+    market_data = make_market_data()
+    macro_data = pd.DataFrame({"vix_close": [22.0] * len(next(iter(market_data.values())))})
+    adapter = LiveBrokerAdapter(SimulatedBroker(100_000), broker_name="simulate")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        paper_trade,
+        "load_runtime_config",
+        lambda path: {
+            "data": {"interval": "4h", "tickers": ["AAPL", "SPY"]},
+            "environment": {"initial_balance": 100_000, "max_features_per_ticker": 1},
+            "live": {
+                "interval_minutes": 0,
+                "buy_pct": 0.10,
+                "max_position_pct": 0.10,
+                "max_open_positions": 4,
+                "regime_fast_ma": 5,
+                "regime_slow_ma": 10,
+                "dedupe_window_seconds": 13_800,
+            },
+            "strategy": {
+                "family": "rule_momentum_regime",
+                "rule_fast_ma": 5,
+                "rule_slow_ma": 20,
+                "rule_momentum_lookback": 3,
+            },
+        },
+    )
+    monkeypatch.setattr(
+        paper_trade,
+        "load_predictor_bundle",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("PPO loader should not be used")),
+    )
+    monkeypatch.setattr(paper_trade, "fetch_live_data", lambda *args, **kwargs: market_data)
+    monkeypatch.setattr(paper_trade, "fetch_live_macro_data", lambda *args, **kwargs: macro_data)
+    monkeypatch.setattr(paper_trade, "LiveObservationEngine", FakeObservationEngine)
+    monkeypatch.setattr(
+        paper_trade,
+        "create_live_broker_adapter",
+        lambda mode, initial_balance, fill_timeout, poll_interval: adapter,
+    )
+    monkeypatch.setattr(paper_trade.time, "sleep", lambda seconds: None)
+
+    report = paper_trade.run_paper_trading(
+        model_path=None,
+        mode="simulate",
+        config_path="config.yaml",
+        max_hours=1,
+        max_iterations=1,
+    )
+
+    assert report["mode"] == "simulate"
+    assert report["strategy_family"] == "rule_momentum_regime"
+    assert report["summary"]["n_trades"] == 1
+    assert report["resolved_models"] == []
+
+
+def test_run_paper_trading_skips_sell_signals_without_position(monkeypatch, tmp_path):
+    market_data = make_market_data()
+    macro_data = pd.DataFrame({"vix_close": [22.0, 18.0]})
+    adapter = LiveBrokerAdapter(SimulatedBroker(100_000), broker_name="etoro")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        paper_trade,
+        "load_runtime_config",
+        lambda path: {
+            "data": {"interval": "1h", "tickers": ["AAPL", "SPY"]},
+            "environment": {"initial_balance": 100_000, "max_features_per_ticker": 1},
+            "live": {
+                "interval_minutes": 0,
+                "ensemble_size": 1,
+                "regime_fast_ma": 5,
+                "regime_slow_ma": 10,
+                "dedupe_window_seconds": 3_300,
+            },
+        },
+    )
+    monkeypatch.setattr(
+        paper_trade,
+        "load_predictor_bundle",
+        lambda model_path, live_settings, config, requested_models=None: (
+            FakeSellPredictor(),
+            ["AAPL", "SPY"],
+            2,
+            {"data": {"interval": "1h"}, "environment": {"max_features_per_ticker": 1}},
+            None,
+            [Path(model_path)],
+        ),
+    )
+    monkeypatch.setattr(paper_trade, "fetch_live_data", lambda *args, **kwargs: market_data)
+    monkeypatch.setattr(
+        paper_trade,
+        "fetch_live_macro_data",
+        lambda *args, **kwargs: macro_data,
+    )
+    monkeypatch.setattr(paper_trade, "LiveObservationEngine", FakeObservationEngine)
+    monkeypatch.setattr(
+        paper_trade,
+        "create_live_broker_adapter",
+        lambda mode, initial_balance, fill_timeout, poll_interval: adapter,
+    )
+    monkeypatch.setattr(paper_trade.time, "sleep", lambda seconds: None)
+
+    report = paper_trade.run_paper_trading(
+        model_path="model.zip",
+        mode="etoro",
+        config_path="config.yaml",
+        max_hours=1,
+        max_iterations=1,
+    )
+
+    assert report["summary"]["n_trades"] == 0
+    assert report["summary"]["n_rejections"] == 0

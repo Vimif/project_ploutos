@@ -6,19 +6,20 @@ test counts or frozen performance numbers.
 
 ## Overview
 
-The project is organized around four main layers:
+The project is organized around five main layers.
 
-1. Data and features
+### 1. Data and features
 
 - `core/data_fetcher.py`
 - `core/macro_data.py`
 - `core/features.py`
+- `core/data_pipeline.py`
 
-Market data is fetched as pandas DataFrames. Technical features are computed in
+Market data is handled as pandas DataFrames. Technical features are computed in
 `core/features.py`, using Polars internally for the heavy feature-engineering
 path and returning pandas output for environment compatibility.
 
-2. Environment and trading logic
+### 2. Environment and trading logic
 
 - `core/environment.py`
 - `core/env_config.py`
@@ -32,42 +33,61 @@ It delegates observation assembly and reward logic to smaller components and can
 operate either on raw in-memory data or shared-memory-backed data prepared for
 parallel training.
 
-3. Training and evaluation
+### 3. Training and evaluation
 
 - `training/train.py`
-- `core/model_support.py`
+- `training/strategy_compare.py`
+- `training/league.py`
 - `core/ensemble.py`
+- `core/model_support.py`
 
-Training is driven by walk-forward splits. The supported workflow computes
-features per fold to avoid look-ahead bias. Recurrent evaluation helpers live in
-`core/model_support.py` so the same recurrence handling can be reused across
-training evaluation and robustness scripts.
+Training is driven by walk-forward splits. Features are computed inside each
+fold to avoid look-ahead bias. The comparison and league layers sit above the
+base trainer so families, horizons, and promotion gates are evaluated under one
+protocol.
 
-4. Operational scripts
+### 4. Operational scripts
 
 - `scripts/run_pipeline.py`
 - `scripts/optimize_hyperparams.py`
 - `scripts/robustness_tests.py`
+- `scripts/compare_strategies.py`
+- `scripts/profitability_audit.py`
+- `scripts/run_league_batch.py`
 - `scripts/paper_trade.py`
-- `scripts/backtest_ultimate.py`
+- `scripts/housekeeping.py`
+- `scripts/archive_artifacts.py`
 - `scripts/audit_repo.py`
 
-These scripts orchestrate the main repo workflows. Some of them still include
-legacy compatibility logic for older model formats. That compatibility should be
-seen as a maintenance boundary, not as a statement that all historical paths are
-equally mature.
+These scripts orchestrate the supported repo workflows. `scripts/backtest_ultimate.py`
+is still kept for older artifact inspection and model metadata compatibility,
+but it should be treated as a compatibility boundary rather than a primary path.
+
+### 5. Demo monitoring
+
+- `dashboard/app.py`
+- `dashboard/demo_monitor.py`
+- `dashboard/templates/`
+
+The supported monitoring surface is a local Flask dashboard in read-only mode.
+It reads canonical session artifacts from `logs/paper_trading/<session_id>/`
+and enriches them with broker state, league outputs, and project-learning
+artifacts.
 
 ## Data Flow
 
 ```text
-download market data
+download or load market data
 -> split by walk-forward window
 -> compute features inside each fold
 -> optionally place training data in shared memory
 -> initialize TradingEnv
 -> train PPO or RecurrentPPO
 -> evaluate on held-out data
--> run robustness checks and paper-trading compatibility flows
+-> run robustness checks
+-> compare strategy families and build league batches
+-> validate in the eToro-focused demo loop
+-> inspect the session through the local dashboard
 ```
 
 ## Configuration
@@ -79,6 +99,27 @@ download market data
 The current validation policy is intentionally strict: unknown sections, typoed
 keys, and impossible PPO geometry should fail early.
 
+## Session And Reporting Artifacts
+
+The canonical live and evaluation artifacts are:
+
+- demo session files:
+  - `session_meta.json`
+  - `events.jsonl`
+  - `equity.jsonl`
+  - `report.json`
+- strategy comparison:
+  - `strategy_leaderboard.json`
+- league batches:
+  - `league_leaderboard.json`
+  - `league_audit.json`
+  - `demo_followup.json`
+  - `decision_review.json`
+  - `project_learning.json`
+
+These artifact names are centralized in `core/artifacts.py` so the paper trader,
+league logic, and dashboard do not drift independently.
+
 ## Shared Memory Path
 
 `core/shared_memory_manager.py` converts numeric data into a shared-memory
@@ -88,13 +129,9 @@ remain feature-selection compatible.
 
 ## Legacy Boundary
 
-The repository still contains a `legacy/` folder and some compatibility logic in
-supported scripts, especially around older backtest and artifact formats. The
-cleanup direction is:
-
-- keep supported V9.1 flows explicit
-- isolate historical compatibility code
-- avoid importing legacy behavior into new code unless required
+The repository still contains a `legacy/` folder for archived validation
+helpers, V7 configs, and historical monitoring or ops scripts. New code should
+not depend on `legacy/` unless artifact compatibility truly requires it.
 
 ## Quality Controls
 

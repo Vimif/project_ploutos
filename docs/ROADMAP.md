@@ -67,6 +67,11 @@ experiment left in the repository.
 - Reduce direct imports from `legacy/` in supported scripts
 - Document which model artifact formats are still intentionally supported
 
+Status:
+- legacy validation and monitoring assets are isolated under `legacy/`
+- the mainline docs describe the supported Flask demo dashboard instead of the
+  historical Grafana or Streamlit stack
+
 ### Phase 4: Research Features
 
 - Market regime detection

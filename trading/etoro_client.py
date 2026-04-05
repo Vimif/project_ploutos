@@ -131,9 +131,14 @@ class EToroClient(BrokerInterface):
                 logger.warning("Warmup instrument failed for %s: %s", symbol, exc)
 
     def _authenticate(self) -> None:
-        """Validate API keys against the current identity endpoint."""
+        """Validate API keys against a documented portfolio endpoint."""
 
-        response = self._request("GET", "/me", auth_required=False, retries=1)
+        response = self._request(
+            "GET",
+            f"{self.info_scope}/pnl",
+            auth_required=False,
+            retries=1,
+        )
         if response is None:
             raise ConnectionError("Authentication check to eToro returned no response")
         if response.status_code != 200:
@@ -144,7 +149,7 @@ class EToroClient(BrokerInterface):
 
         payload = self._safe_json(response)
         if isinstance(payload, dict):
-            self._identity = payload
+            self._identity = payload.get("clientPortfolio") or payload
         else:
             self._identity = {"raw": payload}
 

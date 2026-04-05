@@ -4,12 +4,12 @@
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import os
 import signal
 import sys
 import time
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
@@ -25,9 +25,19 @@ if sys.platform == "win32":
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.schema import validate_config
+from core.artifacts import (
+    DEMO_SESSION_EQUITY_FILENAME,
+    DEMO_SESSION_EVENTS_FILENAME,
+    DEMO_SESSION_LEGACY_JOURNAL_FILENAME,
+    DEMO_SESSION_META_FILENAME,
+    DEMO_SESSION_REPORT_FILENAME,
+    append_jsonl,
+    save_json,
+)
 from core.ensemble import EnsemblePredictor
 from core.live_observation import LiveObservationEngine
 from core.macro_data import MacroDataFetcher
+from training.strategy_policies import StrategyContext, build_strategy_policy
 from trading.live_execution import (
     LiveExecutionConfig,
     LiveExecutionEngine,
@@ -48,6 +58,9 @@ KILL_SWITCH_MAX_DRAWDOWN = 0.15
 KILL_SWITCH_MAX_DAILY_LOSS = 0.05
 KILL_SWITCH_INACTIVITY_HOURS = 4
 TRADE_INTERVAL_MINUTES = 60
+
+PPO_LIVE_FAMILIES = {"ppo_single", "ppo_ensemble"}
+CONFIG_DRIVEN_LIVE_FAMILIES = {"rule_momentum_regime", "supervised_ranker"}
 
 
 class KillSwitch:
@@ -121,22 +134,20 @@ class LiveTradeJournal:
         self.equity_curve: list[dict[str, Any]] = []
         self._seen_alert_keys: set[str] = set()
 
-        self.meta_path = self.session_dir / "session_meta.json"
-        self.events_path = self.session_dir / "events.jsonl"
-        self.equity_path = self.session_dir / "equity.jsonl"
-        self.report_path = self.session_dir / "report.json"
-        self.legacy_journal_path = self.session_dir / "journal.json"
+        self.meta_path = self.session_dir / DEMO_SESSION_META_FILENAME
+        self.events_path = self.session_dir / DEMO_SESSION_EVENTS_FILENAME
+        self.equity_path = self.session_dir / DEMO_SESSION_EQUITY_FILENAME
+        self.report_path = self.session_dir / DEMO_SESSION_REPORT_FILENAME
+        self.legacy_journal_path = self.session_dir / DEMO_SESSION_LEGACY_JOURNAL_FILENAME
 
         payload = dict(session_meta)
         payload["session_id"] = self.session_id
         payload["session_dir"] = str(self.session_dir)
         payload["created_at"] = datetime.now().isoformat()
-        with open(self.meta_path, "w", encoding="utf-8") as handle:
-            json.dump(payload, handle, indent=2, ensure_ascii=False, default=str)
+        save_json(self.meta_path, payload)
 
     def _append_jsonl(self, path: Path, payload: dict[str, Any]) -> None:
-        with open(path, "a", encoding="utf-8") as handle:
-            handle.write(json.dumps(payload, ensure_ascii=False, default=str) + "\n")
+        append_jsonl(path, payload)
 
     def _append_event(self, payload: dict[str, Any]) -> None:
         event = dict(payload)
@@ -321,15 +332,28 @@ class LiveTradeJournal:
             "start_time": self.start_time.isoformat(),
             "export_time": datetime.now().isoformat(),
         }
-        with open(path, "w", encoding="utf-8") as handle:
-            json.dump(payload, handle, indent=2, ensure_ascii=False, default=str)
+        save_json(path, payload)
         logger.info("  Journal exporte: %s", path)
 
     def finalize(self, report: dict[str, Any]) -> None:
         self.export(self.legacy_journal_path)
-        with open(self.report_path, "w", encoding="utf-8") as handle:
-            json.dump(report, handle, indent=2, ensure_ascii=False, default=str)
+        save_json(self.report_path, report)
         logger.info("  Rapport: %s", self.report_path)
+
+
+@dataclass
+class LiveInferenceRuntime:
+    """Resolved live inference backend for the selected strategy family."""
+
+    family: str
+    tickers: list[str]
+    effective_config: dict[str, Any]
+    model_obs_size: Optional[int]
+    vecnorm_path: Optional[Path]
+    model_paths: list[Path]
+    predictor: Optional[EnsemblePredictor] = None
+    policy: Optional[Any] = None
+    policy_ready: bool = False
 
 
 def merge_configs(base: Optional[dict], override: Optional[dict]) -> dict:
@@ -356,6 +380,12 @@ def load_runtime_config(config_path: Optional[str]) -> dict:
     for warning in warnings:
         logger.warning("  %s", warning)
     return config
+
+
+def _strategy_family(config: Optional[dict]) -> str:
+    strategy_cfg = (config or {}).get("strategy", {})
+    family = str(strategy_cfg.get("family", "ppo_ensemble")).strip().lower()
+    return family or "ppo_ensemble"
 
 
 def discover_model_paths(model_path: str | Path, ensemble_size: int) -> list[Path]:
@@ -418,13 +448,15 @@ def load_predictor_bundle(
     model_path: str | Path,
     live_settings: LiveExecutionConfig,
     config: dict,
+    *,
+    requested_models: Optional[int] = None,
 ) -> tuple[EnsemblePredictor, list[str], int, dict, Optional[Path], list[Path]]:
     """Load the ensemble predictor and metadata required for live trading."""
 
     from stable_baselines3 import PPO
     from scripts.backtest_ultimate import load_model_metadata
 
-    model_paths = discover_model_paths(model_path, live_settings.ensemble_size)
+    model_paths = discover_model_paths(model_path, requested_models or live_settings.ensemble_size)
     primary_model = model_paths[0]
     metadata, model_config, vecnorm_path = load_model_metadata(str(primary_model))
     vecnorm_path = resolve_vecnormalize_path(primary_model, vecnorm_path)
@@ -444,6 +476,60 @@ def load_predictor_bundle(
         raise ValueError("No tickers found in model metadata or runtime config")
 
     return predictor, list(tickers), obs_shape[0], model_config or {}, vecnorm_path, model_paths
+
+
+def resolve_live_inference_runtime(
+    model_path: Optional[str | Path],
+    *,
+    live_settings: LiveExecutionConfig,
+    runtime_config: dict,
+) -> LiveInferenceRuntime:
+    """Resolve the live inference backend from the configured strategy family."""
+
+    family = _strategy_family(runtime_config)
+    if family in PPO_LIVE_FAMILIES:
+        if not model_path:
+            raise ValueError(f"strategy.family={family} requires --model")
+        requested_models = 1 if family == "ppo_single" else live_settings.ensemble_size
+        predictor, tickers, model_obs_size, model_config, vecnorm_path, model_paths = load_predictor_bundle(
+            model_path,
+            live_settings,
+            runtime_config,
+            requested_models=requested_models,
+        )
+        effective_config = merge_configs(model_config, runtime_config)
+        return LiveInferenceRuntime(
+            family=family,
+            tickers=list(tickers),
+            effective_config=effective_config,
+            model_obs_size=model_obs_size,
+            vecnorm_path=vecnorm_path,
+            model_paths=model_paths,
+            predictor=predictor,
+        )
+
+    if family == "recurrent_ppo":
+        raise NotImplementedError(
+            "strategy.family=recurrent_ppo is not supported yet for live demo trading. "
+            "Use ppo_single, ppo_ensemble, supervised_ranker, or rule_momentum_regime."
+        )
+
+    if family in CONFIG_DRIVEN_LIVE_FAMILIES:
+        tickers = list(runtime_config.get("data", {}).get("tickers", []))
+        if not tickers:
+            raise ValueError(f"strategy.family={family} requires data.tickers in the runtime config")
+        policy = build_strategy_policy(family, runtime_config)
+        return LiveInferenceRuntime(
+            family=family,
+            tickers=tickers,
+            effective_config=dict(runtime_config),
+            model_obs_size=None,
+            vecnorm_path=None,
+            model_paths=[],
+            policy=policy,
+        )
+
+    raise ValueError(f"Unsupported live strategy family: {family}")
 
 
 def fetch_live_data(
@@ -513,6 +599,92 @@ def get_model_actions(
     return np.array(actions).flatten(), np.array(confidences).flatten()
 
 
+def _macro_row_from_snapshot(snapshot) -> Optional[dict[str, float]]:
+    aligned_macro = getattr(snapshot, "aligned_macro", None)
+    current_step = int(getattr(snapshot, "current_step", -1))
+    if aligned_macro is None or aligned_macro.empty or current_step < 0:
+        return None
+    row = aligned_macro.iloc[current_step]
+    return {column: float(row[column]) for column in aligned_macro.columns}
+
+
+def _build_strategy_context(
+    *,
+    snapshot,
+    tickers: list[str],
+    prices: dict[str, float],
+    positions_map: dict[str, dict],
+    regime,
+    interval: str,
+) -> StrategyContext:
+    portfolio = {
+        ticker: float(positions_map.get(ticker, {}).get("qty", 0.0))
+        for ticker in tickers
+    }
+    entry_prices = {
+        ticker: float(positions_map.get(ticker, {}).get("avg_entry_price", 0.0))
+        for ticker in tickers
+    }
+    return StrategyContext(
+        observation=np.asarray(snapshot.observation, dtype=np.float32),
+        current_step=int(snapshot.current_step),
+        tickers=list(tickers),
+        prices=dict(prices),
+        portfolio=portfolio,
+        entry_prices=entry_prices,
+        processed_data=snapshot.processed_data,
+        feature_columns=list(getattr(snapshot, "feature_columns", [])),
+        macro_columns=list(getattr(snapshot, "macro_columns", [])),
+        macro_row=_macro_row_from_snapshot(snapshot),
+        interval=interval,
+        regime_risk_on=bool(regime.risk_on),
+    )
+
+
+def fit_runtime_policy_if_needed(
+    runtime: LiveInferenceRuntime,
+    *,
+    market_data: dict,
+    macro_data,
+) -> None:
+    """Fit config-driven live policies once from the recent historical window."""
+
+    if runtime.policy is None or runtime.policy_ready:
+        return
+    runtime.policy.fit(market_data, macro_data)
+    runtime.policy_ready = True
+
+
+def get_live_actions(
+    runtime: LiveInferenceRuntime,
+    *,
+    snapshot,
+    positions_map: dict[str, dict],
+    prices: dict[str, float],
+    regime,
+    interval: str,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return actions/confidences for either PPO artifacts or config-driven policies."""
+
+    if runtime.predictor is not None:
+        return get_model_actions(runtime.predictor, snapshot.observation)
+
+    if runtime.policy is None:
+        raise RuntimeError("No live predictor or policy has been configured")
+
+    context = _build_strategy_context(
+        snapshot=snapshot,
+        tickers=runtime.tickers,
+        prices=prices,
+        positions_map=positions_map,
+        regime=regime,
+        interval=interval,
+    )
+    actions = np.asarray(runtime.policy.predict_actions(context), dtype=np.int64).flatten()
+    confidences = np.where(actions == 0, 0.0, 1.0).astype(np.float32)
+    return actions, confidences
+
+
 def _compute_exposure(positions_map: dict[str, dict], equity: float) -> float:
     total_market_value = sum(float(position.get("market_value", 0.0)) for position in positions_map.values())
     return total_market_value / max(equity, 1e-8)
@@ -528,9 +700,10 @@ def _latest_session_dir(base_dir: Path) -> Path:
 def _build_session_meta(
     *,
     mode: str,
+    strategy_family: str,
     config_path: Optional[str],
     tickers: list[str],
-    model_path: str | Path,
+    model_path: Optional[str | Path],
     model_paths: list[Path],
     live_settings: LiveExecutionConfig,
     interval: str,
@@ -538,9 +711,10 @@ def _build_session_meta(
     return {
         "broker": mode,
         "mode": mode,
+        "strategy_family": strategy_family,
         "config_path": config_path,
         "tickers": list(tickers),
-        "model_path": str(model_path),
+        "model_path": str(model_path) if model_path is not None else None,
         "resolved_models": [str(path) for path in model_paths],
         "start_time": datetime.now().isoformat(),
         "interval": interval,
@@ -610,12 +784,16 @@ def run_paper_trading(
             os.environ["ALPACA_PAPER_SECRET_KEY"] = api_secret
             os.environ["ALPACA_SECRET_KEY"] = api_secret
 
-    predictor, tickers, model_obs_size, model_config, vecnorm_path, model_paths = load_predictor_bundle(
+    inference_runtime = resolve_live_inference_runtime(
         model_path,
-        live_settings,
-        runtime_config,
+        live_settings=live_settings,
+        runtime_config=runtime_config,
     )
-    effective_config = merge_configs(model_config, runtime_config)
+    effective_config = dict(inference_runtime.effective_config)
+    tickers = list(inference_runtime.tickers)
+    model_obs_size = inference_runtime.model_obs_size
+    vecnorm_path = inference_runtime.vecnorm_path
+    model_paths = list(inference_runtime.model_paths)
     data_cfg = effective_config.get("data", {})
     env_cfg = effective_config.get("environment", {})
     initial_balance = float(env_cfg.get("initial_balance", initial_balance))
@@ -623,7 +801,11 @@ def run_paper_trading(
     logger.info("\n%s", "=" * 70)
     logger.info("PAPER TRADER")
     logger.info("%s", "=" * 70)
-    logger.info("  Models     : %s", ", ".join(path.name for path in model_paths))
+    logger.info("  Strategy   : %s", inference_runtime.family)
+    logger.info(
+        "  Models     : %s",
+        ", ".join(path.name for path in model_paths) if model_paths else "config-driven",
+    )
     logger.info("  Mode       : %s", mode)
     logger.info("  Tickers    : %s", ", ".join(tickers))
     logger.info("  VecNorm    : %s", vecnorm_path if vecnorm_path else "none")
@@ -665,6 +847,7 @@ def run_paper_trading(
         session_dir,
         _build_session_meta(
             mode=mode,
+            strategy_family=inference_runtime.family,
             config_path=config_path,
             tickers=tickers,
             model_path=model_path,
@@ -721,6 +904,30 @@ def run_paper_trading(
             continue
 
         macro_data = fetch_live_macro_data(market_data, interval=interval)
+        if inference_runtime.policy is not None and not inference_runtime.policy_ready:
+            try:
+                fit_runtime_policy_if_needed(
+                    inference_runtime,
+                    market_data=market_data,
+                    macro_data=macro_data,
+                )
+            except Exception as exc:
+                logger.exception("  Strategy initialization failed: %s", exc)
+                journal.record_alert(
+                    "critical",
+                    "strategy_initialization_failed",
+                    {"family": inference_runtime.family, "error": str(exc)},
+                    dedupe_key=f"strategy_init:{inference_runtime.family}",
+                )
+                journal.record_rejection(
+                    "ALL",
+                    "STRATEGY",
+                    "strategy_initialization_failed",
+                    {"family": inference_runtime.family, "error": str(exc)},
+                )
+                if running and (max_iterations is None or iteration < max_iterations):
+                    time.sleep(max(live_settings.interval_minutes, 0) * 60)
+                continue
         price_hints = {ticker: float(df["Close"].iloc[-1]) for ticker, df in market_data.items()}
         prices = {
             ticker: float(
@@ -803,7 +1010,7 @@ def run_paper_trading(
             equity=equity,
             macro_data=macro_data,
         )
-        if snapshot.observation.shape[0] != model_obs_size:
+        if model_obs_size is not None and snapshot.observation.shape[0] != model_obs_size:
             journal.record_alert(
                 "critical",
                 "observation_mismatch",
@@ -832,7 +1039,16 @@ def run_paper_trading(
             continue
 
         regime = execution_engine.evaluate_market_regime(market_data, macro_data)
-        actions, confidences = get_model_actions(predictor, snapshot.observation)
+        actions, confidences = get_live_actions(
+            inference_runtime,
+            snapshot=snapshot,
+            positions_map=positions_map,
+            prices=prices,
+            regime=regime,
+            interval=interval,
+        )
+        buy_reason = f"{inference_runtime.family}_buy"
+        sell_reason = f"{inference_runtime.family}_sell"
 
         for idx, ticker in enumerate(tickers):
             action = int(actions[idx]) if idx < len(actions) else 0
@@ -850,18 +1066,20 @@ def run_paper_trading(
                 continue
 
             if action == 2:
+                if float(positions_map.get(ticker, {}).get("qty", 0.0)) <= 0:
+                    continue
                 journal.record_signal(
                     ticker,
                     "SELL",
                     confidence=confidence,
                     price=price,
-                    reason="model_sell",
-                    details={"regime": regime.reason},
+                    reason=sell_reason,
+                    details={"regime": regime.reason, "family": inference_runtime.family},
                 )
                 result = execution_engine.execute_sell(
                     ticker,
                     price=price,
-                    reason="model_sell",
+                    reason=sell_reason,
                 )
                 if result.success:
                     journal.record_trade(
@@ -870,7 +1088,7 @@ def run_paper_trading(
                         result.filled_price,
                         result.qty,
                         result.qty * result.filled_price,
-                        reason="model_sell",
+                        reason=sell_reason,
                         confidence=confidence,
                         order_id=result.order_id,
                         status=result.status,
@@ -892,8 +1110,8 @@ def run_paper_trading(
                     "BUY",
                     confidence=confidence,
                     price=price,
-                    reason="model_buy",
-                    details={"regime": regime.reason},
+                    reason=buy_reason,
+                    details={"regime": regime.reason, "family": inference_runtime.family},
                 )
                 result, details = execution_engine.execute_buy(
                     ticker,
@@ -904,7 +1122,7 @@ def run_paper_trading(
                     positions_map=positions_map,
                     equity=equity,
                     regime=regime,
-                    reason="model_buy",
+                    reason=buy_reason,
                 )
                 if result.success:
                     journal.record_trade(
@@ -913,7 +1131,7 @@ def run_paper_trading(
                         result.filled_price,
                         result.qty,
                         result.requested_notional,
-                        reason="model_buy",
+                        reason=buy_reason,
                         confidence=confidence,
                         order_id=result.order_id,
                         status=result.status,
@@ -974,9 +1192,10 @@ def run_paper_trading(
     report = {
         "session_id": journal.session_id,
         "session_dir": str(journal.session_dir),
-        "model_path": str(model_path),
+        "model_path": str(model_path) if model_path is not None else None,
         "resolved_models": [str(path) for path in model_paths],
         "mode": mode,
+        "strategy_family": inference_runtime.family,
         "config_path": config_path,
         "start_time": start_time.isoformat(),
         "end_time": datetime.now().isoformat(),
@@ -992,12 +1211,19 @@ def run_paper_trading(
         "vecnorm_path": str(vecnorm_path) if vecnorm_path else None,
     }
     journal.finalize(report)
+    if inference_runtime.policy is not None:
+        inference_runtime.policy.close()
     return report
 
 
 def main():
     parser = argparse.ArgumentParser(description="Paper Trader - eToro-first live simulation")
-    parser.add_argument("--model", type=str, required=True, help="Chemin du modele ou dossier")
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="Chemin du modele ou dossier (requis pour les familles PPO live)",
+    )
     parser.add_argument(
         "--mode",
         type=str,

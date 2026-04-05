@@ -20,8 +20,6 @@ dependencies = [
     "yfinance>=0.2.28",
     "alpaca-py>=0.9.0",
     "wandb>=0.15.0",
-    "psycopg2-binary>=2.9.0",
-    "prometheus-client>=0.17.0",
     "pyyaml>=6.0",
     "python-dotenv>=1.0.0",
     "requests>=2.31.0",
@@ -53,6 +51,15 @@ dev = [
 [project.scripts]
 ploutos-train = "training.train:main"
 ploutos-backtest = "scripts.backtest_ultimate:main"
+ploutos-pipeline = "scripts.run_pipeline:main"
+ploutos-robustness = "scripts.robustness_tests:main"
+ploutos-paper = "scripts.paper_trade:main"
+ploutos-compare = "scripts.compare_strategies:main"
+ploutos-profit-audit = "scripts.profitability_audit:main"
+ploutos-league = "scripts.run_league_batch:main"
+ploutos-housekeeping = "scripts.housekeeping:main"
+ploutos-archive = "scripts.archive_artifacts:main"
+ploutos-repo-audit = "scripts.audit_repo:main"
 
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
@@ -60,7 +67,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["core*", "training*", "trading*", "config*", "scripts*", "database*", "notifications*", "dashboard*"]
+include = ["core*", "training*", "trading*", "config*", "scripts*", "dashboard*"]
 exclude = ["data*", "logs*", "models*", "runs*", "tests*", ".git*", ".vscode*"]
 
 [tool.black]

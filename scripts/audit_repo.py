@@ -6,10 +6,9 @@ from __future__ import annotations
 import argparse
 import ast
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
-
 
 SCRIPT_ENTRY_RE = re.compile(r'^\s*([A-Za-z0-9._-]+)\s*=\s*"([^"]+)"\s*$')
 PYTHON_CMD_RE = re.compile(r"(?m)^\s*(?:python|python3)\s+([A-Za-z0-9_./\\-]+\.py)\b")
@@ -166,6 +165,9 @@ def check_windows_ascii_safety(project_root: Path) -> list[Finding]:
         Path("scripts/paper_trade.py"),
         Path("scripts/backtest_ultimate.py"),
         Path("scripts/audit_repo.py"),
+        Path("docs/MONITORING.md"),
+        Path("docs/QUICKSTART_MONITORING.md"),
+        Path("dashboard/README.md"),
     ]
     findings: list[Finding] = []
 
@@ -187,6 +189,67 @@ def check_windows_ascii_safety(project_root: Path) -> list[Finding]:
     return findings
 
 
+def check_gitignore_format(project_root: Path) -> list[Finding]:
+    gitignore_path = project_root / ".gitignore"
+    if not gitignore_path.exists():
+        return []
+
+    lines = _read_text(gitignore_path).splitlines()
+    if not lines:
+        return []
+
+    if lines[0].strip().startswith("```") or lines[-1].strip() == "```":
+        return [
+            Finding(
+                "WARN",
+                ".gitignore",
+                "The .gitignore file appears to contain Markdown code fences. "
+                "Keep it as raw ignore patterns only.",
+            )
+        ]
+    return []
+
+
+def check_removed_mainline_references(project_root: Path) -> list[Finding]:
+    tracked_paths = [
+        Path("README.md"),
+        Path("dashboard/README.md"),
+        Path("docs/MONITORING.md"),
+        Path("docs/QUICKSTART_MONITORING.md"),
+        Path("pyproject.toml"),
+        Path("requirements.txt"),
+    ]
+    removed_paths = [
+        "database/",
+        "notifications/",
+        "scripts/init_database.py",
+        "dashboard/analytics.py",
+        "dashboard/technical_analysis.py",
+        "dashboard/requirements.txt",
+        "psycopg2-binary",
+        "prometheus-client",
+    ]
+    findings: list[Finding] = []
+
+    for rel_path in tracked_paths:
+        path = project_root / rel_path
+        if not path.exists():
+            continue
+        content = _read_text(path)
+        for removed_path in removed_paths:
+            if removed_path not in content:
+                continue
+            findings.append(
+                Finding(
+                    "WARN",
+                    str(rel_path),
+                    f"Mainline file still references removed or archived component: {removed_path}",
+                )
+            )
+
+    return findings
+
+
 def collect_findings(project_root: Path) -> list[Finding]:
     findings: list[Finding] = []
     pyproject_path = project_root / "pyproject.toml"
@@ -202,6 +265,8 @@ def collect_findings(project_root: Path) -> list[Finding]:
     findings.extend(check_soft_failed_typecheck(project_root))
     findings.extend(check_pytest_config_duplication(project_root))
     findings.extend(check_windows_ascii_safety(project_root))
+    findings.extend(check_gitignore_format(project_root))
+    findings.extend(check_removed_mainline_references(project_root))
     return findings
 
 

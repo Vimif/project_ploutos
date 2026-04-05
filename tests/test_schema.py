@@ -68,8 +68,19 @@ class TestValidateConfig:
         config["strategy"] = {
             "family": "ppo_ensemble",
             "candidate_families": ["ppo_single", "ppo_ensemble", "supervised_ranker"],
+            "seed_offsets": [0, 100],
             "rule_fast_ma": 20,
             "rule_slow_ma": 50,
+        }
+        config["league"] = {
+            "snapshot_id": "test_snapshot",
+            "candidate_families": ["supervised_ranker", "ppo_ensemble", "rule_momentum_regime"],
+            "baseline_family": "rule_momentum_regime",
+            "gold_holdout_months": 6,
+            "batch_output_root": "logs/league_batches",
+            "cadence": "batch_complete_only",
+            "learning_granularity": "batch_decision",
+            "learning_action_mode": "advisory",
         }
 
         assert validate_config(config) == []
@@ -130,4 +141,18 @@ class TestValidateConfig:
         config["strategy"] = {"family": "rule_momentum_regime", "rule_fast_ma": 50, "rule_slow_ma": 20}
 
         with pytest.raises(ConfigValidationError, match="strategy.rule_fast_ma"):
+            validate_config(config)
+
+    def test_strategy_seed_offsets_must_be_integers(self):
+        config = make_valid_config()
+        config["strategy"] = {"family": "ppo_ensemble", "seed_offsets": [0, "bad"]}
+
+        with pytest.raises(ConfigValidationError, match="strategy.seed_offsets"):
+            validate_config(config)
+
+    def test_league_baseline_family_must_be_supported(self):
+        config = make_valid_config()
+        config["league"] = {"baseline_family": "alien_alpha"}
+
+        with pytest.raises(ConfigValidationError, match="league.baseline_family"):
             validate_config(config)

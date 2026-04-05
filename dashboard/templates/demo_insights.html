@@ -14,6 +14,17 @@
     </div>
 </div>
 
+<div class="grid">
+    <div class="card">
+        <h2>League Batch</h2>
+        <div id="league" class="list"><div class="loading">Loading...</div></div>
+    </div>
+    <div class="card">
+        <h2>Project Learning</h2>
+        <div id="project-learning" class="list"><div class="loading">Loading...</div></div>
+    </div>
+</div>
+
 <div class="card">
     <h2>Prioritized Recommendations</h2>
     <div id="recommendations" class="list"><div class="loading">Loading...</div></div>
@@ -23,14 +34,18 @@
 {% block extra_js %}
 <script>
 async function loadInsights() {
-    const [diagnosticsResponse, recommendationsResponse, contextResponse] = await Promise.all([
+    const [diagnosticsResponse, recommendationsResponse, contextResponse, leagueResponse, learningResponse] = await Promise.all([
         fetch("/api/demo/diagnostics"),
         fetch("/api/demo/recommendations"),
-        fetch("/api/demo/historical-context")
+        fetch("/api/demo/historical-context"),
+        fetch("/api/demo/league"),
+        fetch("/api/demo/project-learning")
     ]);
     const diagnosticsPayload = await diagnosticsResponse.json();
     const recommendationsPayload = await recommendationsResponse.json();
     const contextPayload = await contextResponse.json();
+    const leaguePayload = await leagueResponse.json();
+    const learningPayload = await learningResponse.json();
 
     const diagnostics = diagnosticsPayload.data.diagnostics;
     document.getElementById("diagnostics").innerHTML = `
@@ -52,6 +67,31 @@ async function loadInsights() {
             <div class="muted">${context.latest_profitability_audit.verdict || "-"}</div>
             <div class="muted">Score: ${context.latest_profitability_audit.profitability_score || "-"}</div>
         </div>
+        <div class="item">
+            <strong>Latest league batch</strong>
+            <div class="muted">${context.latest_league_batch.batch_id || "-"}</div>
+            <div class="muted">${context.latest_league_batch.gold_winner_family || "-"} / ${context.latest_league_batch.gold_winner_interval || "-"}</div>
+        </div>
+    `;
+
+    const league = leaguePayload.data;
+    document.getElementById("league").innerHTML = `
+        <div class="item"><strong>Batch id</strong><div class="muted">${league.batch_id || "-"}</div></div>
+        <div class="item"><strong>Snapshot id</strong><div class="muted">${league.snapshot_id || "-"}</div></div>
+        <div class="item"><strong>Winner</strong><div class="muted">${league.winner_family || "-"} / ${league.winner_interval || "-"}</div></div>
+        <div class="item"><strong>Baseline</strong><div class="muted">${league.baseline_family || "-"}</div></div>
+        <div class="item"><strong>Stable winner</strong><div class="muted">${league.stable_winner ? "Yes" : "No"}</div></div>
+        <div class="item"><strong>Decision</strong><div class="muted">${league.decision_summary || "-"}</div></div>
+    `;
+
+    const learning = learningPayload.data;
+    const alertText = (learning.history_alerts || []).map((item) => item.message).join(" | ") || "-";
+    const lessonText = (learning.lesson_summary || []).join(" ") || "-";
+    document.getElementById("project-learning").innerHTML = `
+        <div class="item"><strong>Good patterns</strong><div class="muted">${JSON.stringify((learning.patterns || {}).good_decisions || [])}</div></div>
+        <div class="item"><strong>Bad patterns</strong><div class="muted">${JSON.stringify((learning.patterns || {}).bad_decisions || [])}</div></div>
+        <div class="item"><strong>History alerts</strong><div class="muted">${alertText}</div></div>
+        <div class="item"><strong>Lessons</strong><div class="muted">${lessonText}</div></div>
     `;
 
     const recommendations = recommendationsPayload.data.recommendations || [];

@@ -56,6 +56,7 @@ async function loadOverview() {
         { label: "Broker connected", value: data.data_health.broker_connected ? "Yes" : "No" },
         { label: "Broker error", value: data.data_health.broker_error || "-" },
         { label: "Session id", value: data.session.session_id || "-" },
+        { label: "League winner", value: `${data.league.winner_family || "-"} / ${data.league.winner_interval || "-"}` },
         { label: "Latest event", value: formatDate(data.session.latest_event_at) },
         { label: "Latest equity", value: formatDate(data.session.latest_equity_at) },
     ];

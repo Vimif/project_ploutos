@@ -54,6 +54,7 @@ def _build_overview_payload(payload: dict[str, Any]) -> dict[str, Any]:
     session = payload["session"]
     broker = payload["broker"]
     diagnostics = payload["diagnostics"]
+    league = payload["league_context"]
 
     latest_equity = session.equity[-1] if session and session.equity else {}
     account = broker["account"] if broker.get("connected") else {
@@ -69,6 +70,7 @@ def _build_overview_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "open_orders": broker.get("open_orders", []),
         "alerts": diagnostics["alerts"],
         "summary": session.report.get("summary", {}) if session else {},
+        "league": league,
         "data_health": {
             "broker_connected": broker.get("connected", False),
             "broker_error": broker.get("error"),
@@ -163,6 +165,18 @@ def api_demo_recommendations():
 def api_demo_historical_context():
     payload = demo_service.get_demo_payload()
     return jsonify({"success": True, "data": payload["historical_context"]})
+
+
+@app.route("/api/demo/league")
+def api_demo_league():
+    payload = demo_service.get_demo_payload()
+    return jsonify({"success": True, "data": payload["league_context"]})
+
+
+@app.route("/api/demo/project-learning")
+def api_demo_project_learning():
+    payload = demo_service.get_demo_payload()
+    return jsonify({"success": True, "data": payload["project_learning"]})
 
 
 @app.route("/api/health")
