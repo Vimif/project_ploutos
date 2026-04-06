@@ -133,7 +133,8 @@ def aggregate_walk_forward(results: dict, thresholds: dict) -> dict:
     return_to_drawdown = (
         cumulative_return / avg_max_drawdown
         if avg_max_drawdown > 0
-        else math.inf if cumulative_return > 0 else 0.0
+        else math.inf if cumulative_return > 0
+        else 0.0
     )
 
     return {
@@ -567,7 +568,9 @@ def main() -> None:
     default_robustness_root = (
         walk_forward_root if walk_forward_root.is_dir() else walk_forward_root.parent
     )
-    robustness_paths = resolve_robustness_paths(args.robustness or str(default_robustness_root))
+    robustness_paths = resolve_robustness_paths(
+        args.robustness or str(default_robustness_root)
+    )
 
     walk_forward_results = _load_json(walk_forward_path)
     robustness_reports = [_load_json(path) for path in robustness_paths]

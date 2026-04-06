@@ -138,11 +138,7 @@ class TestValidateConfig:
 
     def test_strategy_rule_fast_ma_must_be_lower_than_slow_ma(self):
         config = make_valid_config()
-        config["strategy"] = {
-            "family": "rule_momentum_regime",
-            "rule_fast_ma": 50,
-            "rule_slow_ma": 20,
-        }
+        config["strategy"] = {"family": "rule_momentum_regime", "rule_fast_ma": 50, "rule_slow_ma": 20}
 
         with pytest.raises(ConfigValidationError, match="strategy.rule_fast_ma"):
             validate_config(config)

@@ -6,20 +6,15 @@ from core.environment import TradingEnv
 from core.features import FeatureEngineer
 from core.shared_memory_manager import SharedDataManager, load_shared_data
 
-
 def _get_mock_data(n=2000):
     idx = pd.date_range("2020-01-01", periods=n, freq="h")
-    return pd.DataFrame(
-        {
-            "Open": np.random.randn(n) + 100,
-            "High": np.random.randn(n) + 110,
-            "Low": np.random.randn(n) + 90,
-            "Close": np.random.randn(n) + 100,
-            "Volume": np.abs(np.random.randn(n)) * 1000,
-        },
-        index=idx,
-    )
-
+    return pd.DataFrame({
+        "Open": np.random.randn(n) + 100,
+        "High": np.random.randn(n) + 110,
+        "Low": np.random.randn(n) + 90,
+        "Close": np.random.randn(n) + 100,
+        "Volume": np.abs(np.random.randn(n)) * 1000
+    }, index=idx)
 
 class TestV9Integration:
 

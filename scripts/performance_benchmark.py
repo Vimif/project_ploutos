@@ -292,15 +292,10 @@ def _load_real_predictor(
         live_settings,
         config,
     )
-    return (
-        predictor,
-        tickers,
-        obs_size,
-        {
-            "resolved_models": [str(path) for path in model_paths],
-            "model_config": model_config,
-        },
-    )
+    return predictor, tickers, obs_size, {
+        "resolved_models": [str(path) for path in model_paths],
+        "model_config": model_config,
+    }
 
 
 def _make_positions_map(
@@ -488,9 +483,7 @@ def run_benchmark(settings: BenchmarkSettings, config: dict) -> dict[str, Any]:
                 config,
                 components["LiveExecutionConfig"],
             )
-            if model_tickers == settings.tickers and model_obs_size == int(
-                snapshot.observation.shape[0]
-            ):
+            if model_tickers == settings.tickers and model_obs_size == int(snapshot.observation.shape[0]):
                 predictor = real_predictor
                 predictor_mode = "model"
                 predictor_details = details

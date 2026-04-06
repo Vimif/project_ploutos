@@ -261,9 +261,7 @@ def test_run_paper_trading_supports_rule_strategy_without_model(monkeypatch, tmp
     monkeypatch.setattr(
         paper_trade,
         "load_predictor_bundle",
-        lambda *args, **kwargs: (_ for _ in ()).throw(
-            AssertionError("PPO loader should not be used")
-        ),
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("PPO loader should not be used")),
     )
     monkeypatch.setattr(paper_trade, "fetch_live_data", lambda *args, **kwargs: market_data)
     monkeypatch.setattr(paper_trade, "fetch_live_macro_data", lambda *args, **kwargs: macro_data)

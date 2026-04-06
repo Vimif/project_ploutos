@@ -491,13 +491,11 @@ def resolve_live_inference_runtime(
         if not model_path:
             raise ValueError(f"strategy.family={family} requires --model")
         requested_models = 1 if family == "ppo_single" else live_settings.ensemble_size
-        predictor, tickers, model_obs_size, model_config, vecnorm_path, model_paths = (
-            load_predictor_bundle(
-                model_path,
-                live_settings,
-                runtime_config,
-                requested_models=requested_models,
-            )
+        predictor, tickers, model_obs_size, model_config, vecnorm_path, model_paths = load_predictor_bundle(
+            model_path,
+            live_settings,
+            runtime_config,
+            requested_models=requested_models,
         )
         effective_config = merge_configs(model_config, runtime_config)
         return LiveInferenceRuntime(
@@ -519,9 +517,7 @@ def resolve_live_inference_runtime(
     if family in CONFIG_DRIVEN_LIVE_FAMILIES:
         tickers = list(runtime_config.get("data", {}).get("tickers", []))
         if not tickers:
-            raise ValueError(
-                f"strategy.family={family} requires data.tickers in the runtime config"
-            )
+            raise ValueError(f"strategy.family={family} requires data.tickers in the runtime config")
         policy = build_strategy_policy(family, runtime_config)
         return LiveInferenceRuntime(
             family=family,
@@ -621,7 +617,10 @@ def _build_strategy_context(
     regime,
     interval: str,
 ) -> StrategyContext:
-    portfolio = {ticker: float(positions_map.get(ticker, {}).get("qty", 0.0)) for ticker in tickers}
+    portfolio = {
+        ticker: float(positions_map.get(ticker, {}).get("qty", 0.0))
+        for ticker in tickers
+    }
     entry_prices = {
         ticker: float(positions_map.get(ticker, {}).get("avg_entry_price", 0.0))
         for ticker in tickers
@@ -687,9 +686,7 @@ def get_live_actions(
 
 
 def _compute_exposure(positions_map: dict[str, dict], equity: float) -> float:
-    total_market_value = sum(
-        float(position.get("market_value", 0.0)) for position in positions_map.values()
-    )
+    total_market_value = sum(float(position.get("market_value", 0.0)) for position in positions_map.values())
     return total_market_value / max(equity, 1e-8)
 
 
@@ -733,9 +730,7 @@ def _record_threshold_alerts(
     live_settings: LiveExecutionConfig,
 ) -> None:
     drawdown = (kill_switch.peak_equity - equity) / max(kill_switch.peak_equity, 1e-8)
-    daily_loss = (kill_switch.daily_start_equity - equity) / max(
-        kill_switch.daily_start_equity, 1e-8
-    )
+    daily_loss = (kill_switch.daily_start_equity - equity) / max(kill_switch.daily_start_equity, 1e-8)
 
     if drawdown >= (live_settings.max_drawdown * 0.8):
         journal.record_alert(
@@ -936,8 +931,7 @@ def run_paper_trading(
         price_hints = {ticker: float(df["Close"].iloc[-1]) for ticker, df in market_data.items()}
         prices = {
             ticker: float(
-                broker_adapter.get_current_price(ticker, price_hint=price_hints[ticker])
-                or price_hints[ticker]
+                broker_adapter.get_current_price(ticker, price_hint=price_hints[ticker]) or price_hints[ticker]
             )
             for ticker in tickers
         }
@@ -961,9 +955,7 @@ def run_paper_trading(
         triggered, reason = kill_switch.check(equity)
         if len(kill_switch.alerts) > last_alert_count:
             for alert in kill_switch.alerts[last_alert_count:]:
-                journal.record_alert(
-                    "warning", "kill_switch_inactivity", {"message": alert}, dedupe_key=alert
-                )
+                journal.record_alert("warning", "kill_switch_inactivity", {"message": alert}, dedupe_key=alert)
             last_alert_count = len(kill_switch.alerts)
 
         _record_threshold_alerts(journal, kill_switch, equity=equity, live_settings=live_settings)
@@ -1159,9 +1151,7 @@ def run_paper_trading(
         account = broker_adapter.get_account()
         equity = float(account.get("portfolio_value") or account.get("equity") or 0.0)
         positions_map = broker_adapter.get_positions_map()
-        positions_count = len(
-            [position for position in positions_map.values() if float(position.get("qty", 0.0)) > 0]
-        )
+        positions_count = len([position for position in positions_map.values() if float(position.get("qty", 0.0)) > 0])
         total_return = (equity - initial_balance) / max(initial_balance, 1e-8)
         drawdown = (kill_switch.peak_equity - equity) / max(kill_switch.peak_equity, 1e-8)
         exposure = _compute_exposure(positions_map, equity)

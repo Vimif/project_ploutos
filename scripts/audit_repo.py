@@ -85,9 +85,7 @@ def check_readme_command_paths(project_root: Path, readme_path: Path) -> list[Fi
         candidate = project_root / Path(rel_path.replace("\\", "/"))
         if not candidate.exists():
             findings.append(
-                Finding(
-                    "ERROR", "README.md", f"Documented command points to missing path: {rel_path}"
-                )
+                Finding("ERROR", "README.md", f"Documented command points to missing path: {rel_path}")
             )
     return findings
 

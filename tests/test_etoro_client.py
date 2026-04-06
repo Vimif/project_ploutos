@@ -112,9 +112,7 @@ def test_get_positions_normalizes_current_portfolio_snapshot(client, monkeypatch
             ]
         }
     }
-    monkeypatch.setattr(
-        client, "_request", lambda *args, **kwargs: DummyResponse(200, payload, text="ok")
-    )
+    monkeypatch.setattr(client, "_request", lambda *args, **kwargs: DummyResponse(200, payload, text="ok"))
     monkeypatch.setattr(client, "_get_symbol", lambda instrument_id: "AAPL")
 
     positions = client.get_positions()
