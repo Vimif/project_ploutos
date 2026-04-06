@@ -34,6 +34,28 @@ class ObservationBuilder:
             + 3  # cash_pct, total_return, drawdown
             + 3  # recent returns: 1-step, 5-step, 20-step
         )
+        self.obs_buffer = np.zeros(self.obs_size, dtype=np.float32)
+
+        # Pre-compute slice indices
+        self.feature_slices = []
+        idx = 0
+        for _ in self.tickers:
+            self.feature_slices.append(slice(idx, idx + self.n_features))
+            idx += self.n_features
+
+        if self.macro_array is not None:
+            self.macro_slice = slice(idx, idx + self.n_macro_features)
+            idx += self.n_macro_features
+        else:
+            self.macro_slice = None
+
+        self.pos_pct_slice = slice(idx, idx + self.n_assets)
+        idx += self.n_assets
+        self.unrealized_pnl_slice = slice(idx, idx + self.n_assets)
+        idx += self.n_assets
+        self.portfolio_state_slice = slice(idx, idx + 3)
+        idx += 3
+        self.recent_returns_slice = slice(idx, idx + 3)
 
     def build(
         self,
@@ -64,59 +86,57 @@ class ObservationBuilder:
             Flat numpy observation vector.
         """
         clip = OBSERVATION_CLIP_RANGE
-        obs_parts = []
 
         # Technical features per ticker
-        for ticker in self.tickers:
+        for i, ticker in enumerate(self.tickers):
             features_array = self.feature_arrays[ticker]
             if current_step >= len(features_array):
-                features = np.zeros(self.n_features, dtype=np.float32)
+                self.obs_buffer[self.feature_slices[i]] = 0.0
             else:
-                features = features_array[current_step]
-            features = np.nan_to_num(features, nan=0.0, posinf=clip, neginf=-clip)
-            features = np.clip(features, -clip, clip)
-            obs_parts.append(features)
+                self.obs_buffer[self.feature_slices[i]] = features_array[current_step]
 
         # Macro features (shared across tickers)
-        if self.macro_array is not None:
+        if self.macro_slice is not None:
             if current_step < len(self.macro_array):
-                macro_features = self.macro_array[current_step]
+                self.obs_buffer[self.macro_slice] = self.macro_array[current_step]
             else:
-                macro_features = np.zeros(self.n_macro_features, dtype=np.float32)
-            macro_features = np.nan_to_num(macro_features, nan=0.0, posinf=clip, neginf=-clip)
-            macro_features = np.clip(macro_features, -clip, clip)
-            obs_parts.append(macro_features)
+                self.obs_buffer[self.macro_slice] = 0.0
 
         # Position percentages
-        for ticker in self.tickers:
+        pos_pcts = self.obs_buffer[self.pos_pct_slice]
+        for i, ticker in enumerate(self.tickers):
             price = prices.get(ticker, 0.0)
             if price > 0:
-                position_value = portfolio.get(ticker, 0.0) * price
-                position_pct = position_value / (equity + EQUITY_EPSILON)
+                position_pct = (portfolio.get(ticker, 0.0) * price) / (equity + EQUITY_EPSILON)
+                pos_pcts[i] = min(1.0, max(0.0, position_pct))
             else:
-                position_pct = 0.0
-            obs_parts.append([np.clip(position_pct, 0, 1)])
+                pos_pcts[i] = 0.0
 
         # Unrealized PnL per position
         if entry_prices is None:
             entry_prices = {}
-        for ticker in self.tickers:
+        pnls = self.obs_buffer[self.unrealized_pnl_slice]
+        for i, ticker in enumerate(self.tickers):
             entry = entry_prices.get(ticker, 0.0)
             qty = portfolio.get(ticker, 0.0)
             price = prices.get(ticker, 0.0)
             if entry > 0 and qty > 0 and price > 0:
                 unrealized_pnl = (price - entry) / entry
+                pnls[i] = min(5.0, max(-1.0, unrealized_pnl))
             else:
-                unrealized_pnl = 0.0
-            obs_parts.append([np.clip(unrealized_pnl, -1.0, 5.0)])
+                pnls[i] = 0.0
 
         # Portfolio state
-        cash_pct = np.clip(balance / (equity + EQUITY_EPSILON), 0, 1)
-        total_return = np.clip((equity - initial_balance) / initial_balance, -1, 5)
-        drawdown = np.clip((peak_value - equity) / (peak_value + EQUITY_EPSILON), 0, 1)
-        obs_parts.append([cash_pct, total_return, drawdown])
+        state = self.obs_buffer[self.portfolio_state_slice]
+        cash_pct = balance / (equity + EQUITY_EPSILON)
+        total_return = (equity - initial_balance) / initial_balance
+        drawdown = (peak_value - equity) / (peak_value + EQUITY_EPSILON)
+        state[0] = min(1.0, max(0.0, cash_pct))
+        state[1] = min(5.0, max(-1.0, total_return))
+        state[2] = min(1.0, max(0.0, drawdown))
 
         # Recent portfolio returns (1-step, 5-step, 20-step)
+        ret_slice = self.obs_buffer[self.recent_returns_slice]
         hist = list(portfolio_value_history) if portfolio_value_history else []
 
         def _recent_return(lookback):
@@ -124,13 +144,13 @@ class ObservationBuilder:
                 return (hist[-1] - hist[-lookback - 1]) / hist[-lookback - 1]
             return 0.0
 
-        ret_1 = np.clip(_recent_return(1), -0.5, 0.5)
-        ret_5 = np.clip(_recent_return(5), -0.5, 0.5)
-        ret_20 = np.clip(_recent_return(20), -0.5, 0.5)
-        obs_parts.append([ret_1, ret_5, ret_20])
+        ret_slice[0] = min(0.5, max(-0.5, _recent_return(1)))
+        ret_slice[1] = min(0.5, max(-0.5, _recent_return(5)))
+        ret_slice[2] = min(0.5, max(-0.5, _recent_return(20)))
 
-        obs = np.concatenate([np.array(p).flatten() for p in obs_parts])
-        obs = np.nan_to_num(obs, nan=0.0, posinf=clip, neginf=-clip)
-        obs = np.clip(obs, -clip, clip)
+        # Global NaN and Inf handling for the whole buffer
+        np.nan_to_num(self.obs_buffer, nan=0.0, posinf=clip, neginf=-clip, copy=False)
+        np.clip(self.obs_buffer, -clip, clip, out=self.obs_buffer)
 
-        return obs.astype(np.float32)
+        return self.obs_buffer.copy()
+
