@@ -60,7 +60,11 @@ class LiveExecutionConfig:
     @classmethod
     def from_dict(cls, data: Optional[dict] = None) -> "LiveExecutionConfig":
         data = data or {}
-        known = {field_name: data[field_name] for field_name in cls.__dataclass_fields__ if field_name in data}
+        known = {
+            field_name: data[field_name]
+            for field_name in cls.__dataclass_fields__
+            if field_name in data
+        }
         return cls(**known)
 
 
@@ -246,9 +250,7 @@ class LiveBrokerAdapter:
             for symbol, position in raw_positions.items():
                 symbol = symbol.upper()
                 qty = float(position.get("qty", 0.0))
-                avg_price = float(
-                    position.get("avg_entry_price", position.get("avg_price", 0.0))
-                )
+                avg_price = float(position.get("avg_entry_price", position.get("avg_price", 0.0)))
                 current_price = float(position.get("current_price", avg_price))
                 market_value = float(position.get("market_value", qty * current_price))
                 cost_basis = float(position.get("cost_basis", qty * avg_price))
@@ -321,7 +323,9 @@ class LiveBrokerAdapter:
             recent_prices=recent_prices,
         )
 
-    def buy_notional(self, symbol: str, notional: float, *, price_hint: float, reason: str = "") -> NormalizedOrderResult:
+    def buy_notional(
+        self, symbol: str, notional: float, *, price_hint: float, reason: str = ""
+    ) -> NormalizedOrderResult:
         symbol = symbol.upper()
         price = self.get_current_price(symbol, price_hint=price_hint)
         if price is None or price <= 0:
@@ -404,7 +408,9 @@ class LiveBrokerAdapter:
 
         raise ValueError("Broker does not support buy execution")
 
-    def sell_all(self, symbol: str, *, price_hint: float, reason: str = "") -> NormalizedOrderResult:
+    def sell_all(
+        self, symbol: str, *, price_hint: float, reason: str = ""
+    ) -> NormalizedOrderResult:
         symbol = symbol.upper()
         position = self.get_positions_map().get(symbol)
         qty = float(position["qty"]) if position else 0.0
@@ -482,7 +488,9 @@ class LiveExecutionEngine:
 
         risk_on = fast_ma > slow_ma and (vix is None or vix < self.config.regime_vix_threshold)
         reason = "risk_on" if risk_on else "risk_filter_blocked"
-        return MarketRegime(risk_on=risk_on, reason=reason, fast_ma=fast_ma, slow_ma=slow_ma, vix=vix)
+        return MarketRegime(
+            risk_on=risk_on, reason=reason, fast_ma=fast_ma, slow_ma=slow_ma, vix=vix
+        )
 
     def get_risk_exit_signals(self, positions_map: dict[str, dict]) -> dict[str, str]:
         signals = {}
@@ -510,18 +518,25 @@ class LiveExecutionEngine:
         if confidence < self.config.min_confidence:
             return False, "low_confidence", {"confidence": confidence}
         if not regime.risk_on:
-            return False, regime.reason, {"fast_ma": regime.fast_ma, "slow_ma": regime.slow_ma, "vix": regime.vix}
+            return (
+                False,
+                regime.reason,
+                {"fast_ma": regime.fast_ma, "slow_ma": regime.slow_ma, "vix": regime.vix},
+            )
         if self.deduplicator.should_block(symbol, "buy"):
             return False, "duplicate_signal", {}
-        if any(order.get("symbol", "").upper() == symbol for order in self.broker.get_open_orders()):
+        if any(
+            order.get("symbol", "").upper() == symbol for order in self.broker.get_open_orders()
+        ):
             return False, "open_order_exists", {}
 
         active_positions = {
-            key: value
-            for key, value in positions_map.items()
-            if float(value.get("qty", 0.0)) > 0
+            key: value for key, value in positions_map.items() if float(value.get("qty", 0.0)) > 0
         }
-        if symbol not in active_positions and len(active_positions) >= self.config.max_open_positions:
+        if (
+            symbol not in active_positions
+            and len(active_positions) >= self.config.max_open_positions
+        ):
             return False, "max_open_positions", {"count": len(active_positions)}
 
         current_position = active_positions.get(symbol)
@@ -539,14 +554,22 @@ class LiveExecutionEngine:
             recent_prices=recent_prices,
         )
         if float(cost_estimate["breakdown"]["total_cost"]) > self.config.max_cost_pct:
-            return False, "cost_too_high", {
-                "estimated_cost_pct": float(cost_estimate["breakdown"]["total_cost"]),
-            }
+            return (
+                False,
+                "cost_too_high",
+                {
+                    "estimated_cost_pct": float(cost_estimate["breakdown"]["total_cost"]),
+                },
+            )
 
-        return True, "ok", {
-            "notional": notional,
-            "cost_estimate": cost_estimate,
-        }
+        return (
+            True,
+            "ok",
+            {
+                "notional": notional,
+                "cost_estimate": cost_estimate,
+            },
+        )
 
     def execute_buy(
         self,

@@ -297,8 +297,12 @@ def test_run_league_batch_writes_canonical_outputs_and_learning(tmp_path, monkey
     assert Path(result["outputs"]["decision_review"]).exists()
     assert Path(result["outputs"]["project_learning"]).exists()
 
-    leaderboard = json.loads(Path(result["outputs"]["league_leaderboard"]).read_text(encoding="utf-8"))
-    project_learning = json.loads(Path(result["outputs"]["project_learning"]).read_text(encoding="utf-8"))
+    leaderboard = json.loads(
+        Path(result["outputs"]["league_leaderboard"]).read_text(encoding="utf-8")
+    )
+    project_learning = json.loads(
+        Path(result["outputs"]["project_learning"]).read_text(encoding="utf-8")
+    )
     demo_followup = json.loads(Path(result["outputs"]["demo_followup"]).read_text(encoding="utf-8"))
 
     assert leaderboard["selection"]["gold_winner_family"] == "supervised_ranker"
