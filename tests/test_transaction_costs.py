@@ -106,3 +106,17 @@ class TestExecutionPrice:
         p1, _ = m1.calculate_execution_price("X", 100.0, 50, 1_000_000, "buy", prices)
         p2, _ = m2.calculate_execution_price("X", 100.0, 50, 1_000_000, "buy", prices)
         assert p1 == p2
+
+    def test_slippage_with_numpy_array(self, model, recent_prices):
+        """Test that the fast numpy calculation path accepts ndarray."""
+        # Using a fixed seed for predictable array values
+        np.random.seed(42)
+        prices_array = 100 + np.cumsum(np.random.randn(30) * 0.5)
+
+        slippage = model._calculate_slippage("AAPL", prices_array)
+        assert model.min_slippage <= slippage <= model.max_slippage
+
+        # Test equality with pandas path
+        prices_series = pd.Series(prices_array)
+        slippage_series = model._calculate_slippage("AAPL", prices_series)
+        assert np.isclose(slippage, slippage_series)
