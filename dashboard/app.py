@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -15,7 +16,8 @@ from dashboard.demo_monitor import DemoMonitorService
 
 app = Flask(__name__)
 app.config["JSON_SORT_KEYS"] = False
-CORS(app)
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5000").split(",")
+CORS(app, resources={r"/api/*": {"origins": allowed_origins}})
 
 demo_service = DemoMonitorService()
 
