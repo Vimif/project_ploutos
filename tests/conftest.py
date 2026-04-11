@@ -9,7 +9,6 @@ import numpy as np
 import pandas as pd
 import pytest
 
-
 # ============================================================================
 # Shared data generators
 # ============================================================================
@@ -29,8 +28,8 @@ def make_market_data(n_tickers: int = 2, n_bars: int = 500) -> dict:
 
         open_vals = prices * (1 + np.random.rand(n_bars) * 0.005)
         close_vals = prices
-        high_vals = np.maximum(open_vals, close_vals) * (1 + abs(np.random.randn(n_bars)) * 0.01)
-        low_vals = np.minimum(open_vals, close_vals) * (1 - abs(np.random.randn(n_bars)) * 0.01)
+        high_vals = np.maximum(open_vals, close_vals) * (1 + np.abs(np.random.randn(n_bars)) * 0.01)
+        low_vals = np.minimum(open_vals, close_vals) * (1 - np.abs(np.random.randn(n_bars)) * 0.01)
 
         data[ticker] = pd.DataFrame(
             {
@@ -83,8 +82,8 @@ def make_ohlcv(ticker: str = "TEST", n_bars: int = 300, seed: int = 42) -> pd.Da
     prices = base_price * np.exp(np.cumsum(returns))
     open_vals = prices * (1 + np.random.rand(n_bars) * 0.005)
     close_vals = prices
-    high_vals = np.maximum(open_vals, close_vals) * (1 + abs(np.random.randn(n_bars)) * 0.01)
-    low_vals = np.minimum(open_vals, close_vals) * (1 - abs(np.random.randn(n_bars)) * 0.01)
+    high_vals = np.maximum(open_vals, close_vals) * (1 + np.abs(np.random.randn(n_bars)) * 0.01)
+    low_vals = np.minimum(open_vals, close_vals) * (1 - np.abs(np.random.randn(n_bars)) * 0.01)
 
     return pd.DataFrame(
         {
