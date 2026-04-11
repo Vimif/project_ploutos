@@ -66,11 +66,16 @@ def test_full_pipeline_execution(mock_macro_cls, mock_download, setup_config):
     
     # 1. Mock Market Data
     dates = pd.date_range("2020-01-01", "2022-01-01", freq="h")
+    open_vals = np.random.uniform(100, 200, len(dates))
+    close_vals = np.random.uniform(100, 200, len(dates))
+    high_vals = np.maximum(open_vals, close_vals) * (1 + abs(np.random.randn(len(dates))) * 0.01)
+    low_vals = np.minimum(open_vals, close_vals) * (1 - abs(np.random.randn(len(dates))) * 0.01)
+
     fake_df = pd.DataFrame({
-        "Open": np.random.uniform(100, 200, len(dates)),
-        "High": np.random.uniform(200, 210, len(dates)),
-        "Low": np.random.uniform(90, 100, len(dates)),
-        "Close": np.random.uniform(100, 200, len(dates)),
+        "Open": open_vals,
+        "High": high_vals,
+        "Low": low_vals,
+        "Close": close_vals,
         "Volume": np.random.randint(1000, 10000, len(dates))
     }, index=dates)
     fake_df.index.name = "Date"
