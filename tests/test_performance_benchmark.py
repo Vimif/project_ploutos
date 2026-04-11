@@ -221,7 +221,7 @@ def test_save_report_writes_json(monkeypatch, tmp_path):
     report = performance_benchmark.run_benchmark(settings, config={})
     output_path = performance_benchmark.save_report(report, settings.output_path)
 
-    with open(output_path, "r", encoding="utf-8") as handle:
+    with open(output_path, encoding="utf-8") as handle:
         saved = json.load(handle)
 
     assert output_path.exists()
