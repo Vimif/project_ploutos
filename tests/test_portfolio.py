@@ -1,14 +1,10 @@
-import sys
-from unittest.mock import MagicMock
-
-# Mock missing dependencies before importing Portfolio
-mock_torch = MagicMock()
-sys.modules["torch"] = mock_torch
+# ruff: noqa: E402
+from unittest.mock import patch
 
 import pytest
-from unittest.mock import patch
-from pathlib import Path
+
 from trading.portfolio import Portfolio
+
 
 @pytest.fixture
 def portfolio():
@@ -100,7 +96,7 @@ def test_save_state(mock_trades_dir, portfolio, tmp_path):
     assert saved_file.exists()
 
     import json
-    with open(saved_file, "r") as f:
+    with open(saved_file) as f:
         data = json.load(f)
 
     assert data["initial_capital"] == 100000
