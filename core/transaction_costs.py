@@ -122,8 +122,12 @@ class AdvancedTransactionModel:
             return (self.min_slippage + self.max_slippage) / 2
         
         # Calculer volatilité récente (20 périodes)
-        returns = recent_prices.pct_change().dropna()
-        volatility = returns.std()
+        # Bolt Performance Optimization:
+        # Replaced Pandas `pct_change().dropna().std()` with NumPy operations to avoid Series/DataFrame
+        # overhead during high-frequency walk-forward simulation iterations.
+        vals = np.ravel(recent_prices.to_numpy())  # np.ravel ensures 1D array regardless of input shape
+        returns = np.diff(vals) / vals[:-1]
+        volatility = np.nanstd(returns, ddof=1)
         
         # Normaliser volatilité (0-1)
         # Volatilité typique : 0.01-0.05 pour actions
