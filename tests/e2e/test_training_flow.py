@@ -5,6 +5,8 @@ import yaml
 import shutil
 from pathlib import Path
 from unittest.mock import patch, MagicMock
+import core.model_support
+core.model_support.HAS_RECURRENT = False
 from training.train import run_walk_forward
 
 # Setup paths
