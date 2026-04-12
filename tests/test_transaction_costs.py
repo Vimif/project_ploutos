@@ -46,6 +46,12 @@ class TestSlippage:
         slippage = model._calculate_slippage("AAPL", recent_prices)
         assert model.min_slippage <= slippage <= model.max_slippage
 
+
+    def test_slippage_with_numpy_array(self, model, recent_prices):
+        slippage_pd = model._calculate_slippage("AAPL", recent_prices)
+        slippage_np = model._calculate_slippage("AAPL", recent_prices.values)
+        assert slippage_pd == slippage_np
+
     def test_vol_ceiling_configurable(self):
         model = AdvancedTransactionModel(vol_ceiling=0.10)
         assert model.vol_ceiling == 0.10
