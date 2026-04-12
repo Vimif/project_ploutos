@@ -4,7 +4,30 @@ import numpy as np
 import yaml
 import shutil
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+import sys
+from unittest.mock import MagicMock
+# Prevent stable_baselines3 errors with mock
+import core.model_support
+core.model_support.HAS_RECURRENT = False
+for mod in [
+    "torch",
+    "torch.nn",
+    "torch.nn.functional",
+    "torch.optim",
+    "torch.utils",
+    "torch.utils.data",
+    "torch.distributions",
+    "stable_baselines3",
+    "stable_baselines3.common",
+    "stable_baselines3.common.vec_env",
+    "stable_baselines3.common.monitor",
+    "stable_baselines3.common.callbacks",
+    "sb3_contrib",
+]:
+    sys.modules.setdefault(mod, MagicMock())
+
+from unittest.mock import patch
+
 from training.train import run_walk_forward
 
 # Setup paths
