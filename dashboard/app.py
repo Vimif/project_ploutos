@@ -8,6 +8,8 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import os
+
 from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
 
@@ -15,7 +17,14 @@ from dashboard.demo_monitor import DemoMonitorService
 
 app = Flask(__name__)
 app.config["JSON_SORT_KEYS"] = False
-CORS(app)
+
+# Restrict CORS to specific origins instead of allowing all
+allowed_origins_str = os.getenv(
+    "ALLOWED_CORS_ORIGINS",
+    "http://localhost:5000,http://localhost:3000,http://127.0.0.1:5000",
+)
+allowed_origins = [origin.strip() for origin in allowed_origins_str.split(",") if origin.strip()]
+CORS(app, resources={r"/*": {"origins": allowed_origins}})
 
 demo_service = DemoMonitorService()
 
