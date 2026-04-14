@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -15,7 +16,18 @@ from dashboard.demo_monitor import DemoMonitorService
 
 app = Flask(__name__)
 app.config["JSON_SORT_KEYS"] = False
-CORS(app)
+
+# Security enhancement: Restrict CORS to specific origins instead of '*'
+cors_env = os.environ.get("ALLOWED_CORS_ORIGINS", "")
+if cors_env:
+    allowed_origins = cors_env.split(",")
+else:
+    allowed_origins = [
+        "http://localhost:5000",
+        "http://localhost:3000",
+        "http://127.0.0.1:5000",
+    ]
+CORS(app, resources={r"/*": {"origins": allowed_origins}})
 
 demo_service = DemoMonitorService()
 
@@ -57,11 +69,15 @@ def _build_overview_payload(payload: dict[str, Any]) -> dict[str, Any]:
     league = payload["league_context"]
 
     latest_equity = session.equity[-1] if session and session.equity else {}
-    account = broker["account"] if broker.get("connected") else {
-        "portfolio_value": latest_equity.get("equity", 0.0),
-        "cash": latest_equity.get("balance", 0.0),
-        "equity": latest_equity.get("equity", 0.0),
-    }
+    account = (
+        broker["account"]
+        if broker.get("connected")
+        else {
+            "portfolio_value": latest_equity.get("equity", 0.0),
+            "cash": latest_equity.get("balance", 0.0),
+            "equity": latest_equity.get("equity", 0.0),
+        }
+    )
     return {
         "session": _serialize_session(session),
         "broker": broker,
@@ -212,7 +228,14 @@ def api_db_trades():
                     "reason": event.get("reason", ""),
                 }
             )
-    return jsonify({"success": True, "data": list(reversed(trades)), "count": len(trades), "source": "session_jsonl"})
+    return jsonify(
+        {
+            "success": True,
+            "data": list(reversed(trades)),
+            "count": len(trades),
+            "source": "session_jsonl",
+        }
+    )
 
 
 @app.route("/api/db/evolution")
