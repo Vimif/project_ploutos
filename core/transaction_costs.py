@@ -7,6 +7,7 @@ Simule slippage, impact de marché, et latence
 
 import numpy as np
 import pandas as pd
+from typing import Dict, Tuple, Union
 
 
 class AdvancedTransactionModel:
@@ -65,7 +66,7 @@ class AdvancedTransactionModel:
                                   order_size: float,
                                   current_volume: float,
                                   side: str = 'buy',
-                                  recent_prices: pd.Series | np.ndarray = None) -> tuple[float, dict]:
+                                  recent_prices: Union[pd.Series, np.ndarray] = None) -> Tuple[float, Dict]:
         """
         Calcule le prix d'exécution réel tenant compte de tous les coûts
 
@@ -111,7 +112,7 @@ class AdvancedTransactionModel:
 
         return execution_price, costs_breakdown
 
-    def _calculate_slippage(self, ticker: str, recent_prices: pd.Series | np.ndarray = None) -> float:
+    def _calculate_slippage(self, ticker: str, recent_prices: Union[pd.Series, np.ndarray] = None) -> float:
         """
         Calcule slippage dynamique basé sur volatilité récente
 
@@ -190,7 +191,7 @@ class AdvancedTransactionModel:
                            order_size: float,
                            volume: float,
                            side: str = 'buy',
-                           recent_prices: pd.Series | np.ndarray = None) -> dict:
+                           recent_prices: Union[pd.Series, np.ndarray] = None) -> Dict:
         """
         Estime le coût total d'un trade AVANT exécution
 
