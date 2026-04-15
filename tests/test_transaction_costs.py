@@ -106,3 +106,9 @@ class TestExecutionPrice:
         p1, _ = m1.calculate_execution_price("X", 100.0, 50, 1_000_000, "buy", prices)
         p2, _ = m2.calculate_execution_price("X", 100.0, 50, 1_000_000, "buy", prices)
         assert p1 == p2
+
+    def test_slippage_with_numpy_array(self, model, recent_prices):
+        recent_prices_np = recent_prices.values
+        slippage_pd = model._calculate_slippage("AAPL", recent_prices)
+        slippage_np = model._calculate_slippage("AAPL", recent_prices_np)
+        assert slippage_pd == slippage_np
