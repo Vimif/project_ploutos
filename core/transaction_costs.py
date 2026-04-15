@@ -125,7 +125,7 @@ class AdvancedTransactionModel:
 
         # Calculer volatilité récente (20 périodes)
         # Optimisation : numpy au lieu de pandas pour ~7x speedup
-        vals = recent_prices.values if isinstance(recent_prices, pd.Series) else np.asarray(recent_prices)
+        vals = recent_prices.values if hasattr(recent_prices, 'values') else np.asarray(recent_prices)
         returns = np.diff(vals) / vals[:-1]
         volatility = np.nanstd(returns, ddof=1)
 
