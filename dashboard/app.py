@@ -10,12 +10,19 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from dashboard.demo_monitor import DemoMonitorService
 
 app = Flask(__name__)
 app.config["JSON_SORT_KEYS"] = False
-CORS(app)
+
+# Restrict overly permissive CORS
+allowed_origins = os.getenv("ALLOWED_CORS_ORIGINS", "http://localhost:5000,http://127.0.0.1:5000,http://localhost:3000").split(",")
+CORS(app, resources={r"/*": {"origins": allowed_origins}})
 
 demo_service = DemoMonitorService()
 
@@ -238,4 +245,6 @@ def api_db_evolution():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    host = os.getenv("DASHBOARD_HOST", "127.0.0.1")
+    port = int(os.getenv("DASHBOARD_PORT", 5000))
+    app.run(host=host, port=port, debug=False)
