@@ -15,6 +15,7 @@ from core.artifacts import (
 )
 
 
+
 def test_demo_session_helpers_round_trip(tmp_path):
     older = tmp_path / "20260404_120000"
     newer = tmp_path / "20260404_130000"
@@ -24,6 +25,10 @@ def test_demo_session_helpers_round_trip(tmp_path):
         append_jsonl(session_dir / DEMO_SESSION_EVENTS_FILENAME, {"type": "signal", "ticker": "AAPL"})
         append_jsonl(session_dir / DEMO_SESSION_EQUITY_FILENAME, {"equity": 100000.0})
         save_json(session_dir / DEMO_SESSION_REPORT_FILENAME, {"session_id": session_dir.name, "summary": {}})
+
+    import time
+    os.utime(older, (time.time() - 100, time.time() - 100))
+    os.utime(newer, (time.time(), time.time()))
 
     latest = latest_demo_session(tmp_path)
 
