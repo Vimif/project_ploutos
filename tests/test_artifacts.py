@@ -21,6 +21,7 @@ def test_demo_session_helpers_round_trip(tmp_path):
 
     for session_dir in (older, newer):
         import time
+
         time.sleep(0.01)
         save_json(
             session_dir / DEMO_SESSION_META_FILENAME,

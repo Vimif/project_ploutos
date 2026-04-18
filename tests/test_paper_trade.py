@@ -18,7 +18,10 @@ for mod in [
     "stable_baselines3.common.vec_env",
     "sb3_contrib",
 ]:
-    sys.modules.setdefault(mod, MagicMock())
+    import pytest
+
+    pytest.importorskip(mod)
+    # sys.modules.setdefault(mod, MagicMock())
 
 dotenv_module = types.ModuleType("dotenv")
 dotenv_module.load_dotenv = lambda *args, **kwargs: None

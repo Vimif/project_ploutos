@@ -19,7 +19,10 @@ for mod in [
     "stable_baselines3.common.callbacks",
     "sb3_contrib",
 ]:
-    sys.modules.setdefault(mod, MagicMock())
+    import pytest
+
+    pytest.importorskip(mod)
+    # sys.modules.setdefault(mod, MagicMock())
 
 import pytest
 import numpy as np
