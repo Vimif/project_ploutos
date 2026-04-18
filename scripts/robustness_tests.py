@@ -19,6 +19,7 @@ Usage:
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import os
@@ -47,10 +48,11 @@ from core.evidence_hardening import evaluate_robustness_artifact
 from core.utils import setup_logging
 from config.hardware import detect_hardware, compute_optimal_params
 
-logger = setup_logging(__name__, 'robustness_tests.log')
+logger = setup_logging(__name__, "robustness_tests.log")
 
 try:
     from sb3_contrib import RecurrentPPO
+
     HAS_RECURRENT = True
 except ImportError:
     HAS_RECURRENT = False
@@ -64,10 +66,10 @@ def load_model(model_path: str, use_recurrent: bool = False, device: str = "auto
 
 def _load_vecnormalize(vecnorm_path, test_data, macro_data, env_kwargs):
     """Load a frozen VecNormalize from pickle for inference."""
-    kwargs = {**env_kwargs, 'mode': 'backtest'}
-    dummy_env = DummyVecEnv([
-        lambda: Monitor(TradingEnv(data=test_data, macro_data=macro_data, **kwargs))
-    ])
+    kwargs = {**env_kwargs, "mode": "backtest"}
+    dummy_env = DummyVecEnv(
+        [lambda: Monitor(TradingEnv(data=test_data, macro_data=macro_data, **kwargs))]
+    )
     vecnorm_env = VecNormalize.load(vecnorm_path, dummy_env)
     vecnorm_env.training = False
     vecnorm_env.norm_reward = False
@@ -102,7 +104,7 @@ def add_feature_noise(
     Returns:
         Copy of data with noised feature columns.
     """
-    ohlcv_cols = {'Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close'}
+    ohlcv_cols = {"Open", "High", "Low", "Close", "Volume", "Adj Close"}
     noisy_data = {}
     for ticker, df in data.items():
         noisy_df = df.copy()
@@ -123,12 +125,12 @@ def add_price_noise(
     noisy_data = {}
     for ticker, df in data.items():
         noisy_df = df.copy()
-        for col in ['Open', 'High', 'Low', 'Close']:
+        for col in ["Open", "High", "Low", "Close"]:
             if col in noisy_df.columns:
                 noise = np.random.randn(len(noisy_df)) * noise_std
                 noisy_df[col] = noisy_df[col] * (1 + noise)
-        noisy_df['High'] = noisy_df[['Open', 'High', 'Close']].max(axis=1)
-        noisy_df['Low'] = noisy_df[['Open', 'Low', 'Close']].min(axis=1)
+        noisy_df["High"] = noisy_df[["Open", "High", "Close"]].max(axis=1)
+        noisy_df["Low"] = noisy_df[["Open", "Low", "Close"]].min(axis=1)
         noisy_df = noisy_df.clip(lower=0.01)
         noisy_data[ticker] = noisy_df
     return noisy_data
@@ -145,11 +147,15 @@ def calculate_psr(returns: np.array, benchmark_sr: float = 0.0) -> float:
     n = len(returns)
 
     denom = n - 1
-    if denom <= 0: return 0.0
+    if denom <= 0:
+        return 0.0
 
-    sigma_sr_sq = (1 + (0.5 * sr_est**2) - (skew_est * sr_est) + ((kurt_est / 4) * sr_est**2)) / denom
-    if sigma_sr_sq <= 0: return 0.0
-    
+    sigma_sr_sq = (
+        1 + (0.5 * sr_est**2) - (skew_est * sr_est) + ((kurt_est / 4) * sr_est**2)
+    ) / denom
+    if sigma_sr_sq <= 0:
+        return 0.0
+
     sigma_sr = np.sqrt(sigma_sr_sq)
     psr = norm.cdf((sr_est - benchmark_sr) / sigma_sr)
     return float(psr)
@@ -159,10 +165,10 @@ def calculate_dsr(returns: np.array, n_trials: int = 1) -> float:
     """Calcule le Deflated Sharpe Ratio (DSR) simplifie."""
     if n_trials <= 1:
         return calculate_psr(returns, 0.0)
-    
+
     # Benchmark ajuste pour le biais de selection (Multiple Testing)
     # E[max(SR)] approx sqrt(2 * logN)
-    benchmark_sr = np.sqrt(2 * np.log(n_trials)) * 0.05 # Scale factor empirique pour hourly
+    benchmark_sr = np.sqrt(2 * np.log(n_trials)) * 0.05  # Scale factor empirique pour hourly
     return calculate_psr(returns, benchmark_sr)
 
 
@@ -194,14 +200,14 @@ def simulate_crash(
         crash_duration = 1 if instant else 6
         end_idx = min(crash_day_idx + crash_duration, n)
 
-        for col in ['Open', 'High', 'Low', 'Close']:
+        for col in ["Open", "High", "Low", "Close"]:
             if col not in crashed_df.columns:
                 continue
             # Appliquer le crash
             for i, idx in enumerate(range(crash_day_idx, end_idx)):
                 progress = 1.0 if instant else (i + 1) / crash_duration
                 drop = crash_pct * progress
-                crashed_df.iloc[idx, crashed_df.columns.get_loc(col)] *= (1 + drop)
+                crashed_df.iloc[idx, crashed_df.columns.get_loc(col)] *= 1 + drop
 
             # Les prix apres le crash restent au niveau bas
             post_crash_factor = 1 + crash_pct
@@ -224,8 +230,8 @@ def run_backtest(
             MC sims should use deterministic=False to capture policy uncertainty.
     """
     kwargs = dict(env_kwargs or {})
-    kwargs['mode'] = 'backtest'
-    kwargs['seed'] = 42
+    kwargs["mode"] = "backtest"
+    kwargs["seed"] = 42
 
     env = TradingEnv(data=data, macro_data=macro_data, **kwargs)
     obs, _ = env.reset()
@@ -248,7 +254,7 @@ def run_backtest(
         )
         obs, reward, done, truncated, info = env.step(action)
         episode_start = np.array([done], dtype=bool)
-        equity_curve.append(info['equity'])
+        equity_curve.append(info["equity"])
 
     equity_series = pd.Series(equity_curve)
     returns = equity_series.pct_change().dropna()
@@ -259,18 +265,18 @@ def run_backtest(
     sharpe = 0.0
     if len(returns) > 1 and returns.std() > 0:
         sharpe = (returns.mean() / returns.std()) * np.sqrt(252 * 6.5)
-    closed_trades = info.get('winning_trades', 0) + info.get('losing_trades', 0)
-    win_rate = info.get('winning_trades', 0) / closed_trades if closed_trades > 0 else 0.0
+    closed_trades = info.get("winning_trades", 0) + info.get("losing_trades", 0)
+    win_rate = info.get("winning_trades", 0) / closed_trades if closed_trades > 0 else 0.0
 
     return {
-        'total_return': float(total_return),
-        'sharpe_ratio': float(sharpe),
-        'max_drawdown': float(max_drawdown),
-        'final_equity': float(equity_series.iloc[-1]),
-        'total_trades': info.get('total_trades', 0),
-        'winning_trades': info.get('winning_trades', 0),
-        'losing_trades': info.get('losing_trades', 0),
-        'win_rate': float(win_rate),
+        "total_return": float(total_return),
+        "sharpe_ratio": float(sharpe),
+        "max_drawdown": float(max_drawdown),
+        "final_equity": float(equity_series.iloc[-1]),
+        "total_trades": info.get("total_trades", 0),
+        "winning_trades": info.get("winning_trades", 0),
+        "losing_trades": info.get("losing_trades", 0),
+        "win_rate": float(win_rate),
     }
 
 
@@ -280,7 +286,16 @@ def _mc_worker(args):
     Receives precomputed feature data, applies feature noise, loads VecNormalize
     from disk in each worker (picklable path string).
     """
-    precomputed_data, macro_data, noise_std, env_kwargs, model_path, use_recurrent, seed, vecnorm_path = args
+    (
+        precomputed_data,
+        macro_data,
+        noise_std,
+        env_kwargs,
+        model_path,
+        use_recurrent,
+        seed,
+        vecnorm_path,
+    ) = args
     np.random.seed(seed)
     model = load_model(model_path, use_recurrent=use_recurrent, device="cpu")
 
@@ -293,8 +308,11 @@ def _mc_worker(args):
         vecnorm_env = _load_vecnormalize(vecnorm_path, noisy_data, macro_data, env_kwargs)
 
     return run_backtest(
-        model, noisy_data, macro_data, vecnorm_env=vecnorm_env,
-        env_kwargs={**env_kwargs, 'features_precomputed': True},
+        model,
+        noisy_data,
+        macro_data,
+        vecnorm_env=vecnorm_env,
+        env_kwargs={**env_kwargs, "features_precomputed": True},
         deterministic=False,
     )
 
@@ -325,7 +343,7 @@ def monte_carlo_test(
     precomputed_data = _precompute_features(test_data)
 
     mc_env_kwargs = dict(env_kwargs or {})
-    mc_env_kwargs['features_precomputed'] = True
+    mc_env_kwargs["features_precomputed"] = True
 
     logger.info(
         f"Monte Carlo: {n_simulations} simulations "
@@ -337,15 +355,23 @@ def monte_carlo_test(
         from concurrent.futures import ProcessPoolExecutor
 
         # Use 'spawn' context to avoid CUDA re-initialization errors in forked processes
-        ctx = mp.get_context('spawn')
+        ctx = mp.get_context("spawn")
         worker_args = [
-            (precomputed_data, macro_data, noise_std, mc_env_kwargs,
-             model_path, use_recurrent, 42 + i, vecnorm_path)
+            (
+                precomputed_data,
+                macro_data,
+                noise_std,
+                mc_env_kwargs,
+                model_path,
+                use_recurrent,
+                42 + i,
+                vecnorm_path,
+            )
             for i in range(n_simulations)
         ]
         with ProcessPoolExecutor(max_workers=n_workers, mp_context=ctx) as pool:
             results = list(pool.map(_mc_worker, worker_args))
-        losses = sum(1 for r in results if r['total_return'] < 0)
+        losses = sum(1 for r in results if r["total_return"] < 0)
         logger.info(f"  Done: {n_simulations} sims | Losses: {losses}/{n_simulations}")
     else:
         results = []
@@ -353,49 +379,53 @@ def monte_carlo_test(
             np.random.seed(42 + i)
             noisy_data = add_feature_noise(precomputed_data, noise_std=noise_std)
             metrics = run_backtest(
-                model, noisy_data, macro_data, vecnorm_env,
-                env_kwargs=mc_env_kwargs, deterministic=False,
+                model,
+                noisy_data,
+                macro_data,
+                vecnorm_env,
+                env_kwargs=mc_env_kwargs,
+                deterministic=False,
             )
             results.append(metrics)
 
             if (i + 1) % 100 == 0:
-                losses = sum(1 for r in results if r['total_return'] < 0)
+                losses = sum(1 for r in results if r["total_return"] < 0)
                 logger.info(
                     f"  Progress: {i+1}/{n_simulations} | "
                     f"Losses: {losses}/{i+1} ({losses/(i+1)*100:.1f}%)"
                 )
 
     # Analyze
-    returns = [r['total_return'] for r in results]
-    sharpes = [r['sharpe_ratio'] for r in results]
-    drawdowns = [r['max_drawdown'] for r in results]
-    win_rates = [r.get('win_rate', 0.0) for r in results]
+    returns = [r["total_return"] for r in results]
+    sharpes = [r["sharpe_ratio"] for r in results]
+    drawdowns = [r["max_drawdown"] for r in results]
+    win_rates = [r.get("win_rate", 0.0) for r in results]
 
     n_losses = sum(1 for r in returns if r < 0)
     loss_rate = n_losses / n_simulations
 
     report = {
-        'n_simulations': n_simulations,
-        'noise_std': noise_std,
-        'noise_type': 'feature',
-        'deterministic': False,
-        'loss_rate': loss_rate,
-        'is_overfit': loss_rate > 0.20,
-        'avg_return': float(np.mean(returns)),
-        'std_return': float(np.std(returns)),
-        'min_return': float(np.min(returns)),
-        'max_return': float(np.max(returns)),
-        'median_return': float(np.median(returns)),
-        'p5_return': float(np.percentile(returns, 5)),
-        'p95_return': float(np.percentile(returns, 95)),
-        'avg_sharpe': float(np.mean(sharpes)),
-        'avg_max_drawdown': float(np.mean(drawdowns)),
-        'avg_win_rate': float(np.mean(win_rates)),
+        "n_simulations": n_simulations,
+        "noise_std": noise_std,
+        "noise_type": "feature",
+        "deterministic": False,
+        "loss_rate": loss_rate,
+        "is_overfit": loss_rate > 0.20,
+        "avg_return": float(np.mean(returns)),
+        "std_return": float(np.std(returns)),
+        "min_return": float(np.min(returns)),
+        "max_return": float(np.max(returns)),
+        "median_return": float(np.median(returns)),
+        "p5_return": float(np.percentile(returns, 5)),
+        "p95_return": float(np.percentile(returns, 95)),
+        "avg_sharpe": float(np.mean(sharpes)),
+        "avg_max_drawdown": float(np.mean(drawdowns)),
+        "avg_win_rate": float(np.mean(win_rates)),
     }
 
     psr = calculate_psr(np.array(returns), benchmark_sr=0.0)
-    report['psr'] = psr
-    report['dsr'] = calculate_dsr(np.array(returns), n_trials=n_simulations)
+    report["psr"] = psr
+    report["dsr"] = calculate_dsr(np.array(returns), n_trials=n_simulations)
 
     logger.info("\n" + "=" * 50)
     logger.info("MONTE CARLO RESULTS")
@@ -411,10 +441,12 @@ def monte_carlo_test(
     logger.info(f"  P5/P95:      [{report['p5_return']:+.2%}, {report['p95_return']:+.2%}]")
     logger.info(f"  Avg Sharpe:  {report['avg_sharpe']:.2f}")
     logger.info(f"  Avg WinRate: {report['avg_win_rate']:.1%}")
-    logger.info(f"  PSR (Prob):  {report['psr']:.4f} (>{'0.95 OK' if report['psr']>0.95 else 'FAIL'})")
+    logger.info(
+        f"  PSR (Prob):  {report['psr']:.4f} (>{'0.95 OK' if report['psr']>0.95 else 'FAIL'})"
+    )
     logger.info(f"  Avg MaxDD:   {report['avg_max_drawdown']:.2%}")
 
-    if report['is_overfit']:
+    if report["is_overfit"]:
         logger.warning("  VERDICT: OVERFIT - Loss rate > 20%")
     else:
         logger.info("  VERDICT: ROBUST")
@@ -439,7 +471,7 @@ def stress_test_crash(
     logger.info(f"Stress Test: krach de {crash_pct*100:.0f}%")
 
     precomputed_env_kwargs = dict(env_kwargs or {})
-    precomputed_env_kwargs['features_precomputed'] = True
+    precomputed_env_kwargs["features_precomputed"] = True
 
     # Baseline sans krach
     baseline_data = _precompute_features(test_data)
@@ -463,22 +495,22 @@ def stress_test_crash(
     )
 
     # Analyser la reaction
-    baseline_return = baseline['total_return']
-    crash_return = crash_result['total_return']
+    baseline_return = baseline["total_return"]
+    crash_return = crash_result["total_return"]
     return_impact = crash_return - baseline_return
 
     report = {
-        'crash_pct': crash_pct,
-        'baseline_return': baseline_return,
-        'crash_return': crash_return,
-        'return_impact': return_impact,
-        'baseline_max_drawdown': baseline['max_drawdown'],
-        'crash_max_drawdown': crash_result['max_drawdown'],
-        'crash_trades': crash_result['total_trades'],
-        'baseline_win_rate': baseline.get('win_rate', 0.0),
-        'crash_win_rate': crash_result.get('win_rate', 0.0),
-        'survives': crash_result['max_drawdown'] < 0.50,  # Ne perd pas tout
-        'acceptable_drawdown': crash_result['max_drawdown'] < 0.25,
+        "crash_pct": crash_pct,
+        "baseline_return": baseline_return,
+        "crash_return": crash_return,
+        "return_impact": return_impact,
+        "baseline_max_drawdown": baseline["max_drawdown"],
+        "crash_max_drawdown": crash_result["max_drawdown"],
+        "crash_trades": crash_result["total_trades"],
+        "baseline_win_rate": baseline.get("win_rate", 0.0),
+        "crash_win_rate": crash_result.get("win_rate", 0.0),
+        "survives": crash_result["max_drawdown"] < 0.50,  # Ne perd pas tout
+        "acceptable_drawdown": crash_result["max_drawdown"] < 0.25,
     }
 
     logger.info("\n" + "=" * 50)
@@ -493,9 +525,9 @@ def stress_test_crash(
     logger.info(f"  Survives:         {'YES' if report['survives'] else 'NO'}")
     logger.info(f"  Acceptable DD:    {'YES' if report['acceptable_drawdown'] else 'NO'}")
 
-    if not report['survives']:
+    if not report["survives"]:
         logger.warning("  VERDICT: ECHEC - Le modele ne survit pas au krach")
-    elif not report['acceptable_drawdown']:
+    elif not report["acceptable_drawdown"]:
         logger.warning("  VERDICT: MARGINAL - Survit mais drawdown excessif")
     else:
         logger.info("  VERDICT: ROBUSTE - Le modele gere bien le krach")
@@ -507,21 +539,37 @@ def main():
     import argparse
     import yaml
 
-    parser = argparse.ArgumentParser(description='Robustness Tests (Monte Carlo + Stress Test)')
-    parser.add_argument('--model', type=str, required=True, help='Path to model .zip')
-    parser.add_argument('--vecnorm', type=str, default=None, help='Path to vecnormalize .pkl (auto-detected from model dir if not set)')
-    parser.add_argument('--config', type=str, default='config/config.yaml')
-    parser.add_argument('--monte-carlo', type=int, default=0, help='Number of MC simulations (0=skip)')
-    parser.add_argument('--stress-test', action='store_true', help='Run crash stress test')
-    parser.add_argument('--all', action='store_true', help='Run all tests')
-    parser.add_argument('--recurrent', action='store_true', help='Model is RecurrentPPO')
-    parser.add_argument('--noise-std', type=float, default=0.005, help='MC noise std (default: 0.5%%)')
-    parser.add_argument('--crash-pct', type=float, default=-0.20, help='Crash severity (default: -20%%)')
-    parser.add_argument('--test-start', type=str, default=None, help='Test period start date (YYYY-MM-DD)')
-    parser.add_argument('--test-end', type=str, default=None, help='Test period end date (YYYY-MM-DD)')
+    parser = argparse.ArgumentParser(description="Robustness Tests (Monte Carlo + Stress Test)")
+    parser.add_argument("--model", type=str, required=True, help="Path to model .zip")
     parser.add_argument(
-        '--auto-scale', action='store_true',
-        help='Auto-detect hardware and parallelize Monte Carlo',
+        "--vecnorm",
+        type=str,
+        default=None,
+        help="Path to vecnormalize .pkl (auto-detected from model dir if not set)",
+    )
+    parser.add_argument("--config", type=str, default="config/config.yaml")
+    parser.add_argument(
+        "--monte-carlo", type=int, default=0, help="Number of MC simulations (0=skip)"
+    )
+    parser.add_argument("--stress-test", action="store_true", help="Run crash stress test")
+    parser.add_argument("--all", action="store_true", help="Run all tests")
+    parser.add_argument("--recurrent", action="store_true", help="Model is RecurrentPPO")
+    parser.add_argument(
+        "--noise-std", type=float, default=0.005, help="MC noise std (default: 0.5%%)"
+    )
+    parser.add_argument(
+        "--crash-pct", type=float, default=-0.20, help="Crash severity (default: -20%%)"
+    )
+    parser.add_argument(
+        "--test-start", type=str, default=None, help="Test period start date (YYYY-MM-DD)"
+    )
+    parser.add_argument(
+        "--test-end", type=str, default=None, help="Test period end date (YYYY-MM-DD)"
+    )
+    parser.add_argument(
+        "--auto-scale",
+        action="store_true",
+        help="Auto-detect hardware and parallelize Monte Carlo",
     )
 
     args = parser.parse_args()
@@ -537,7 +585,7 @@ def main():
     # Auto-detect vecnorm from model directory
     model_dir = str(Path(args.model).parent)
     if args.vecnorm is None:
-        candidate = os.path.join(model_dir, 'vecnormalize.pkl')
+        candidate = os.path.join(model_dir, "vecnormalize.pkl")
         if os.path.exists(candidate):
             args.vecnorm = candidate
             logger.info(f"Auto-detected VecNormalize: {candidate}")
@@ -546,14 +594,14 @@ def main():
     test_start = args.test_start
     test_end = args.test_end
     if test_start is None or test_end is None:
-        metadata_path = os.path.join(model_dir, 'fold_metadata.json')
+        metadata_path = os.path.join(model_dir, "fold_metadata.json")
         if os.path.exists(metadata_path):
-            with open(metadata_path, 'r') as f:
+            with open(metadata_path, "r") as f:
                 metadata = json.load(f)
             if test_start is None:
-                test_start = metadata.get('test_start')
+                test_start = metadata.get("test_start")
             if test_end is None:
-                test_end = metadata.get('test_end')
+                test_end = metadata.get("test_end")
             logger.info(f"Using fold metadata test period: {test_start} -> {test_end}")
 
     # Load model
@@ -561,19 +609,19 @@ def main():
     model = load_model(args.model, use_recurrent=args.recurrent)
 
     # Load config
-    with open(args.config, 'r') as f:
+    with open(args.config, "r") as f:
         config = yaml.safe_load(f)
     promotion_thresholds = promotion_thresholds_from_config(config)
 
-    env_kwargs = {k: v for k, v in config.get('environment', {}).items()}
+    env_kwargs = {k: v for k, v in config.get("environment", {}).items()}
 
     # Load data
     logger.info("Loading data...")
     data = download_data(
-        tickers=config['data']['tickers'],
-        period=config['data'].get('period', '5y'),
-        interval=config['data'].get('interval', '1h'),
-        dataset_path=config['data'].get('dataset_path'),
+        tickers=config["data"]["tickers"],
+        period=config["data"].get("period", "5y"),
+        interval=config["data"].get("interval", "1h"),
+        dataset_path=config["data"].get("dataset_path"),
     )
 
     # Slice test data using fold dates or fallback to DataSplitter
@@ -611,7 +659,7 @@ def main():
         macro_data = macro_fetcher.fetch_all(
             start_date=str(ref_df.index[0].date()),
             end_date=str(ref_df.index[-1].date()),
-            interval=config['data'].get('interval', '1h'),
+            interval=config["data"].get("interval", "1h"),
         )
         if macro_data.empty:
             macro_data = None
@@ -622,7 +670,7 @@ def main():
     logger.info("Pre-computing features for test data...")
     precomputed_test = _precompute_features(test_data)
 
-    precomputed_env_kwargs = {**env_kwargs, 'features_precomputed': True}
+    precomputed_env_kwargs = {**env_kwargs, "features_precomputed": True}
 
     # VecNormalize
     vecnorm_env = None
@@ -643,7 +691,7 @@ def main():
         logger.info(f"Auto-scale: {n_workers} MC workers")
 
     # Output
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_dir = f"models/robustness_{timestamp}"
     os.makedirs(output_dir, exist_ok=True)
 
@@ -652,7 +700,9 @@ def main():
     # Monte Carlo (uses raw test_data, pre-computes features internally)
     if args.monte_carlo > 0:
         mc_report = monte_carlo_test(
-            model, test_data, macro_data,
+            model,
+            test_data,
+            macro_data,
             n_simulations=args.monte_carlo,
             noise_std=args.noise_std,
             vecnorm_env=vecnorm_env,
@@ -662,38 +712,41 @@ def main():
             use_recurrent=args.recurrent,
             vecnorm_path=vecnorm_path,
         )
-        mc_report['promotion_gate'] = evaluate_robustness_promotion(
+        mc_report["promotion_gate"] = evaluate_robustness_promotion(
             mc_report,
             thresholds=promotion_thresholds,
         )
-        all_results['monte_carlo'] = mc_report
+        all_results["monte_carlo"] = mc_report
 
     # Stress Test (uses precomputed features)
     if args.stress_test:
         st_report = stress_test_crash(
-            model, test_data, macro_data,
+            model,
+            test_data,
+            macro_data,
             crash_pct=args.crash_pct,
             vecnorm_env=vecnorm_env,
             env_kwargs=env_kwargs,
         )
-        st_report['promotion_gate'] = {
-            'passed': st_report['acceptable_drawdown'],
-            'thresholds': promotion_thresholds,
-            'checks': {
-                'max_drawdown': st_report['crash_max_drawdown'] <= promotion_thresholds['max_drawdown'],
+        st_report["promotion_gate"] = {
+            "passed": st_report["acceptable_drawdown"],
+            "thresholds": promotion_thresholds,
+            "checks": {
+                "max_drawdown": st_report["crash_max_drawdown"]
+                <= promotion_thresholds["max_drawdown"],
             },
         }
-        all_results['stress_test'] = st_report
+        all_results["stress_test"] = st_report
 
-    all_results['evidence'] = evaluate_robustness_artifact(all_results)
+    all_results["evidence"] = evaluate_robustness_artifact(all_results)
 
     # Save
-    results_path = os.path.join(output_dir, 'robustness_report.json')
-    with open(results_path, 'w') as f:
+    results_path = os.path.join(output_dir, "robustness_report.json")
+    with open(results_path, "w") as f:
         json.dump(all_results, f, indent=2)
 
     logger.info(f"\nReport saved: {results_path}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

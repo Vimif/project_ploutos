@@ -118,7 +118,14 @@ def test_compare_strategy_families_builds_leaderboard_with_phase2(tmp_path, monk
         extreme_return_threshold,
         seed_offsets,
     ):
-        del config, splits, macro_data, monte_carlo_sims, monte_carlo_noise_std, extreme_return_threshold
+        del (
+            config,
+            splits,
+            macro_data,
+            monte_carlo_sims,
+            monte_carlo_noise_std,
+            extreme_return_threshold,
+        )
         calls.append((family, interval, tuple(seed_offsets)))
         score_map = {
             ("ppo_single", "1h"): 60.0,
@@ -155,8 +162,12 @@ def test_compare_strategy_families_builds_leaderboard_with_phase2(tmp_path, monk
         }
 
     monkeypatch.setattr(strategy_compare, "load_market_bundle", fake_load_market_bundle)
-    monkeypatch.setattr(strategy_compare, "generate_walk_forward_splits", fake_generate_walk_forward_splits)
-    monkeypatch.setattr(strategy_compare, "evaluate_candidate_family", fake_evaluate_candidate_family)
+    monkeypatch.setattr(
+        strategy_compare, "generate_walk_forward_splits", fake_generate_walk_forward_splits
+    )
+    monkeypatch.setattr(
+        strategy_compare, "evaluate_candidate_family", fake_evaluate_candidate_family
+    )
 
     leaderboard = strategy_compare.compare_strategy_families(
         config_path=str(config_path),
@@ -165,7 +176,10 @@ def test_compare_strategy_families_builds_leaderboard_with_phase2(tmp_path, monk
 
     assert leaderboard["selection"]["winner_family"] == "supervised_ranker"
     assert leaderboard["selection"]["winner_beats_ppo_ensemble"] is True
-    assert [entry["family"] for entry in leaderboard["phase_2"]] == ["supervised_ranker", "ppo_single"]
+    assert [entry["family"] for entry in leaderboard["phase_2"]] == [
+        "supervised_ranker",
+        "ppo_single",
+    ]
     assert ("ppo_ensemble", "4h", (0, 100)) not in calls
     assert leaderboard["protocol"]["seed_offsets"] == [0, 100]
     assert (tmp_path / "leaderboard" / "strategy_leaderboard.json").exists()
