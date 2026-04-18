@@ -376,11 +376,15 @@ def _candidate_delta(candidate: dict, baseline: dict) -> dict[str, float]:
     return {
         "selection_score": float(candidate["selection_score"] - baseline["selection_score"]),
         "cumulative_return": float(
-            candidate["walk_forward"]["cumulative_return"] - baseline["walk_forward"]["cumulative_return"]
+            candidate["walk_forward"]["cumulative_return"]
+            - baseline["walk_forward"]["cumulative_return"]
         ),
-        "avg_sharpe": float(candidate["walk_forward"]["avg_sharpe"] - baseline["walk_forward"]["avg_sharpe"]),
+        "avg_sharpe": float(
+            candidate["walk_forward"]["avg_sharpe"] - baseline["walk_forward"]["avg_sharpe"]
+        ),
         "avg_max_drawdown": float(
-            candidate["walk_forward"]["avg_max_drawdown"] - baseline["walk_forward"]["avg_max_drawdown"]
+            candidate["walk_forward"]["avg_max_drawdown"]
+            - baseline["walk_forward"]["avg_max_drawdown"]
         ),
         "loss_rate": float(
             candidate["robustness"]["monte_carlo"]["loss_rate"]
@@ -413,7 +417,9 @@ def build_demo_followup(
             "latest_session": None,
         }
 
-    session_family = session["report"].get("strategy_family") or session["meta"].get("strategy_family")
+    session_family = session["report"].get("strategy_family") or session["meta"].get(
+        "strategy_family"
+    )
     aligned = bool(
         expected_family
         and session_family == expected_family
@@ -529,7 +535,10 @@ def _probable_causes(candidate: dict, baseline: dict) -> list[str]:
         causes.append("sharpe_below_baseline")
     if candidate["walk_forward"]["avg_max_drawdown"] > baseline["walk_forward"]["avg_max_drawdown"]:
         causes.append("drawdown_above_baseline")
-    if candidate["robustness"]["monte_carlo"]["loss_rate"] > baseline["robustness"]["monte_carlo"]["loss_rate"]:
+    if (
+        candidate["robustness"]["monte_carlo"]["loss_rate"]
+        > baseline["robustness"]["monte_carlo"]["loss_rate"]
+    ):
         causes.append("loss_rate_above_baseline")
     if candidate["verdict"] == "improve_edge":
         causes.append("insufficient_edge")
@@ -567,7 +576,10 @@ def _next_batch_recommendations(candidate: dict, baseline: dict) -> list[str]:
     recommendations: list[str] = []
     if candidate["walk_forward"]["avg_max_drawdown"] > baseline["walk_forward"]["avg_max_drawdown"]:
         recommendations.append("Tighten sizing or stop loss before promoting this candidate.")
-    if candidate["robustness"]["monte_carlo"]["loss_rate"] > baseline["robustness"]["monte_carlo"]["loss_rate"]:
+    if (
+        candidate["robustness"]["monte_carlo"]["loss_rate"]
+        > baseline["robustness"]["monte_carlo"]["loss_rate"]
+    ):
         recommendations.append("Improve Monte Carlo resilience before the next demo batch.")
     if candidate["walk_forward"]["avg_sharpe"] < baseline["walk_forward"]["avg_sharpe"]:
         recommendations.append("Improve edge quality before increasing complexity.")
@@ -623,7 +635,9 @@ def build_project_learning(
     for candidate in candidate_pool:
         if candidate["family"] == baseline_family:
             continue
-        baseline = baseline_candidates.get(candidate["interval"]) or next(iter(baseline_candidates.values()), None)
+        baseline = baseline_candidates.get(candidate["interval"]) or next(
+            iter(baseline_candidates.values()), None
+        )
         if baseline is None:
             continue
         verdict = _record_verdict(candidate, baseline)
@@ -634,7 +648,8 @@ def build_project_learning(
                 "candidate_interval": candidate["interval"],
                 "evaluation_stage": "gold",
                 "tested_decision": f"Compare {candidate['family']} against {baseline_family} on {candidate['interval']}",
-                "changes_applied": _extract_learning_focus(config) | {"candidate_family": candidate["family"]},
+                "changes_applied": _extract_learning_focus(config)
+                | {"candidate_family": candidate["family"]},
                 "metrics_before": {
                     "baseline_family": baseline["family"],
                     "selection_score": baseline["selection_score"],
@@ -670,7 +685,10 @@ def build_project_learning(
         previous_record = previous_records.get(record["decision_key"])
         if not previous_record:
             continue
-        if previous_record.get("verdict") == "bad_decision" and record["verdict"] != "good_decision":
+        if (
+            previous_record.get("verdict") == "bad_decision"
+            and record["verdict"] != "good_decision"
+        ):
             history_alerts.append(
                 {
                     "level": "warning",
@@ -679,7 +697,10 @@ def build_project_learning(
                 }
             )
             regression_patterns.append(record["decision_key"])
-        elif previous_record.get("verdict") == "good_decision" and record["verdict"] == "bad_decision":
+        elif (
+            previous_record.get("verdict") == "good_decision"
+            and record["verdict"] == "bad_decision"
+        ):
             history_alerts.append(
                 {
                     "level": "critical",
@@ -688,11 +709,16 @@ def build_project_learning(
                 }
             )
             regression_patterns.append(record["decision_key"])
-        elif previous_record.get("verdict") == "bad_decision" and record["verdict"] == "good_decision":
+        elif (
+            previous_record.get("verdict") == "bad_decision"
+            and record["verdict"] == "good_decision"
+        ):
             recovered_patterns.append(record["decision_key"])
 
     good_patterns = [
-        record["decision_key"] for record in decision_records if record["verdict"] == "good_decision"
+        record["decision_key"]
+        for record in decision_records
+        if record["verdict"] == "good_decision"
     ]
     bad_patterns = [
         record["decision_key"] for record in decision_records if record["verdict"] == "bad_decision"
@@ -769,6 +795,7 @@ def build_decision_review(
         "history_alerts": project_learning.get("history_alerts", []),
         "recommendations": project_learning.get("recommendations", [])[:5],
     }
+
 
 def run_league_batch(
     *,
@@ -944,11 +971,15 @@ def run_league_batch(
     )
 
     outputs = {
-        "league_leaderboard": save_json(batch_dir / LEAGUE_LEADERBOARD_FILENAME, league_leaderboard),
+        "league_leaderboard": save_json(
+            batch_dir / LEAGUE_LEADERBOARD_FILENAME, league_leaderboard
+        ),
         "league_audit": save_json(batch_dir / LEAGUE_AUDIT_FILENAME, league_audit),
         "demo_followup": save_json(batch_dir / LEAGUE_DEMO_FOLLOWUP_FILENAME, demo_followup),
         "decision_review": save_json(batch_dir / LEAGUE_DECISION_REVIEW_FILENAME, decision_review),
-        "project_learning": save_json(batch_dir / LEAGUE_PROJECT_LEARNING_FILENAME, project_learning),
+        "project_learning": save_json(
+            batch_dir / LEAGUE_PROJECT_LEARNING_FILENAME, project_learning
+        ),
     }
     return {
         "batch_id": settings["batch_id"],

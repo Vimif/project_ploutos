@@ -15,7 +15,6 @@ except ImportError:
     HAS_RECURRENT = False
 
 
-
 def _is_recurrent(model: Any) -> bool:
     if not HAS_RECURRENT or RecurrentPPO is None:
         return False
@@ -24,6 +23,7 @@ def _is_recurrent(model: Any) -> bool:
     except TypeError:
         # Happens when mocked
         return type(model).__name__ == "RecurrentPPO"
+
 
 def predict_with_optional_recurrence(
     model: Any,

@@ -2,6 +2,7 @@ import sys
 from pathlib import Path
 import sys
 from unittest.mock import MagicMock
+
 # Mock torch et stable_baselines3 pour éviter l'import GPU
 for mod in [
     "torch",
@@ -28,7 +29,6 @@ sys.path.insert(0, str(project_root))
 import numpy as np
 import pandas as pd
 import pytest
-
 
 # ============================================================================
 # Shared data generators

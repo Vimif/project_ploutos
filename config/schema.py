@@ -231,8 +231,7 @@ def _validate_cross_field_constraints(config: dict[str, Any]) -> None:
     family = strategy.get("family")
     if family is not None and family not in SUPPORTED_STRATEGY_FAMILIES:
         raise ConfigValidationError(
-            "strategy.family must be one of "
-            f"{list(SUPPORTED_STRATEGY_FAMILIES)}."
+            "strategy.family must be one of " f"{list(SUPPORTED_STRATEGY_FAMILIES)}."
         )
 
     candidate_families = strategy.get("candidate_families", [])
@@ -249,7 +248,9 @@ def _validate_cross_field_constraints(config: dict[str, Any]) -> None:
 
     seed_offsets = strategy.get("seed_offsets", [0])
     if not seed_offsets:
-        raise ConfigValidationError("strategy.seed_offsets must contain at least one integer offset.")
+        raise ConfigValidationError(
+            "strategy.seed_offsets must contain at least one integer offset."
+        )
     invalid_seed_offsets = [
         offset for offset in seed_offsets if not isinstance(offset, int) or isinstance(offset, bool)
     ]
@@ -282,8 +283,7 @@ def _validate_cross_field_constraints(config: dict[str, Any]) -> None:
     baseline_family = league.get("baseline_family")
     if baseline_family is not None and baseline_family not in SUPPORTED_STRATEGY_FAMILIES:
         raise ConfigValidationError(
-            "league.baseline_family must be one of "
-            f"{list(SUPPORTED_STRATEGY_FAMILIES)}."
+            "league.baseline_family must be one of " f"{list(SUPPORTED_STRATEGY_FAMILIES)}."
         )
 
 
