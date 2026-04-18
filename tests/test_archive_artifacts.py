@@ -51,7 +51,10 @@ def test_find_archive_candidates_skips_tracked_items_and_moves_untracked(tmp_pat
         apply=True,
     )
 
-    assert any(item["relative_path"] == "models/walk_forward_ppo_20260101_010101" for item in report["archived"])
+    assert any(
+        item["relative_path"] == "models/walk_forward_ppo_20260101_010101"
+        for item in report["archived"]
+    )
     assert any(item["relative_path"] == "data/models/brain_tech.zip" for item in report["skipped"])
     assert not old_dir.exists()
     assert not empty_dir.exists()

@@ -37,9 +37,27 @@ def _build_session(root: Path) -> Path:
     _write_jsonl(
         session_dir / "events.jsonl",
         [
-            {"timestamp": "2026-04-04T12:00:00", "type": "signal", "ticker": "AAPL", "action": "BUY", "reason": "model_buy"},
-            {"timestamp": "2026-04-04T12:00:01", "type": "rejection", "ticker": "AAPL", "action": "BUY", "reason": "cost_too_high"},
-            {"timestamp": "2026-04-04T12:00:02", "type": "rejection", "ticker": "AAPL", "action": "BUY", "reason": "low_confidence"},
+            {
+                "timestamp": "2026-04-04T12:00:00",
+                "type": "signal",
+                "ticker": "AAPL",
+                "action": "BUY",
+                "reason": "model_buy",
+            },
+            {
+                "timestamp": "2026-04-04T12:00:01",
+                "type": "rejection",
+                "ticker": "AAPL",
+                "action": "BUY",
+                "reason": "cost_too_high",
+            },
+            {
+                "timestamp": "2026-04-04T12:00:02",
+                "type": "rejection",
+                "ticker": "AAPL",
+                "action": "BUY",
+                "reason": "low_confidence",
+            },
         ],
     )
     _write_jsonl(
@@ -68,7 +86,12 @@ def _build_session(root: Path) -> Path:
         {
             "session_id": session_dir.name,
             "initial_balance": 100000.0,
-            "summary": {"n_trades": 0, "n_rejections": 2, "total_return": -0.02, "final_equity": 98000.0},
+            "summary": {
+                "n_trades": 0,
+                "n_rejections": 2,
+                "total_return": -0.02,
+                "final_equity": 98000.0,
+            },
         },
     )
     return session_dir
@@ -102,7 +125,14 @@ def test_demo_monitor_recommendations_blend_live_and_historical_context(tmp_path
     monkeypatch.setattr(
         service.broker_cache,
         "get_snapshot",
-        lambda **kwargs: {"connected": False, "account": {}, "positions": [], "open_orders": [], "error": "offline", "mode": "etoro"},
+        lambda **kwargs: {
+            "connected": False,
+            "account": {},
+            "positions": [],
+            "open_orders": [],
+            "error": "offline",
+            "mode": "etoro",
+        },
     )
 
     payload = service.get_demo_payload()
@@ -183,4 +213,6 @@ def test_demo_dashboard_endpoints_return_session_payload(tmp_path, monkeypatch):
     assert len(timeline.get_json()["data"]["events"]) == 3
     assert isinstance(recommendations.get_json()["data"]["recommendations"], list)
     assert league_payload.get_json()["data"]["batch_id"] == "20260404_140000"
-    assert learning_payload.get_json()["data"]["patterns"]["good_decisions"] == ["supervised_ranker@4h"]
+    assert learning_payload.get_json()["data"]["patterns"]["good_decisions"] == [
+        "supervised_ranker@4h"
+    ]

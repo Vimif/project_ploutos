@@ -35,10 +35,7 @@ def test_live_observation_engine_infers_contract_from_model_obs_size(monkeypatch
     index = pd.date_range("2026-03-01", periods=80, freq="h")
     market_data = {ticker: _make_feature_frame(index, 50) for ticker in tickers}
     macro_data = pd.DataFrame(
-        {
-            f"macro_{idx:02d}": np.linspace(idx, idx + 0.5, len(index))
-            for idx in range(25)
-        },
+        {f"macro_{idx:02d}": np.linspace(idx, idx + 0.5, len(index)) for idx in range(25)},
         index=index,
     )
 
@@ -60,7 +57,9 @@ def test_live_observation_engine_infers_contract_from_model_obs_size(monkeypatch
         (),
         {
             "align_to_ticker": staticmethod(
-                lambda macro_frame, ticker_frame: macro_frame.reindex(ticker_frame.index).ffill().bfill()
+                lambda macro_frame, ticker_frame: macro_frame.reindex(ticker_frame.index)
+                .ffill()
+                .bfill()
             )
         },
     )()
