@@ -15,6 +15,16 @@ except ImportError:
     HAS_RECURRENT = False
 
 
+def _is_recurrent(model: Any) -> bool:
+    if not HAS_RECURRENT or RecurrentPPO is None:
+        return False
+    try:
+        return isinstance(model, RecurrentPPO)
+    except TypeError:
+        # Happens when mocked
+        return type(model).__name__ == "RecurrentPPO"
+
+
 def predict_with_optional_recurrence(
     model: Any,
     observation: np.ndarray,
@@ -25,7 +35,7 @@ def predict_with_optional_recurrence(
 ) -> Tuple[np.ndarray, Optional[Any]]:
     """Predict an action while preserving recurrent state when needed."""
 
-    if HAS_RECURRENT and RecurrentPPO is not None and isinstance(model, RecurrentPPO):
+    if _is_recurrent(model):
         if episode_start is None:
             episode_start = np.array([recurrent_state is None], dtype=bool)
         action, recurrent_state = model.predict(
@@ -36,5 +46,6 @@ def predict_with_optional_recurrence(
         )
         return action, recurrent_state
 
-    action, _ = model.predict(observation, deterministic=deterministic)
+    res = model.predict(observation, deterministic=deterministic)
+    action = res[0] if isinstance(res, tuple) else res
     return action, recurrent_state

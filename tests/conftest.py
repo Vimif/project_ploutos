@@ -1,5 +1,26 @@
 import sys
 from pathlib import Path
+import sys
+from unittest.mock import MagicMock
+
+# Mock torch et stable_baselines3 pour éviter l'import GPU
+for mod in [
+    "torch",
+    "torch.nn",
+    "torch.nn.functional",
+    "torch.optim",
+    "torch.utils",
+    "torch.utils.data",
+    "torch.distributions",
+    "stable_baselines3",
+    "stable_baselines3.common",
+    "stable_baselines3.common.vec_env",
+    "stable_baselines3.common.monitor",
+    "stable_baselines3.common.callbacks",
+    "sb3_contrib",
+]:
+    sys.modules.setdefault(mod, MagicMock())
+
 
 # Ajouter la racine du projet au PYTHONPATH
 project_root = Path(__file__).parent.parent
@@ -8,7 +29,6 @@ sys.path.insert(0, str(project_root))
 import numpy as np
 import pandas as pd
 import pytest
-
 
 # ============================================================================
 # Shared data generators
