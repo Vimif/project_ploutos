@@ -397,12 +397,12 @@ class FeatureEngineer:
         valid_sell_signals = [s for s in sell_signals if s in cols]
 
         buy_score = (
-            sum([pl.col(s).fill_null(0) for s in valid_buy_signals])
+            pl.sum_horizontal([pl.col(s).fill_null(0) for s in valid_buy_signals]) # ⚡ Bolt: vectorized sum
             if valid_buy_signals
             else pl.lit(0)
         )
         sell_score = (
-            sum([pl.col(s).fill_null(0) for s in valid_sell_signals])
+            pl.sum_horizontal([pl.col(s).fill_null(0) for s in valid_sell_signals]) # ⚡ Bolt: vectorized sum
             if valid_sell_signals
             else pl.lit(0)
         )
