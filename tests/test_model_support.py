@@ -5,6 +5,9 @@ from unittest.mock import patch
 import numpy as np
 
 import core.model_support as model_support
+
+if getattr(model_support.RecurrentPPO, '__class__', type).__name__ == 'MagicMock':
+    model_support.RecurrentPPO = type('RecurrentPPO', (), {})
 from core.model_support import predict_with_optional_recurrence
 
 
