@@ -42,7 +42,7 @@ jobs:
       - name: Check formatting
         run: black --check .
       - name: Check linting
-        run: ruff check .
+        run: ruff check core/ training/ dashboard/ scripts/ tests/ trading/ legacy/ config/
 
   typecheck:
     runs-on: ubuntu-latest
