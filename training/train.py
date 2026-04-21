@@ -279,7 +279,7 @@ def train_single_fold(
             logger.info(f"  Fold {fold_idx}: RecurrentPPO (LSTM) on {device}")
         else:
             policy_kwargs = {
-                "net_arch": dict(pi=net_arch, vf=net_arch),
+                "net_arch": dict(pi=list(net_arch), vf=list(net_arch)),
                 "activation_fn": activation_fn,
             }
             model = PPO(
