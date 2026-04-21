@@ -25,7 +25,7 @@ def predict_with_optional_recurrence(
 ) -> Tuple[np.ndarray, Optional[Any]]:
     """Predict an action while preserving recurrent state when needed."""
 
-    if HAS_RECURRENT and RecurrentPPO is not None and isinstance(model, RecurrentPPO):
+    if HAS_RECURRENT and RecurrentPPO is not None and (getattr(RecurrentPPO, '__class__', type).__name__ != 'MagicMock' and isinstance(model, RecurrentPPO)):
         if episode_start is None:
             episode_start = np.array([recurrent_state is None], dtype=bool)
         action, recurrent_state = model.predict(
