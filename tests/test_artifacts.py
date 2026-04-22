@@ -19,13 +19,11 @@ def test_demo_session_helpers_round_trip(tmp_path):
     older = tmp_path / "20260404_120000"
     newer = tmp_path / "20260404_130000"
 
-    import time
     for session_dir in (older, newer):
         save_json(session_dir / DEMO_SESSION_META_FILENAME, {"session_id": session_dir.name, "mode": "etoro"})
         append_jsonl(session_dir / DEMO_SESSION_EVENTS_FILENAME, {"type": "signal", "ticker": "AAPL"})
         append_jsonl(session_dir / DEMO_SESSION_EQUITY_FILENAME, {"equity": 100000.0})
         save_json(session_dir / DEMO_SESSION_REPORT_FILENAME, {"session_id": session_dir.name, "summary": {}})
-        time.sleep(0.01) # Force mtime increment between loops for deterministic order
 
     latest = latest_demo_session(tmp_path)
 
