@@ -27,7 +27,7 @@ class ObservationBuilder:
         self.n_macro_features = n_macro_features
         self.n_assets = len(tickers)
 
-        self.obs_size = int(
+        self.obs_size = (
             self.n_assets * self.n_features
             + self.n_macro_features
             + self.n_assets  # position percentages
