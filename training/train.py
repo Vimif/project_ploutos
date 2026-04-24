@@ -270,8 +270,8 @@ def train_single_fold(
                 "device": device,
                 "tensorboard_log": os.path.join(fold_dir, "tb_logs"),
             }
-            if seed is not None:
-                ppo_kwargs["seed"] = seed
+            # We explicitly pass the seed to avoid SB3 type errors with PyTorch 2.11 on Python 3.10 and 3.11 runners
+            ppo_kwargs["seed"] = seed if seed is not None else 42
 
             model = RecurrentPPO("MlpLstmPolicy", envs, **ppo_kwargs)
             logger.info(f"  Fold {fold_idx}: RecurrentPPO (LSTM) on {device}")
@@ -297,8 +297,8 @@ def train_single_fold(
                 "device": device,
                 "tensorboard_log": os.path.join(fold_dir, "tb_logs"),
             }
-            if seed is not None:
-                ppo_kwargs["seed"] = seed
+            # We explicitly pass the seed to avoid SB3 type errors with PyTorch 2.11 on Python 3.10 and 3.11 runners
+            ppo_kwargs["seed"] = seed if seed is not None else 42
 
             model = PPO("MlpPolicy", envs, **ppo_kwargs)
             logger.info(f"  Fold {fold_idx}: PPO standard on {device}")
