@@ -254,49 +254,53 @@ def train_single_fold(
                 "lstm_hidden_size": config.get("network", {}).get("lstm_hidden_size", 256),
                 "n_lstm_layers": config.get("network", {}).get("n_lstm_layers", 1),
             }
-            model = RecurrentPPO(
-                "MlpLstmPolicy",
-                envs,
-                learning_rate=training_cfg.get("learning_rate", 0.0003),
-                n_steps=training_cfg.get("n_steps", 2048),
-                batch_size=training_cfg.get("batch_size", 128),
-                n_epochs=training_cfg.get("n_epochs", 10),
-                gamma=training_cfg.get("gamma", 0.99),
-                gae_lambda=training_cfg.get("gae_lambda", 0.95),
-                clip_range=training_cfg.get("clip_range", 0.2),
-                ent_coef=training_cfg.get("ent_coef", 0.01),
-                vf_coef=training_cfg.get("vf_coef", 0.5),
-                max_grad_norm=training_cfg.get("max_grad_norm", 0.5),
-                policy_kwargs=policy_kwargs,
-                verbose=0,
-                device=device,
-                tensorboard_log=os.path.join(fold_dir, "tb_logs"),
-            )
+            ppo_kwargs = {
+                "learning_rate": training_cfg.get("learning_rate", 0.0003),
+                "n_steps": training_cfg.get("n_steps", 2048),
+                "batch_size": training_cfg.get("batch_size", 128),
+                "n_epochs": training_cfg.get("n_epochs", 10),
+                "gamma": training_cfg.get("gamma", 0.99),
+                "gae_lambda": training_cfg.get("gae_lambda", 0.95),
+                "clip_range": training_cfg.get("clip_range", 0.2),
+                "ent_coef": training_cfg.get("ent_coef", 0.01),
+                "vf_coef": training_cfg.get("vf_coef", 0.5),
+                "max_grad_norm": training_cfg.get("max_grad_norm", 0.5),
+                "policy_kwargs": policy_kwargs,
+                "verbose": 0,
+                "device": device,
+                "tensorboard_log": os.path.join(fold_dir, "tb_logs"),
+            }
+            if seed is not None:
+                ppo_kwargs["seed"] = seed
+
+            model = RecurrentPPO("MlpLstmPolicy", envs, **ppo_kwargs)
             logger.info(f"  Fold {fold_idx}: RecurrentPPO (LSTM) on {device}")
         else:
             policy_kwargs = {
                 "net_arch": [{"pi": net_arch, "vf": net_arch}],
                 "activation_fn": activation_fn,
             }
-            model = PPO(
-                "MlpPolicy",
-                envs,
-                learning_rate=training_cfg.get("learning_rate", 0.0003),
-                n_steps=training_cfg.get("n_steps", 2048),
-                batch_size=training_cfg.get("batch_size", 2048),
-                n_epochs=training_cfg.get("n_epochs", 10),
-                gamma=training_cfg.get("gamma", 0.99),
-                gae_lambda=training_cfg.get("gae_lambda", 0.95),
-                clip_range=training_cfg.get("clip_range", 0.2),
-                ent_coef=training_cfg.get("ent_coef", 0.01),
-                vf_coef=training_cfg.get("vf_coef", 0.5),
-                max_grad_norm=training_cfg.get("max_grad_norm", 0.5),
-                target_kl=training_cfg.get("target_kl", 0.02),
-                policy_kwargs=policy_kwargs,
-                verbose=0,
-                device=device,
-                tensorboard_log=os.path.join(fold_dir, "tb_logs"),
-            )
+            ppo_kwargs = {
+                "learning_rate": training_cfg.get("learning_rate", 0.0003),
+                "n_steps": training_cfg.get("n_steps", 2048),
+                "batch_size": training_cfg.get("batch_size", 2048),
+                "n_epochs": training_cfg.get("n_epochs", 10),
+                "gamma": training_cfg.get("gamma", 0.99),
+                "gae_lambda": training_cfg.get("gae_lambda", 0.95),
+                "clip_range": training_cfg.get("clip_range", 0.2),
+                "ent_coef": training_cfg.get("ent_coef", 0.01),
+                "vf_coef": training_cfg.get("vf_coef", 0.5),
+                "max_grad_norm": training_cfg.get("max_grad_norm", 0.5),
+                "target_kl": training_cfg.get("target_kl", 0.02),
+                "policy_kwargs": policy_kwargs,
+                "verbose": 0,
+                "device": device,
+                "tensorboard_log": os.path.join(fold_dir, "tb_logs"),
+            }
+            if seed is not None:
+                ppo_kwargs["seed"] = seed
+
+            model = PPO("MlpPolicy", envs, **ppo_kwargs)
             logger.info(f"  Fold {fold_idx}: PPO standard on {device}")
 
         # Callbacks
