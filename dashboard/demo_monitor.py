@@ -246,17 +246,30 @@ class DemoMonitorService:
 
         rejection_counts = Counter(event.get("reason", "unknown") for event in session.events if event.get("type") == "rejection")
         signal_counts = Counter(event.get("action", "UNKNOWN") for event in session.events if event.get("type") == "signal")
-        latest_equity = session.equity[-1] if session.equity else {}
-        peak_equity = max((float(point.get("equity", 0.0)) for point in session.equity), default=0.0)
-        current_equity = float(latest_equity.get("equity", 0.0))
-        drawdown = (peak_equity - current_equity) / max(peak_equity, 1e-8) if peak_equity else 0.0
-
+        # Performance optimization: Single pass over equity array to calculate
+        # peak, current, and daily start equity. Avoids O(N) list traversals
+        # and redundant _parse_timestamp calls.
+        peak_equity = 0.0
+        current_equity = 0.0
+        start_equity = None
         today = datetime.now().date()
-        today_points = [point for point in session.equity if (_parse_timestamp(point.get("timestamp")) or datetime.now()).date() == today]
-        daily_loss = 0.0
-        if today_points:
-            start_equity = float(today_points[0].get("equity", current_equity))
-            daily_loss = max((start_equity - current_equity) / max(start_equity, 1e-8), 0.0)
+
+        for point in session.equity:
+            eq = float(point.get("equity", 0.0))
+            if eq > peak_equity:
+                peak_equity = eq
+            current_equity = eq
+
+            if start_equity is None:
+                pt_date = (_parse_timestamp(point.get("timestamp")) or datetime.now()).date()
+                if pt_date == today:
+                    start_equity = eq
+
+        if start_equity is None:
+            start_equity = current_equity
+
+        drawdown = (peak_equity - current_equity) / max(peak_equity, 1e-8) if peak_equity else 0.0
+        daily_loss = max((start_equity - current_equity) / max(start_equity, 1e-8), 0.0)
 
         alerts: list[dict[str, Any]] = []
         live_settings = session.meta.get("live_settings", {})
@@ -271,9 +284,9 @@ class DemoMonitorService:
                 alerts.append({"level": "warning", "reason": reason, "count": rejection_counts[reason]})
 
         desync = None
-        if broker.get("connected") and latest_equity:
+        if broker.get("connected") and session.equity:
             broker_equity = float(broker["account"].get("portfolio_value") or broker["account"].get("equity") or 0.0)
-            logged_equity = float(latest_equity.get("equity", 0.0))
+            logged_equity = current_equity
             delta = abs(broker_equity - logged_equity)
             desync = {
                 "broker_equity": broker_equity,
