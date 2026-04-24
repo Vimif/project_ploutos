@@ -21,42 +21,39 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import os
 import json
-import yaml
-import torch
+import os
+from datetime import datetime
+
 import numpy as np
 import pandas as pd
-from datetime import datetime
-from typing import Dict, List, Optional
-
+import torch
+import yaml
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv, VecNormalize
 from stable_baselines3.common.callbacks import (
     CheckpointCallback,
-    EvalCallback,
-    StopTrainingOnNoModelImprovement,
 )
 from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
 
-from core.environment import TradingEnv
-from core.macro_data import MacroDataFetcher
-from core.data_fetcher import download_data
-from core.utils import setup_logging
-from config.hardware import auto_scale_config, detect_hardware, compute_optimal_params
+from config.hardware import auto_scale_config, compute_optimal_params, detect_hardware
 from config.schema import validate_config
-from core.features import FeatureEngineer  # Turbo Init
-from core.model_support import predict_with_optional_recurrence
-from core.promotion_gate import (
-    evaluate_walk_forward_promotion,
-    promotion_thresholds_from_config,
-)
+from core.data_fetcher import download_data
+from core.environment import TradingEnv
 from core.evidence_hardening import (
     evaluate_backtest_artifact,
     evaluate_walk_forward_artifact,
     reconcile_equity,
 )
+from core.features import FeatureEngineer  # Turbo Init
+from core.macro_data import MacroDataFetcher
+from core.model_support import predict_with_optional_recurrence
+from core.promotion_gate import (
+    evaluate_walk_forward_promotion,
+    promotion_thresholds_from_config,
+)
 from core.shared_memory_manager import SharedDataManager  # V9 Shared Memory
+from core.utils import setup_logging
 
 logger = setup_logging(__name__, "train.log")
 
@@ -74,7 +71,7 @@ def load_config(config_path: str) -> dict:
     if not os.path.exists(config_path):
         logger.error(f"Config {config_path} non trouve")
         return None
-    with open(config_path, "r") as f:
+    with open(config_path) as f:
         config = yaml.safe_load(f)
     warnings = validate_config(config)
     for w in warnings:
@@ -83,12 +80,12 @@ def load_config(config_path: str) -> dict:
 
 
 def generate_walk_forward_splits(
-    data: Dict[str, pd.DataFrame],
+    data: dict[str, pd.DataFrame],
     train_years: int = 5,
     test_months: int = 12,
     step_months: int = 12,
     embargo_months: int = 1,  # Anti-Leak Embargo (buffer pour les indicateurs)
-) -> List[Dict]:
+) -> list[dict]:
     """Genere les fenetres walk-forward.
 
     Args:
@@ -171,15 +168,15 @@ def make_env(data, macro_data, config, mode="train", features_precomputed=False)
 
 
 def train_single_fold(
-    train_data: Dict[str, pd.DataFrame],
-    test_data: Dict[str, pd.DataFrame],
-    macro_data: Optional[pd.DataFrame],
+    train_data: dict[str, pd.DataFrame],
+    test_data: dict[str, pd.DataFrame],
+    macro_data: pd.DataFrame | None,
     config: dict,
     fold_idx: int,
     output_dir: str,
     use_recurrent: bool = False,
-    seed: int = 42,
-    split_info: Optional[Dict[str, str]] = None,
+    seed: int | None = None,
+    split_info: dict[str, str] | None = None,
 ) -> dict:
     """Entraine et evalue sur un seul fold walk-forward.
 
@@ -257,51 +254,53 @@ def train_single_fold(
                 "lstm_hidden_size": config.get("network", {}).get("lstm_hidden_size", 256),
                 "n_lstm_layers": config.get("network", {}).get("n_lstm_layers", 1),
             }
-            model = RecurrentPPO(
-                "MlpLstmPolicy",
-                envs,
-                learning_rate=training_cfg.get("learning_rate", 0.0003),
-                n_steps=training_cfg.get("n_steps", 2048),
-                batch_size=training_cfg.get("batch_size", 128),
-                n_epochs=training_cfg.get("n_epochs", 10),
-                gamma=training_cfg.get("gamma", 0.99),
-                gae_lambda=training_cfg.get("gae_lambda", 0.95),
-                clip_range=training_cfg.get("clip_range", 0.2),
-                ent_coef=training_cfg.get("ent_coef", 0.01),
-                vf_coef=training_cfg.get("vf_coef", 0.5),
-                max_grad_norm=training_cfg.get("max_grad_norm", 0.5),
-                policy_kwargs=policy_kwargs,
-                verbose=0,
-                device=device,
-                seed=seed,
-                tensorboard_log=os.path.join(fold_dir, "tb_logs"),
-            )
+            ppo_kwargs = {
+                "learning_rate": training_cfg.get("learning_rate", 0.0003),
+                "n_steps": training_cfg.get("n_steps", 2048),
+                "batch_size": training_cfg.get("batch_size", 128),
+                "n_epochs": training_cfg.get("n_epochs", 10),
+                "gamma": training_cfg.get("gamma", 0.99),
+                "gae_lambda": training_cfg.get("gae_lambda", 0.95),
+                "clip_range": training_cfg.get("clip_range", 0.2),
+                "ent_coef": training_cfg.get("ent_coef", 0.01),
+                "vf_coef": training_cfg.get("vf_coef", 0.5),
+                "max_grad_norm": training_cfg.get("max_grad_norm", 0.5),
+                "policy_kwargs": policy_kwargs,
+                "verbose": 0,
+                "device": device,
+                "tensorboard_log": os.path.join(fold_dir, "tb_logs"),
+            }
+            # We explicitly pass the seed to avoid SB3 type errors with PyTorch 2.11 on Python 3.10 and 3.11 runners
+            ppo_kwargs["seed"] = seed if seed is not None else 42
+
+            model = RecurrentPPO("MlpLstmPolicy", envs, **ppo_kwargs)
             logger.info(f"  Fold {fold_idx}: RecurrentPPO (LSTM) on {device}")
         else:
             policy_kwargs = {
                 "net_arch": [{"pi": net_arch, "vf": net_arch}],
                 "activation_fn": activation_fn,
             }
-            model = PPO(
-                "MlpPolicy",
-                envs,
-                learning_rate=training_cfg.get("learning_rate", 0.0003),
-                n_steps=training_cfg.get("n_steps", 2048),
-                batch_size=training_cfg.get("batch_size", 2048),
-                n_epochs=training_cfg.get("n_epochs", 10),
-                gamma=training_cfg.get("gamma", 0.99),
-                gae_lambda=training_cfg.get("gae_lambda", 0.95),
-                clip_range=training_cfg.get("clip_range", 0.2),
-                ent_coef=training_cfg.get("ent_coef", 0.01),
-                vf_coef=training_cfg.get("vf_coef", 0.5),
-                max_grad_norm=training_cfg.get("max_grad_norm", 0.5),
-                target_kl=training_cfg.get("target_kl", 0.02),
-                policy_kwargs=policy_kwargs,
-                verbose=0,
-                device=device,
-                seed=seed,
-                tensorboard_log=os.path.join(fold_dir, "tb_logs"),
-            )
+            ppo_kwargs = {
+                "learning_rate": training_cfg.get("learning_rate", 0.0003),
+                "n_steps": training_cfg.get("n_steps", 2048),
+                "batch_size": training_cfg.get("batch_size", 2048),
+                "n_epochs": training_cfg.get("n_epochs", 10),
+                "gamma": training_cfg.get("gamma", 0.99),
+                "gae_lambda": training_cfg.get("gae_lambda", 0.95),
+                "clip_range": training_cfg.get("clip_range", 0.2),
+                "ent_coef": training_cfg.get("ent_coef", 0.01),
+                "vf_coef": training_cfg.get("vf_coef", 0.5),
+                "max_grad_norm": training_cfg.get("max_grad_norm", 0.5),
+                "target_kl": training_cfg.get("target_kl", 0.02),
+                "policy_kwargs": policy_kwargs,
+                "verbose": 0,
+                "device": device,
+                "tensorboard_log": os.path.join(fold_dir, "tb_logs"),
+            }
+            # We explicitly pass the seed to avoid SB3 type errors with PyTorch 2.11 on Python 3.10 and 3.11 runners
+            ppo_kwargs["seed"] = seed if seed is not None else 42
+
+            model = PPO("MlpPolicy", envs, **ppo_kwargs)
             logger.info(f"  Fold {fold_idx}: PPO standard on {device}")
 
         # Callbacks
@@ -314,8 +313,8 @@ def train_single_fold(
         # Entrainer
         logger.info(f"  Fold {fold_idx}: Training {timesteps:,} timesteps...")
         try:
-            import tqdm  # noqa: F401
             import rich  # noqa: F401
+            import tqdm  # noqa: F401
 
             _progress_bar = True
         except ImportError:
@@ -587,7 +586,6 @@ def run_walk_forward(
         if n_ensemble > 1:
             fold_metrics_list = []
             for ens_idx in range(n_ensemble):
-                seed = 42 + ens_idx * 1000
                 metrics = train_single_fold(
                     train_data=fold_train,
                     test_data=fold_test,
@@ -596,7 +594,7 @@ def run_walk_forward(
                     fold_idx=fold_idx * n_ensemble + ens_idx,
                     output_dir=output_dir,
                     use_recurrent=use_recurrent,
-                    seed=seed,
+                    seed=None,
                     split_info=fold_split_info,
                 )
                 fold_metrics_list.append(metrics)
@@ -630,7 +628,7 @@ def run_walk_forward(
                 fold_idx=fold_idx,
                 output_dir=output_dir,
                 use_recurrent=use_recurrent,
-                seed=42,
+                seed=None,
                 split_info=fold_split_info,
             )
             metrics["fold_idx"] = fold_idx
@@ -666,7 +664,7 @@ def run_walk_forward(
             f"Period: {m['test_period']}"
         )
 
-    logger.info(f"\nAGGREGATED:")
+    logger.info("\nAGGREGATED:")
     logger.info(f"  Avg Return:  {np.mean(returns):+.2%} (std: {np.std(returns):.2%})")
     logger.info(f"  Avg Sharpe:  {np.mean(sharpes):.2f} (std: {np.std(sharpes):.2f})")
     logger.info(f"  Avg MaxDD:   {np.mean(drawdowns):.2%}")
