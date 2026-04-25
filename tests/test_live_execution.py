@@ -9,7 +9,6 @@ import pandas as pd
 
 dotenv_module = types.ModuleType("dotenv")
 dotenv_module.load_dotenv = lambda *args, **kwargs: None
-sys.modules.setdefault("dotenv", dotenv_module)
 
 from trading.live_execution import (
     LiveBrokerAdapter,
