@@ -10,7 +10,6 @@ import pytest
 
 dotenv_module = types.ModuleType("dotenv")
 dotenv_module.load_dotenv = lambda *args, **kwargs: None
-sys.modules.setdefault("dotenv", dotenv_module)
 
 
 class _FakeSession:
@@ -25,7 +24,6 @@ requests_module = types.ModuleType("requests")
 requests_module.Session = _FakeSession
 requests_module.exceptions = types.SimpleNamespace(RequestException=Exception)
 requests_module.Response = object
-sys.modules.setdefault("requests", requests_module)
 
 from trading import etoro_client as etoro_module
 from trading.etoro_client import EToroClient

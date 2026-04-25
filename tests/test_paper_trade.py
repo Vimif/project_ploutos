@@ -12,21 +12,13 @@ from unittest.mock import MagicMock
 import numpy as np
 import pandas as pd
 
-for mod in [
-    "stable_baselines3",
-    "stable_baselines3.common",
-    "stable_baselines3.common.vec_env",
-    "sb3_contrib",
-]:
-    sys.modules.setdefault(mod, MagicMock())
+pass  # Removed mock block
 
 dotenv_module = types.ModuleType("dotenv")
 dotenv_module.load_dotenv = lambda *args, **kwargs: None
-sys.modules.setdefault("dotenv", dotenv_module)
 
 live_observation_module = types.ModuleType("core.live_observation")
 live_observation_module.LiveObservationEngine = MagicMock()
-sys.modules.setdefault("core.live_observation", live_observation_module)
 
 from scripts import paper_trade
 from trading.live_execution import LiveBrokerAdapter, SimulatedBroker
