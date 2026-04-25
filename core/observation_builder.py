@@ -1,9 +1,9 @@
 # core/observation_builder.py
 """Observation vector construction for TradingEnv."""
 
-import numpy as np
 from collections import deque
-from typing import Dict, List, Optional
+
+import numpy as np
 
 from core.constants import EQUITY_EPSILON, OBSERVATION_CLIP_RANGE
 
@@ -13,10 +13,10 @@ class ObservationBuilder:
 
     def __init__(
         self,
-        tickers: List[str],
-        feature_columns: List[str],
-        feature_arrays: Dict[str, np.ndarray],
-        macro_array: Optional[np.ndarray] = None,
+        tickers: list[str],
+        feature_columns: list[str],
+        feature_arrays: dict[str, np.ndarray],
+        macro_array: np.ndarray | None = None,
         n_macro_features: int = 0,
     ):
         self.tickers = tickers
@@ -38,14 +38,14 @@ class ObservationBuilder:
     def build(
         self,
         current_step: int,
-        portfolio: Dict[str, float],
-        prices: Dict[str, float],
+        portfolio: dict[str, float],
+        prices: dict[str, float],
         equity: float,
         balance: float,
         initial_balance: float,
         peak_value: float,
-        entry_prices: Optional[Dict[str, float]] = None,
-        portfolio_value_history: Optional[deque] = None,
+        entry_prices: dict[str, float] | None = None,
+        portfolio_value_history: deque | None = None,
     ) -> np.ndarray:
         """Build observation vector for current step.
 
