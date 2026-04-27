@@ -1,9 +1,10 @@
 # core/observation_builder.py
 """Observation vector construction for TradingEnv."""
 
-import numpy as np
 from collections import deque
 from typing import Dict, List, Optional
+
+import numpy as np
 
 from core.constants import EQUITY_EPSILON, OBSERVATION_CLIP_RANGE
 
@@ -88,6 +89,7 @@ class ObservationBuilder:
             obs_parts.append(macro_features)
 
         # Position percentages
+        # Performance optimization: use native min/max for scalar clipping
         for ticker in self.tickers:
             price = prices.get(ticker, 0.0)
             if price > 0:
@@ -95,7 +97,7 @@ class ObservationBuilder:
                 position_pct = position_value / (equity + EQUITY_EPSILON)
             else:
                 position_pct = 0.0
-            obs_parts.append([np.clip(position_pct, 0, 1)])
+            obs_parts.append([min(max(position_pct, 0.0), 1.0)])
 
         # Unrealized PnL per position
         if entry_prices is None:
@@ -108,12 +110,12 @@ class ObservationBuilder:
                 unrealized_pnl = (price - entry) / entry
             else:
                 unrealized_pnl = 0.0
-            obs_parts.append([np.clip(unrealized_pnl, -1.0, 5.0)])
+            obs_parts.append([min(max(unrealized_pnl, -1.0), 5.0)])
 
         # Portfolio state
-        cash_pct = np.clip(balance / (equity + EQUITY_EPSILON), 0, 1)
-        total_return = np.clip((equity - initial_balance) / initial_balance, -1, 5)
-        drawdown = np.clip((peak_value - equity) / (peak_value + EQUITY_EPSILON), 0, 1)
+        cash_pct = min(max(balance / (equity + EQUITY_EPSILON), 0.0), 1.0)
+        total_return = min(max((equity - initial_balance) / initial_balance, -1.0), 5.0)
+        drawdown = min(max((peak_value - equity) / (peak_value + EQUITY_EPSILON), 0.0), 1.0)
         obs_parts.append([cash_pct, total_return, drawdown])
 
         # Recent portfolio returns (1-step, 5-step, 20-step)
@@ -124,9 +126,9 @@ class ObservationBuilder:
                 return (hist[-1] - hist[-lookback - 1]) / hist[-lookback - 1]
             return 0.0
 
-        ret_1 = np.clip(_recent_return(1), -0.5, 0.5)
-        ret_5 = np.clip(_recent_return(5), -0.5, 0.5)
-        ret_20 = np.clip(_recent_return(20), -0.5, 0.5)
+        ret_1 = min(max(_recent_return(1), -0.5), 0.5)
+        ret_5 = min(max(_recent_return(5), -0.5), 0.5)
+        ret_20 = min(max(_recent_return(20), -0.5), 0.5)
         obs_parts.append([ret_1, ret_5, ret_20])
 
         obs = np.concatenate([np.array(p).flatten() for p in obs_parts])
