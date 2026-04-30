@@ -238,4 +238,6 @@ def api_db_evolution():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    import os
+    host = os.environ.get("HOST", "127.0.0.1")
+    app.run(host=host, port=5000, debug=False)
