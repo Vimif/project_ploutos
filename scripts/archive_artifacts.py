@@ -43,7 +43,9 @@ def list_tracked_paths(root: Path, roots: list[str]) -> set[str]:
         check=True,
     )
     tracked = {
-        line.strip().replace("\\", "/") for line in result.stdout.splitlines() if line.strip()
+        line.strip().replace("\\", "/")
+        for line in result.stdout.splitlines()
+        if line.strip()
     }
     return tracked
 

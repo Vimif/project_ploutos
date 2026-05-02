@@ -275,7 +275,9 @@ class MacroDataFetcher:
 
         return df
 
-    def align_to_ticker(self, macro_df: pd.DataFrame, ticker_df: pd.DataFrame) -> pd.DataFrame:
+    def align_to_ticker(
+        self, macro_df: pd.DataFrame, ticker_df: pd.DataFrame
+    ) -> pd.DataFrame:
         """Align macro data to the ticker index using forward-fill."""
 
         if macro_df.empty:

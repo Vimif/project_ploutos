@@ -112,9 +112,7 @@ class DemoMonitorService:
         self.broker_cache = BrokerSnapshotCache(ttl_seconds=cache_ttl_seconds)
 
     def _latest_leaderboard(self) -> dict[str, Any] | None:
-        path = latest_matching_file(
-            self.strategy_compare_dir, f"**/{STRATEGY_LEADERBOARD_FILENAME}"
-        )
+        path = latest_matching_file(self.strategy_compare_dir, f"**/{STRATEGY_LEADERBOARD_FILENAME}")
         if not path:
             return None
         payload = load_json(path, encoding="utf-8")
@@ -145,15 +143,9 @@ class DemoMonitorService:
         return {
             "latest_strategy_compare": {
                 "path": leaderboard.get("_path") if leaderboard else None,
-                "winner_family": (
-                    leaderboard.get("selection", {}).get("winner_family") if leaderboard else None
-                ),
-                "winner_interval": (
-                    leaderboard.get("selection", {}).get("winner_interval") if leaderboard else None
-                ),
-                "winner_verdict": (
-                    leaderboard.get("selection", {}).get("winner_verdict") if leaderboard else None
-                ),
+                "winner_family": leaderboard.get("selection", {}).get("winner_family") if leaderboard else None,
+                "winner_interval": leaderboard.get("selection", {}).get("winner_interval") if leaderboard else None,
+                "winner_verdict": leaderboard.get("selection", {}).get("winner_verdict") if leaderboard else None,
             },
             "latest_profitability_audit": {
                 "path": audit.get("_path") if audit else None,
@@ -164,25 +156,15 @@ class DemoMonitorService:
                 "path": league.get("_path") if league else None,
                 "batch_id": league.get("batch_id") if league else None,
                 "snapshot_id": league.get("snapshot_id") if league else None,
-                "gold_winner_family": (
-                    league.get("selection", {}).get("gold_winner_family") if league else None
-                ),
-                "gold_winner_interval": (
-                    league.get("selection", {}).get("gold_winner_interval") if league else None
-                ),
-                "baseline_family": (
-                    league.get("selection", {}).get("baseline_family") if league else None
-                ),
+                "gold_winner_family": league.get("selection", {}).get("gold_winner_family") if league else None,
+                "gold_winner_interval": league.get("selection", {}).get("gold_winner_interval") if league else None,
+                "baseline_family": league.get("selection", {}).get("baseline_family") if league else None,
             },
             "latest_project_learning": {
                 "path": learning.get("_path") if learning else None,
                 "audit_verdict": learning.get("audit_verdict") if learning else None,
-                "good_decisions": (
-                    learning.get("patterns", {}).get("good_decisions", []) if learning else []
-                ),
-                "bad_decisions": (
-                    learning.get("patterns", {}).get("bad_decisions", []) if learning else []
-                ),
+                "good_decisions": learning.get("patterns", {}).get("good_decisions", []) if learning else [],
+                "bad_decisions": learning.get("patterns", {}).get("bad_decisions", []) if learning else [],
             },
         }
 
@@ -262,29 +244,15 @@ class DemoMonitorService:
                 "desync": None,
             }
 
-        rejection_counts = Counter(
-            event.get("reason", "unknown")
-            for event in session.events
-            if event.get("type") == "rejection"
-        )
-        signal_counts = Counter(
-            event.get("action", "UNKNOWN")
-            for event in session.events
-            if event.get("type") == "signal"
-        )
+        rejection_counts = Counter(event.get("reason", "unknown") for event in session.events if event.get("type") == "rejection")
+        signal_counts = Counter(event.get("action", "UNKNOWN") for event in session.events if event.get("type") == "signal")
         latest_equity = session.equity[-1] if session.equity else {}
-        peak_equity = max(
-            (float(point.get("equity", 0.0)) for point in session.equity), default=0.0
-        )
+        peak_equity = max((float(point.get("equity", 0.0)) for point in session.equity), default=0.0)
         current_equity = float(latest_equity.get("equity", 0.0))
         drawdown = (peak_equity - current_equity) / max(peak_equity, 1e-8) if peak_equity else 0.0
 
         today = datetime.now().date()
-        today_points = [
-            point
-            for point in session.equity
-            if (_parse_timestamp(point.get("timestamp")) or datetime.now()).date() == today
-        ]
+        today_points = [point for point in session.equity if (_parse_timestamp(point.get("timestamp")) or datetime.now()).date() == today]
         daily_loss = 0.0
         if today_points:
             start_equity = float(today_points[0].get("equity", current_equity))
@@ -297,20 +265,14 @@ class DemoMonitorService:
         if drawdown >= max_drawdown * 0.8:
             alerts.append({"level": "warning", "reason": "drawdown_near_limit", "value": drawdown})
         if daily_loss >= max_daily_loss * 0.8:
-            alerts.append(
-                {"level": "warning", "reason": "daily_loss_near_limit", "value": daily_loss}
-            )
+            alerts.append({"level": "warning", "reason": "daily_loss_near_limit", "value": daily_loss})
         for reason in ("price_unavailable", "duplicate_signal", "observation_mismatch"):
             if rejection_counts.get(reason):
-                alerts.append(
-                    {"level": "warning", "reason": reason, "count": rejection_counts[reason]}
-                )
+                alerts.append({"level": "warning", "reason": reason, "count": rejection_counts[reason]})
 
         desync = None
         if broker.get("connected") and latest_equity:
-            broker_equity = float(
-                broker["account"].get("portfolio_value") or broker["account"].get("equity") or 0.0
-            )
+            broker_equity = float(broker["account"].get("portfolio_value") or broker["account"].get("equity") or 0.0)
             logged_equity = float(latest_equity.get("equity", 0.0))
             delta = abs(broker_equity - logged_equity)
             desync = {
@@ -319,9 +281,7 @@ class DemoMonitorService:
                 "delta": delta,
             }
             if delta > max(250.0, broker_equity * 0.005):
-                alerts.append(
-                    {"level": "critical", "reason": "broker_journal_desync", "delta": delta}
-                )
+                alerts.append({"level": "critical", "reason": "broker_journal_desync", "delta": delta})
 
         return {
             "status": "ok",
@@ -368,10 +328,7 @@ class DemoMonitorService:
                     "justification": "Buy attempts are being blocked by estimated cost, which points to sizing or frequency that is too aggressive for the current execution model.",
                 }
             )
-        if (
-            latest_compare.get("winner_interval")
-            and latest_compare["winner_interval"] != live_interval
-        ):
+        if latest_compare.get("winner_interval") and latest_compare["winner_interval"] != live_interval:
             recommendations.append(
                 {
                     "priority": 3,
@@ -422,9 +379,7 @@ class DemoMonitorService:
                     "priority": 8,
                     "confidence": "high",
                     "title": "Avoid repeating a known bad batch decision",
-                    "justification": alert.get(
-                        "message", "A previous batch already flagged this regression pattern."
-                    ),
+                    "justification": alert.get("message", "A previous batch already flagged this regression pattern."),
                 }
             )
 
@@ -434,9 +389,7 @@ class DemoMonitorService:
     def get_demo_payload(self) -> dict[str, Any]:
         session = self.sessions.latest()
         mode = session.meta.get("mode", "etoro") if session else "etoro"
-        initial_balance = (
-            float(session.report.get("initial_balance", 100_000.0)) if session else 100_000.0
-        )
+        initial_balance = float(session.report.get("initial_balance", 100_000.0)) if session else 100_000.0
         broker = self.broker_cache.get_snapshot(mode=mode, initial_balance=initial_balance)
         diagnostics = self._build_diagnostics(session, broker)
         historical_context = self._build_historical_context()

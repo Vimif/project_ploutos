@@ -61,9 +61,7 @@ def load_jsonl(path: Path, *, encoding: str = "utf-8") -> list[dict[str, Any]]:
 def latest_matching_file(root: Path, pattern: str) -> Path | None:
     if not root.exists():
         return None
-    candidates = sorted(
-        root.glob(pattern), key=lambda candidate: candidate.stat().st_mtime, reverse=True
-    )
+    candidates = sorted(root.glob(pattern), key=lambda candidate: candidate.stat().st_mtime, reverse=True)
     return candidates[0] if candidates else None
 
 

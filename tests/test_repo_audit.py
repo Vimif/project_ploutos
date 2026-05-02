@@ -85,7 +85,7 @@ class TestCheckVersionMarkers:
         scripts_dir = tmp_path / "scripts"
         scripts_dir.mkdir()
         (scripts_dir / "paper_trade.py").write_text(
-            ("\n" * 45) + "api_version='v2'\n",
+            ('\n' * 45) + "api_version='v2'\n",
             encoding="utf-8",
         )
 
@@ -111,7 +111,7 @@ addopts = "-v"
         assert findings[0].severity == "WARN"
 
     def test_ignores_single_source_of_truth(self, tmp_path):
-        (tmp_path / "pyproject.toml").write_text('[project]\nname = "demo"\n', encoding="utf-8")
+        (tmp_path / "pyproject.toml").write_text("[project]\nname = \"demo\"\n", encoding="utf-8")
         (tmp_path / "pytest.ini").write_text("[pytest]\naddopts = -v\n", encoding="utf-8")
 
         findings = check_pytest_config_duplication(tmp_path)
@@ -122,9 +122,7 @@ addopts = "-v"
 class TestCheckWindowsAsciiSafety:
     def test_warns_when_critical_file_contains_non_ascii(self, tmp_path):
         (tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
-        (tmp_path / "pyproject.toml").write_text(
-            '[project]\ndescription = "Système"\n', encoding="utf-8"
-        )
+        (tmp_path / "pyproject.toml").write_text("[project]\ndescription = \"Système\"\n", encoding="utf-8")
         config_dir = tmp_path / "config"
         config_dir.mkdir()
         (config_dir / "config.yaml").write_text("training: {}\n", encoding="utf-8")
@@ -157,7 +155,7 @@ class TestCheckWindowsAsciiSafety:
 
     def test_accepts_ascii_only_critical_files(self, tmp_path):
         (tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
-        (tmp_path / "pyproject.toml").write_text('[project]\nname = "demo"\n', encoding="utf-8")
+        (tmp_path / "pyproject.toml").write_text("[project]\nname = \"demo\"\n", encoding="utf-8")
         config_dir = tmp_path / "config"
         config_dir.mkdir()
         (config_dir / "config.yaml").write_text("training: {}\n", encoding="utf-8")
@@ -226,7 +224,7 @@ class TestCheckRemovedMainlineReferences:
         docs_dir.mkdir()
         (docs_dir / "MONITORING.md").write_text("# Monitoring\n", encoding="utf-8")
         (docs_dir / "QUICKSTART_MONITORING.md").write_text("# Quickstart\n", encoding="utf-8")
-        (tmp_path / "pyproject.toml").write_text('[project]\nname = "demo"\n', encoding="utf-8")
+        (tmp_path / "pyproject.toml").write_text("[project]\nname = \"demo\"\n", encoding="utf-8")
         (tmp_path / "requirements.txt").write_text("numpy>=1.0\n", encoding="utf-8")
 
         findings = check_removed_mainline_references(tmp_path)
@@ -243,7 +241,7 @@ class TestCheckRemovedMainlineReferences:
         docs_dir.mkdir()
         (docs_dir / "MONITORING.md").write_text("# Monitoring\n", encoding="utf-8")
         (docs_dir / "QUICKSTART_MONITORING.md").write_text("# Quickstart\n", encoding="utf-8")
-        (tmp_path / "pyproject.toml").write_text('[project]\nname = "demo"\n', encoding="utf-8")
+        (tmp_path / "pyproject.toml").write_text("[project]\nname = \"demo\"\n", encoding="utf-8")
         (tmp_path / "requirements.txt").write_text("numpy>=1.0\n", encoding="utf-8")
 
         findings = check_removed_mainline_references(tmp_path)

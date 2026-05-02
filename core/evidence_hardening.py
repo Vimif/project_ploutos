@@ -57,9 +57,7 @@ def reconcile_equity(
 ) -> dict:
     """Reconcile cash + positions against the reported equity."""
 
-    marked_to_market = sum(
-        float(positions.get(symbol, 0.0)) * float(prices.get(symbol, 0.0)) for symbol in positions
-    )
+    marked_to_market = sum(float(positions.get(symbol, 0.0)) * float(prices.get(symbol, 0.0)) for symbol in positions)
     reconciled_equity = float(balance) + float(marked_to_market)
     error = abs(float(reported_equity) - reconciled_equity)
     return {
@@ -141,12 +139,7 @@ def evaluate_backtest_artifact(
     details["extreme_return_threshold"] = float(threshold)
 
     test_days = details["test_days"]
-    extreme_return = (
-        interval == "1h"
-        and test_days is not None
-        and test_days <= 220
-        and abs(total_return) > threshold
-    )
+    extreme_return = interval == "1h" and test_days is not None and test_days <= 220 and abs(total_return) > threshold
     checks["extreme_return_requires_reconciliation"] = not (
         extreme_return and not checks["equity_reconciled"]
     )
@@ -257,9 +250,7 @@ def evaluate_robustness_artifact(
     if noise_std > 0 and not deterministic:
         checks["non_zero_dispersion_under_noise"] = std_return > min_std
         if not checks["non_zero_dispersion_under_noise"]:
-            reasons.append(
-                "monte_carlo dispersion is near zero despite noise and stochastic policy"
-            )
+            reasons.append("monte_carlo dispersion is near zero despite noise and stochastic policy")
     else:
         checks["non_zero_dispersion_under_noise"] = True
         if noise_std > 0 and std_return <= min_std:

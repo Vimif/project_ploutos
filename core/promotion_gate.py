@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Iterable
 
+
 DEFAULT_PROMOTION_THRESHOLDS = {
     "max_drawdown": 0.12,
     "max_daily_loss": 0.03,
@@ -23,7 +24,9 @@ def promotion_thresholds_from_config(config: dict | None = None) -> dict:
     thresholds["max_daily_loss"] = float(
         live_cfg.get("max_daily_loss", thresholds["max_daily_loss"])
     )
-    thresholds["sharpe_min"] = float(live_cfg.get("promotion_sharpe_min", thresholds["sharpe_min"]))
+    thresholds["sharpe_min"] = float(
+        live_cfg.get("promotion_sharpe_min", thresholds["sharpe_min"])
+    )
     thresholds["win_fold_ratio_min"] = float(
         live_cfg.get("promotion_win_fold_ratio_min", thresholds["win_fold_ratio_min"])
     )
