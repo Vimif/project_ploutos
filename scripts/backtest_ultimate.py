@@ -257,7 +257,7 @@ def detect_environment(model, metadata=None, config=None):
              params = dict(ENV_PARAMS_V7)
         else:
              params = dict(ENV_PARAMS_V6)
-        
+
         logger.info(f"  -> Match exact: {version} BetterTiming avec {n_tickers} tickers ({expected_obs} dims)")
         return version, n_tickers, None, env_cls, params
 
@@ -268,7 +268,7 @@ def detect_environment(model, metadata=None, config=None):
         if abs(expected_obs - obs_size) < 20:
              # ...
              return 'LEGACY', n_tickers, None, UniversalTradingEnvV6BetterTiming, dict(ENV_PARAMS_V6)
-             
+
     logger.info(f"  -> Detection par essai direct avec V6...")
     return 'V6_AUTO', None, None, UniversalTradingEnvV6BetterTiming, dict(ENV_PARAMS_V6)
 
@@ -1460,4 +1460,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

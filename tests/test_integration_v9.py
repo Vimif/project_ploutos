@@ -17,16 +17,16 @@ def _get_mock_data(n=2000):
     }, index=idx)
 
 class TestV9Integration:
-    
+
     def test_polars_features_speed(self):
         """Vérifie que Polars est rapide (<0.5s pour 2000 rows)."""
         fe = FeatureEngineer()
         df = _get_mock_data(2000)
-        
+
         t0 = time.time()
         res = fe.calculate_all_features(df)
         dt = time.time() - t0
-        
+
         assert "rsi" in res.columns
         assert dt < 0.5, f"Trop lent: {dt:.4f}s"
 
@@ -36,19 +36,19 @@ class TestV9Integration:
         fe = FeatureEngineer()
         df = _get_mock_data(500)
         data = {"MOCK": fe.calculate_all_features(df)}
-        
+
         # 2. SHM
         mgr = SharedDataManager()
         try:
             meta = mgr.put_data(data)
-            
+
             # 3. Env
             env = TradingEnv(meta, mode="train", features_precomputed=True)
             obs, _ = env.reset()
             assert not np.isnan(obs).any()
-            
+
             obs, _, _, _, _ = env.step(env.action_space.sample())
             assert not np.isnan(obs).any()
-            
+
         finally:
             mgr.cleanup()

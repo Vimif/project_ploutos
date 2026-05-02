@@ -149,7 +149,7 @@ def calculate_psr(returns: np.array, benchmark_sr: float = 0.0) -> float:
 
     sigma_sr_sq = (1 + (0.5 * sr_est**2) - (skew_est * sr_est) + ((kurt_est / 4) * sr_est**2)) / denom
     if sigma_sr_sq <= 0: return 0.0
-    
+
     sigma_sr = np.sqrt(sigma_sr_sq)
     psr = norm.cdf((sr_est - benchmark_sr) / sigma_sr)
     return float(psr)
@@ -159,7 +159,7 @@ def calculate_dsr(returns: np.array, n_trials: int = 1) -> float:
     """Calcule le Deflated Sharpe Ratio (DSR) simplifie."""
     if n_trials <= 1:
         return calculate_psr(returns, 0.0)
-    
+
     # Benchmark ajuste pour le biais de selection (Multiple Testing)
     # E[max(SR)] approx sqrt(2 * logN)
     benchmark_sr = np.sqrt(2 * np.log(n_trials)) * 0.05 # Scale factor empirique pour hourly

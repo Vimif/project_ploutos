@@ -46,9 +46,9 @@ class TestV9Preflight(unittest.TestCase):
             "Close": np.random.rand(200) * 100,
             "Volume": np.random.rand(200) * 1000,
         }, index=dates)
-        
+
         data = {"MOCK": df}
-        
+
         try:
             env = TradingEnv(
                 data=data,

@@ -8,25 +8,25 @@ from datetime import datetime
 def setup_logging(name: str, log_file: str = None):
     """
     Configurer le logging
-    
+
     Args:
         name: Nom du logger
         log_file: Chemin du fichier de log (optionnel)
     """
     logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
-    
+
     # Format
     formatter = logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
-    
+
     # Console handler
     console = logging.StreamHandler()
     console.setFormatter(formatter)
     logger.addHandler(console)
-    
+
     # File handler
     if log_file:
         from config.settings import LOGS_DIR
@@ -34,7 +34,7 @@ def setup_logging(name: str, log_file: str = None):
         file_handler = logging.FileHandler(log_path)
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
-    
+
     return logger
 
 def cleanup_resources(*objects):
