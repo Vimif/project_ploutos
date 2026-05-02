@@ -63,7 +63,13 @@ def resolve_strategy_settings(config: dict) -> dict:
         "candidate_families": list(
             strategy_cfg.get(
                 "candidate_families",
-                ["ppo_single", "ppo_ensemble", "recurrent_ppo", "supervised_ranker", "rule_momentum_regime"],
+                [
+                    "ppo_single",
+                    "ppo_ensemble",
+                    "recurrent_ppo",
+                    "supervised_ranker",
+                    "rule_momentum_regime",
+                ],
             )
         ),
         "phase2_interval": strategy_cfg.get("phase2_interval", "4h"),
@@ -271,7 +277,9 @@ def build_protocol_snapshot(
         "buy_pct": float(env_cfg.get("buy_pct", 0.2)),
         "max_position_pct": float(env_cfg.get("max_position_pct", 0.25)),
         "stop_loss_pct": float(env_cfg.get("stop_loss_pct", 0.0)),
-        "max_open_positions": int(live_cfg.get("max_open_positions", len(config.get("data", {}).get("tickers", [])))),
+        "max_open_positions": int(
+            live_cfg.get("max_open_positions", len(config.get("data", {}).get("tickers", [])))
+        ),
         "min_confidence": float(live_cfg.get("min_confidence", 0.0)),
         "max_cost_pct": float(live_cfg.get("max_cost_pct", 1.0)),
         "promotion_thresholds": promotion_thresholds_from_config(config),
@@ -285,15 +293,15 @@ def build_protocol_snapshot(
 
 
 def _macro_row(test_env, current_step: int) -> dict[str, float] | None:
-    if not getattr(test_env, "macro_columns", None) or getattr(test_env, "macro_array", None) is None:
+    if (
+        not getattr(test_env, "macro_columns", None)
+        or getattr(test_env, "macro_array", None) is None
+    ):
         return None
     if current_step >= len(test_env.macro_array):
         return None
     row = test_env.macro_array[current_step]
-    return {
-        column: float(row[idx])
-        for idx, column in enumerate(test_env.macro_columns)
-    }
+    return {column: float(row[idx]) for idx, column in enumerate(test_env.macro_columns)}
 
 
 def _regime_is_risk_on(test_env, current_step: int, config: dict) -> bool:
@@ -409,7 +417,9 @@ def run_policy_backtest(
     done = False
     equity_curve = [float(test_env.initial_balance)]
     ref_ticker = next(iter(test_data))
-    timestamps = [test_data[ref_ticker].index[min(test_env.current_step, len(test_data[ref_ticker]) - 1)]]
+    timestamps = [
+        test_data[ref_ticker].index[min(test_env.current_step, len(test_data[ref_ticker]) - 1)]
+    ]
     max_equity_error = 0.0
     aggregated_rejections = {
         "regime_blocked": 0,
@@ -470,7 +480,11 @@ def run_policy_backtest(
 
     daily_equity = equity_series.groupby(pd.to_datetime(equity_series.index).normalize()).last()
     daily_returns = daily_equity.pct_change().dropna()
-    max_daily_loss = abs(float(daily_returns.min())) if not daily_returns.empty and daily_returns.min() < 0 else 0.0
+    max_daily_loss = (
+        abs(float(daily_returns.min()))
+        if not daily_returns.empty and daily_returns.min() < 0
+        else 0.0
+    )
     closed_trades = info.get("winning_trades", 0) + info.get("losing_trades", 0)
     win_rate = info.get("winning_trades", 0) / closed_trades if closed_trades > 0 else 0.0
 
@@ -528,7 +542,9 @@ def _simulate_crash(
                 continue
             for offset, row_idx in enumerate(range(crash_start, crash_end)):
                 progress = (offset + 1) / max(crash_end - crash_start, 1)
-                crashed_df.iloc[row_idx, crashed_df.columns.get_loc(column)] *= 1 + (crash_pct * progress)
+                crashed_df.iloc[row_idx, crashed_df.columns.get_loc(column)] *= 1 + (
+                    crash_pct * progress
+                )
             crashed_df.iloc[crash_end:, crashed_df.columns.get_loc(column)] *= 1 + crash_pct
         crashed[ticker] = crashed_df.clip(lower=0.01)
     return crashed
@@ -569,7 +585,9 @@ def run_policy_monte_carlo(
         "p95_return": float(np.percentile(returns, 95)) if returns else 0.0,
         "avg_sharpe": float(np.mean(sharpes)) if sharpes else 0.0,
         "avg_max_drawdown": float(np.mean(drawdowns)) if drawdowns else 0.0,
-        "loss_rate": float(sum(1 for value in returns if value <= 0) / len(returns)) if returns else 1.0,
+        "loss_rate": (
+            float(sum(1 for value in returns if value <= 0) / len(returns)) if returns else 1.0
+        ),
         "is_overfit": False,
     }
 
@@ -638,7 +656,9 @@ def aggregate_walk_forward_metrics(
         "worst_fold_return": float(min(returns)) if returns else 0.0,
         "best_fold_return": float(max(returns)) if returns else 0.0,
         "cumulative_return": cumulative_return,
-        "win_fold_ratio": float(sum(1 for value in returns if value > 0) / len(returns)) if returns else 0.0,
+        "win_fold_ratio": (
+            float(sum(1 for value in returns if value > 0) / len(returns)) if returns else 0.0
+        ),
         "avg_max_daily_loss": float(np.mean(max_daily_losses)) if max_daily_losses else 0.0,
         "worst_max_daily_loss": float(max(max_daily_losses)) if max_daily_losses else 0.0,
         "promotion_gate": promotion_gate,
@@ -660,7 +680,9 @@ def aggregate_robustness_metrics(
         avg_mc = {
             "avg_return": float(np.mean([item["avg_return"] for item in monte_carlo_reports])),
             "avg_sharpe": float(np.mean([item["avg_sharpe"] for item in monte_carlo_reports])),
-            "avg_max_drawdown": float(np.mean([item["avg_max_drawdown"] for item in monte_carlo_reports])),
+            "avg_max_drawdown": float(
+                np.mean([item["avg_max_drawdown"] for item in monte_carlo_reports])
+            ),
             "loss_rate": float(np.mean([item["loss_rate"] for item in monte_carlo_reports])),
             "noise_std": float(np.mean([item["noise_std"] for item in monte_carlo_reports])),
             "std_return": float(np.mean([item["std_return"] for item in monte_carlo_reports])),
@@ -668,8 +690,12 @@ def aggregate_robustness_metrics(
             "max_return": float(max(item["max_return"] for item in monte_carlo_reports)),
             "p5_return": float(np.mean([item["p5_return"] for item in monte_carlo_reports])),
             "p95_return": float(np.mean([item["p95_return"] for item in monte_carlo_reports])),
-            "median_return": float(np.mean([item["median_return"] for item in monte_carlo_reports])),
-            "deterministic": all(bool(item.get("deterministic", True)) for item in monte_carlo_reports),
+            "median_return": float(
+                np.mean([item["median_return"] for item in monte_carlo_reports])
+            ),
+            "deterministic": all(
+                bool(item.get("deterministic", True)) for item in monte_carlo_reports
+            ),
             "is_overfit": any(bool(item.get("is_overfit", False)) for item in monte_carlo_reports),
         }
     else:
@@ -694,10 +720,30 @@ def aggregate_robustness_metrics(
     return {
         "monte_carlo": avg_mc,
         "stress_test": {
-            "crash_max_drawdown": float(np.mean([item["crash_max_drawdown"] for item in stress_reports])) if stress_reports else 0.0,
-            "worst_crash_max_drawdown": float(max(item["crash_max_drawdown"] for item in stress_reports)) if stress_reports else 0.0,
-            "survival_ratio": float(np.mean([1.0 if item["survives"] else 0.0 for item in stress_reports])) if stress_reports else 0.0,
-            "acceptable_drawdown_ratio": float(np.mean([1.0 if item["acceptable_drawdown"] else 0.0 for item in stress_reports])) if stress_reports else 0.0,
+            "crash_max_drawdown": (
+                float(np.mean([item["crash_max_drawdown"] for item in stress_reports]))
+                if stress_reports
+                else 0.0
+            ),
+            "worst_crash_max_drawdown": (
+                float(max(item["crash_max_drawdown"] for item in stress_reports))
+                if stress_reports
+                else 0.0
+            ),
+            "survival_ratio": (
+                float(np.mean([1.0 if item["survives"] else 0.0 for item in stress_reports]))
+                if stress_reports
+                else 0.0
+            ),
+            "acceptable_drawdown_ratio": (
+                float(
+                    np.mean(
+                        [1.0 if item["acceptable_drawdown"] else 0.0 for item in stress_reports]
+                    )
+                )
+                if stress_reports
+                else 0.0
+            ),
         },
         "promotion_gate": promotion_gate,
         "evidence": evidence,
@@ -779,7 +825,10 @@ def _candidate_verdict(candidate: dict, thresholds: dict) -> str:
         return "suspect_artifact"
     if walk_forward["cumulative_return"] <= thresholds["cumulative_return_min"]:
         return "improve_edge"
-    if walk_forward["avg_max_drawdown"] > thresholds["max_drawdown"] or worst_daily_loss > thresholds["max_daily_loss"]:
+    if (
+        walk_forward["avg_max_drawdown"] > thresholds["max_drawdown"]
+        or worst_daily_loss > thresholds["max_daily_loss"]
+    ):
         return "improve_risk_profile"
     if robustness["monte_carlo"]["loss_rate"] > thresholds["loss_rate_max"]:
         return "improve_robustness"
@@ -911,11 +960,15 @@ def _select_phase2_candidates(phase1_candidates: list[dict], top_k: int) -> list
 
 def _beats_baseline(candidate: dict, baseline: dict) -> bool:
     return (
-        candidate["walk_forward"]["cumulative_return"] > baseline["walk_forward"]["cumulative_return"]
+        candidate["walk_forward"]["cumulative_return"]
+        > baseline["walk_forward"]["cumulative_return"]
         and candidate["walk_forward"]["avg_sharpe"] >= baseline["walk_forward"]["avg_sharpe"]
-        and candidate["walk_forward"]["avg_max_drawdown"] <= baseline["walk_forward"]["avg_max_drawdown"]
-        and candidate["walk_forward"]["win_fold_ratio"] >= baseline["walk_forward"]["win_fold_ratio"]
-        and candidate["robustness"]["monte_carlo"]["loss_rate"] <= baseline["robustness"]["monte_carlo"]["loss_rate"]
+        and candidate["walk_forward"]["avg_max_drawdown"]
+        <= baseline["walk_forward"]["avg_max_drawdown"]
+        and candidate["walk_forward"]["win_fold_ratio"]
+        >= baseline["walk_forward"]["win_fold_ratio"]
+        and candidate["robustness"]["monte_carlo"]["loss_rate"]
+        <= baseline["robustness"]["monte_carlo"]["loss_rate"]
         and candidate["robustness"]["stress_test"]["worst_crash_max_drawdown"]
         <= baseline["robustness"]["stress_test"]["worst_crash_max_drawdown"]
         and candidate["evidence_status"] != "suspect"
@@ -1005,7 +1058,9 @@ def compare_strategy_families(
         phase2 = sorted(phase2, key=lambda item: item["selection_score"], reverse=True)
 
     threshold_cfg = promotion_thresholds_from_config(config)
-    baseline = next((candidate for candidate in phase1 if candidate["family"] == "ppo_ensemble"), None)
+    baseline = next(
+        (candidate for candidate in phase1 if candidate["family"] == "ppo_ensemble"), None
+    )
     winning_pool = phase2 or phase1
     winner = winning_pool[0] if winning_pool else None
     winner_family = winner["family"] if winner else None
@@ -1025,7 +1080,11 @@ def compare_strategy_families(
             "winner_beats_ppo_ensemble": winner_beats_baseline,
             "baseline_family": baseline["family"] if baseline else None,
             "baseline_selection_score": baseline["selection_score"] if baseline else None,
-            "recommended_next_iteration": None if winner and winner["verdict"] == "promotable_demo" else "position_sizing_universe_timeframe_cost_sensitivity",
+            "recommended_next_iteration": (
+                None
+                if winner and winner["verdict"] == "promotable_demo"
+                else "position_sizing_universe_timeframe_cost_sensitivity"
+            ),
             "promotion_thresholds": threshold_cfg,
         },
     }

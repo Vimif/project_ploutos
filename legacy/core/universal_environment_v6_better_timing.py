@@ -38,7 +38,7 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
         backtest: Start 0, AdvancedTransactionModel, seed fixé, reproductible.
     """
 
-    metadata = {'render_modes': ['human']}
+    metadata = {"render_modes": ["human"]}
 
     def __init__(
         self,
@@ -49,7 +49,7 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
         finra_taf: float = 0.000145,
         max_steps: int = 2500,
         buy_pct: float = 0.20,
-        slippage_model: str = 'realistic',
+        slippage_model: str = "realistic",
         spread_bps: float = 2.0,
         market_impact_factor: float = 0.0001,
         max_position_pct: float = 0.25,
@@ -78,9 +78,7 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
 
         # ===== Mode =====
         if mode not in VALID_MODES:
-            raise ValueError(
-                f"mode doit être l'un de {VALID_MODES}, obtenu '{mode}'"
-            )
+            raise ValueError(f"mode doit être l'un de {VALID_MODES}, obtenu '{mode}'")
         self.mode = mode
 
         # ===== Seed / Reproductibilité =====
@@ -157,10 +155,7 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
         obs_size = self.n_assets * n_features_per_ticker + self.n_assets + 3
 
         self.observation_space = gym.spaces.Box(
-            low=-10.0,
-            high=10.0,
-            shape=(obs_size,),
-            dtype=np.float32
+            low=-10.0, high=10.0, shape=(obs_size,), dtype=np.float32
         )
 
         self.action_space = gym.spaces.MultiDiscrete([3] * self.n_assets)
@@ -184,10 +179,9 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
             df = self.feature_engineer.calculate_all_features(df)
             self.processed_data[ticker] = df
 
-        exclude_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
+        exclude_cols = ["Open", "High", "Low", "Close", "Volume"]
         self.feature_columns = [
-            col for col in self.processed_data[self.tickers[0]].columns
-            if col not in exclude_cols
+            col for col in self.processed_data[self.tickers[0]].columns if col not in exclude_cols
         ]
 
         print(f"  ✅ {len(self.feature_columns)} features calculées par ticker")
@@ -201,16 +195,15 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
         for ticker in self.tickers:
             df = self.processed_data[ticker]
             self.feature_arrays[ticker] = df[self.feature_columns].values.astype(np.float32)
-            self.close_prices[ticker] = df['Close'].values.astype(np.float32)
+            self.close_prices[ticker] = df["Close"].values.astype(np.float32)
             # Volume pour AdvancedTransactionModel
-            if 'Volume' in df.columns:
-                self.volume_arrays[ticker] = df['Volume'].values.astype(np.float64)
+            if "Volume" in df.columns:
+                self.volume_arrays[ticker] = df["Volume"].values.astype(np.float64)
             else:
                 self.volume_arrays[ticker] = np.full(len(df), 1_000_000.0)
 
         self.max_steps = min(
-            self.max_steps,
-            min(len(df) for df in self.processed_data.values()) - 100
+            self.max_steps, min(len(df) for df in self.processed_data.values()) - 100
         )
 
     def reset(self, seed=None, options=None):
@@ -276,9 +269,9 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
         self.current_step += 1
 
         self.done = (
-            self.current_step >= self.max_steps or
-            self.equity < self.initial_balance * 0.5 or
-            self.balance < 0
+            self.current_step >= self.max_steps
+            or self.equity < self.initial_balance * 0.5
+            or self.balance < 0
         )
 
         obs = self._get_observation()
@@ -304,16 +297,13 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
             return self.reward_bad_price
 
         if action == 1:  # BUY
-            max_invest = min(
-                self.balance * self.buy_pct,
-                self.equity * self.max_position_pct
-            )
+            max_invest = min(self.balance * self.buy_pct, self.equity * self.max_position_pct)
 
             if max_invest < current_price * 1.1:
                 return self.reward_invalid_trade
 
             execution_price = self._apply_slippage_buy(ticker, current_price)
-            execution_price *= (1 + self.spread_bps)
+            execution_price *= 1 + self.spread_bps
 
             quantity = max_invest / execution_price
             cost = quantity * execution_price
@@ -338,7 +328,7 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
                 return self.reward_invalid_trade
 
             execution_price = self._apply_slippage_sell(ticker, current_price)
-            execution_price *= (1 - self.spread_bps)
+            execution_price *= 1 - self.spread_bps
 
             proceeds = quantity * execution_price
 
@@ -405,7 +395,7 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
 
     def _apply_slippage_buy(self, ticker: str, price: float) -> float:
         """Applique le slippage à l'achat selon le mode."""
-        if self.slippage_model == 'none':
+        if self.slippage_model == "none":
             return price
 
         if self.mode == "backtest":
@@ -418,7 +408,7 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
                 intended_price=price,
                 order_size=quantity,
                 current_volume=volume,
-                side='buy',
+                side="buy",
                 recent_prices=recent_prices,
             )
             return exec_price
@@ -429,7 +419,7 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
 
     def _apply_slippage_sell(self, ticker: str, price: float) -> float:
         """Applique le slippage à la vente selon le mode."""
-        if self.slippage_model == 'none':
+        if self.slippage_model == "none":
             return price
 
         if self.mode == "backtest":
@@ -442,7 +432,7 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
                 intended_price=price,
                 order_size=quantity,
                 current_volume=volume,
-                side='sell',
+                side="sell",
                 recent_prices=recent_prices,
             )
             return exec_price
@@ -523,12 +513,8 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
             obs_parts.append([position_pct])
 
         cash_pct = np.clip(self.balance / (self.equity + 1e-8), 0, 1)
-        total_return = np.clip(
-            (self.equity - self.initial_balance) / self.initial_balance, -1, 5
-        )
-        drawdown = np.clip(
-            (self.peak_value - self.equity) / (self.peak_value + 1e-8), 0, 1
-        )
+        total_return = np.clip((self.equity - self.initial_balance) / self.initial_balance, -1, 5)
+        drawdown = np.clip((self.peak_value - self.equity) / (self.peak_value + 1e-8), 0, 1)
 
         obs_parts.append([cash_pct, total_return, drawdown])
 
@@ -541,24 +527,18 @@ class UniversalTradingEnvV6BetterTiming(gym.Env):
 
     def _get_info(self) -> dict:
         return {
-            'equity': float(self.equity),
-            'balance': float(self.balance),
-            'total_return': float(
-                (self.equity - self.initial_balance) / self.initial_balance
-            ),
-            'total_trades': int(self.total_trades),
-            'winning_trades': int(self.winning_trades),
-            'losing_trades': int(self.losing_trades),
-            'current_step': int(self.current_step),
-            'mode': self.mode,
+            "equity": float(self.equity),
+            "balance": float(self.balance),
+            "total_return": float((self.equity - self.initial_balance) / self.initial_balance),
+            "total_trades": int(self.total_trades),
+            "winning_trades": int(self.winning_trades),
+            "losing_trades": int(self.losing_trades),
+            "current_step": int(self.current_step),
+            "mode": self.mode,
         }
 
-    def render(self, mode='human'):
-        win_rate = (
-            self.winning_trades / self.total_trades
-            if self.total_trades > 0
-            else 0
-        )
+    def render(self, mode="human"):
+        win_rate = self.winning_trades / self.total_trades if self.total_trades > 0 else 0
         print(
             f"Step: {self.current_step} | Equity: ${self.equity:,.2f} | "
             f"Return: {(self.equity / self.initial_balance - 1) * 100:.2f}% | "

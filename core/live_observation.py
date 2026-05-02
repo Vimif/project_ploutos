@@ -111,18 +111,21 @@ class LiveObservationEngine:
             for ticker in self.tickers
         }
         volumes = {
-            ticker: float(processed_data[ticker]["Volume"].iloc[current_step])
-            if "Volume" in processed_data[ticker].columns
-            else 1_000_000.0
+            ticker: (
+                float(processed_data[ticker]["Volume"].iloc[current_step])
+                if "Volume" in processed_data[ticker].columns
+                else 1_000_000.0
+            )
             for ticker in self.tickers
         }
         recent_prices = {
-            ticker: processed_data[ticker]["Close"].iloc[max(0, current_step - 20) : current_step + 1]
+            ticker: processed_data[ticker]["Close"].iloc[
+                max(0, current_step - 20) : current_step + 1
+            ]
             for ticker in self.tickers
         }
         portfolio = {
-            ticker: float(positions_map.get(ticker, {}).get("qty", 0.0))
-            for ticker in self.tickers
+            ticker: float(positions_map.get(ticker, {}).get("qty", 0.0)) for ticker in self.tickers
         }
         entry_prices = {
             ticker: float(positions_map.get(ticker, {}).get("avg_entry_price", 0.0))
@@ -287,9 +290,9 @@ class LiveObservationEngine:
                 candidates.append((feature_count, macro_count))
 
         if not candidates:
-            return self._select_feature_columns(ref_df, available_feature_columns), self._select_macro_columns(
-                available_macro_columns
-            )
+            return self._select_feature_columns(
+                ref_df, available_feature_columns
+            ), self._select_macro_columns(available_macro_columns)
 
         preferred = (
             preferred_feature_count

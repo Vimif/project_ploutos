@@ -170,8 +170,12 @@ def run_housekeeping(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Clean disposable local artifacts from the project")
-    parser.add_argument("--apply", action="store_true", help="Actually delete files instead of dry-run")
+    parser = argparse.ArgumentParser(
+        description="Clean disposable local artifacts from the project"
+    )
+    parser.add_argument(
+        "--apply", action="store_true", help="Actually delete files instead of dry-run"
+    )
     parser.add_argument("--json", action="store_true", help="Print the report as JSON")
     parser.add_argument("--no-cache-clean", action="store_true", help="Skip cache cleanup")
     parser.add_argument("--keep-paper-trading", type=int, default=None)

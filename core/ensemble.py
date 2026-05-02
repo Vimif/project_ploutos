@@ -58,9 +58,7 @@ class EnsemblePredictor:
         return cls(models=models, vecnormalize=vecnormalize)
 
     def predict(self, observation: np.ndarray, deterministic: bool = True) -> np.ndarray:
-        action, _ = self.predict_with_asset_confidences(
-            observation, deterministic=deterministic
-        )
+        action, _ = self.predict_with_asset_confidences(observation, deterministic=deterministic)
         return action
 
     def predict_with_confidence(

@@ -389,7 +389,11 @@ def evaluate_on_test(
     obs, info = test_env.reset()
     done = False
     equity_curve = [test_env.initial_balance]
-    timestamps = [test_data[test_env.tickers[0]].index[min(test_env.current_step, len(test_data[test_env.tickers[0]]) - 1)]]
+    timestamps = [
+        test_data[test_env.tickers[0]].index[
+            min(test_env.current_step, len(test_data[test_env.tickers[0]]) - 1)
+        ]
+    ]
     recurrent_state = None
     episode_start = np.array([True], dtype=bool)
     max_equity_error = 0.0
@@ -433,7 +437,11 @@ def evaluate_on_test(
         sharpe_ratio = (returns.mean() / returns.std()) * _annualization_factor(interval)
     daily_equity = equity_series.groupby(pd.to_datetime(equity_series.index).normalize()).last()
     daily_returns = daily_equity.pct_change().dropna()
-    max_daily_loss = abs(float(daily_returns.min())) if not daily_returns.empty and daily_returns.min() < 0 else 0.0
+    max_daily_loss = (
+        abs(float(daily_returns.min()))
+        if not daily_returns.empty and daily_returns.min() < 0
+        else 0.0
+    )
     closed_trades = info.get("winning_trades", 0) + info.get("losing_trades", 0)
     win_rate = info.get("winning_trades", 0) / closed_trades if closed_trades > 0 else 0.0
 
@@ -636,7 +644,9 @@ def run_walk_forward(
             metrics["fold_idx"] = fold_idx
             metrics["train_period"] = f"{split['train_start']}->{split['train_end']}"
             metrics["test_period"] = f"{split['test_start']}->{split['test_end']}"
-            metrics["accounting"] = {"max_equity_error": float(metrics.get("max_equity_error", 0.0))}
+            metrics["accounting"] = {
+                "max_equity_error": float(metrics.get("max_equity_error", 0.0))
+            }
             metrics["evidence"] = evaluate_backtest_artifact(
                 metrics,
                 interval=config.get("data", {}).get("interval", "1h"),

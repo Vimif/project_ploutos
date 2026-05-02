@@ -87,7 +87,9 @@ def _live_cfg(config: dict) -> dict:
     return dict(config.get("live", {}))
 
 
-def _select_feature_columns(data: dict[str, pd.DataFrame], max_features_per_ticker: int) -> list[str]:
+def _select_feature_columns(
+    data: dict[str, pd.DataFrame], max_features_per_ticker: int
+) -> list[str]:
     ref_ticker = next(iter(data))
     ref_df = data[ref_ticker]
     feature_columns = [
@@ -162,7 +164,9 @@ class _SB3StrategyBase(StrategyPolicy):
         n_envs = int(training_cfg.get("n_envs", 1))
 
         def make_env():
-            return runtime["Monitor"](runtime["TradingEnv"](train_data, macro_data=macro_data, **env_kwargs))
+            return runtime["Monitor"](
+                runtime["TradingEnv"](train_data, macro_data=macro_data, **env_kwargs)
+            )
 
         if self.is_recurrent:
             env = runtime["DummyVecEnv"]([make_env for _ in range(n_envs)])
@@ -182,7 +186,9 @@ class _SB3StrategyBase(StrategyPolicy):
         network_cfg = _network_cfg(self.config)
         net_arch = network_cfg.get("net_arch", [256, 128])
         activation_name = network_cfg.get("activation_fn", "tanh")
-        activation_fn = runtime["torch"].nn.Tanh if activation_name == "tanh" else runtime["torch"].nn.ReLU
+        activation_fn = (
+            runtime["torch"].nn.Tanh if activation_name == "tanh" else runtime["torch"].nn.ReLU
+        )
         device = "cuda" if runtime["torch"].cuda.is_available() else "cpu"
 
         if self.is_recurrent:
@@ -214,7 +220,10 @@ class _SB3StrategyBase(StrategyPolicy):
                 seed=seed,
             )
 
-        policy_kwargs = {"net_arch": [{"pi": net_arch, "vf": net_arch}], "activation_fn": activation_fn}
+        policy_kwargs = {
+            "net_arch": [{"pi": net_arch, "vf": net_arch}],
+            "activation_fn": activation_fn,
+        }
         return runtime["PPO"](
             "MlpPolicy",
             env,
@@ -364,7 +373,9 @@ class SupervisedRankerStrategyPolicy(StrategyPolicy):
         forward_bars = int(strategy_cfg.get("supervised_forward_bars", 4))
         self.feature_columns = _select_feature_columns(train_data, max_features)
         self.models = {}
-        self.macro_columns = list(macro_data.columns) if macro_data is not None and not macro_data.empty else []
+        self.macro_columns = (
+            list(macro_data.columns) if macro_data is not None and not macro_data.empty else []
+        )
         cost = _estimate_round_trip_cost(self.config)
 
         for ticker, df in train_data.items():
@@ -409,13 +420,19 @@ class SupervisedRankerStrategyPolicy(StrategyPolicy):
             features = row[self.feature_columns].astype(float).fillna(0.0).to_dict()
             if context.macro_row:
                 features.update(context.macro_row)
-            ordered = np.array([features.get(col, 0.0) for col in list(self.feature_columns) + self.macro_columns])
+            ordered = np.array(
+                [features.get(col, 0.0) for col in list(self.feature_columns) + self.macro_columns]
+            )
             score = float(model.predict(ordered.reshape(1, -1))[0])
 
             if context.portfolio.get(ticker, 0.0) > 0 and score < sell_threshold:
                 actions[idx] = 2
                 continue
-            if context.portfolio.get(ticker, 0.0) <= 0 and score > buy_threshold and context.regime_risk_on:
+            if (
+                context.portfolio.get(ticker, 0.0) <= 0
+                and score > buy_threshold
+                and context.regime_risk_on
+            ):
                 scores.append((idx, score))
 
         if scores:

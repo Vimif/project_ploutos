@@ -75,15 +75,9 @@ class EToroClient(BrokerInterface):
         self.info_scope = f"/trading/info/{self.account_scope}"
 
         self.public_api_key = (
-            os.getenv("ETORO_PUBLIC_API_KEY")
-            or os.getenv("ETORO_SUBSCRIPTION_KEY")
-            or ""
+            os.getenv("ETORO_PUBLIC_API_KEY") or os.getenv("ETORO_SUBSCRIPTION_KEY") or ""
         ).strip()
-        self.user_key = (
-            os.getenv("ETORO_USER_KEY")
-            or os.getenv("ETORO_API_KEY")
-            or ""
-        ).strip()
+        self.user_key = (os.getenv("ETORO_USER_KEY") or os.getenv("ETORO_API_KEY") or "").strip()
 
         self.username = (os.getenv("ETORO_USERNAME") or "").strip()
         self.password = (os.getenv("ETORO_PASSWORD") or "").strip()
@@ -344,24 +338,16 @@ class EToroClient(BrokerInterface):
             weighted_entry_price = 0.0
 
             for entry in entries:
-                units = float(
-                    entry.get("units")
-                    or entry.get("initialUnits")
-                    or 0.0
-                )
+                units = float(entry.get("units") or entry.get("initialUnits") or 0.0)
                 if units <= 0:
                     open_rate = float(entry.get("openRate") or 0.0)
                     amount = float(
-                        entry.get("initialAmountInDollars")
-                        or entry.get("amount")
-                        or 0.0
+                        entry.get("initialAmountInDollars") or entry.get("amount") or 0.0
                     )
                     units = amount / open_rate if open_rate > 0 else 0.0
 
                 cost_basis = float(
-                    entry.get("initialAmountInDollars")
-                    or entry.get("amount")
-                    or 0.0
+                    entry.get("initialAmountInDollars") or entry.get("amount") or 0.0
                 )
                 pnl = float(entry.get("pnL") or entry.get("pnl") or 0.0)
                 close_rate = float(entry.get("closeRate") or 0.0)
@@ -526,14 +512,18 @@ class EToroClient(BrokerInterface):
         normalized_side = side.lower()
         if normalized_side == "sell":
             success = self.close_position(symbol, reason=reason)
-            return {
-                "id": "",
-                "symbol": symbol.upper(),
-                "qty": float(qty),
-                "side": "sell",
-                "status": "filled" if success else "rejected",
-                "filled_avg_price": float(self.get_current_price(symbol) or 0.0),
-            } if success else None
+            return (
+                {
+                    "id": "",
+                    "symbol": symbol.upper(),
+                    "qty": float(qty),
+                    "side": "sell",
+                    "status": "filled" if success else "rejected",
+                    "filled_avg_price": float(self.get_current_price(symbol) or 0.0),
+                }
+                if success
+                else None
+            )
 
         instrument_id = self._get_instrument_id(symbol)
         current_price = self.get_current_price(symbol)
