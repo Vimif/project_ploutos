@@ -247,15 +247,33 @@ class DemoMonitorService:
         rejection_counts = Counter(event.get("reason", "unknown") for event in session.events if event.get("type") == "rejection")
         signal_counts = Counter(event.get("action", "UNKNOWN") for event in session.events if event.get("type") == "signal")
         latest_equity = session.equity[-1] if session.equity else {}
-        peak_equity = max((float(point.get("equity", 0.0)) for point in session.equity), default=0.0)
         current_equity = float(latest_equity.get("equity", 0.0))
-        drawdown = (peak_equity - current_equity) / max(peak_equity, 1e-8) if peak_equity else 0.0
 
+        peak_equity = 0.0
+        start_equity = None
         today = datetime.now().date()
-        today_points = [point for point in session.equity if (_parse_timestamp(point.get("timestamp")) or datetime.now()).date() == today]
+        today_str = today.isoformat()
+
+        for point in session.equity:
+            eq = float(point.get("equity", 0.0))
+            if eq > peak_equity:
+                peak_equity = eq
+
+            if start_equity is None:
+                ts = point.get("timestamp")
+                # Fast path: prefix matching avoids redundant datetime parsing
+                if ts and ts.startswith(today_str):
+                    start_equity = eq
+                elif not ts:
+                    start_equity = eq
+                else:
+                    parsed = _parse_timestamp(ts)
+                    if not parsed or parsed.date() == today:
+                        start_equity = eq
+
+        drawdown = (peak_equity - current_equity) / max(peak_equity, 1e-8) if peak_equity else 0.0
         daily_loss = 0.0
-        if today_points:
-            start_equity = float(today_points[0].get("equity", current_equity))
+        if start_equity is not None:
             daily_loss = max((start_equity - current_equity) / max(start_equity, 1e-8), 0.0)
 
         alerts: list[dict[str, Any]] = []
