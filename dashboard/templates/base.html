@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -78,11 +78,11 @@
         <div class="container">
             <h1>Ploutos Demo Monitor</h1>
             <p>Read-only cockpit for the eToro demo, live telemetry, and improvement insights.</p>
-            <nav aria-label="Menu principal">
+            <nav aria-label="Main menu">
                 <ul>
-                    <li><a href="/" {% if page == "overview" %}class="active"{% endif %}>Overview</a></li>
-                    <li><a href="/demo/session" {% if page == "session" %}class="active"{% endif %}>Session Analysis</a></li>
-                    <li><a href="/demo/insights" {% if page == "insights" %}class="active"{% endif %}>Improvement Insights</a></li>
+                    <li><a href="/" {% if page == "overview" %}class="active" aria-current="page"{% endif %}>Overview</a></li>
+                    <li><a href="/demo/session" {% if page == "session" %}class="active" aria-current="page"{% endif %}>Session Analysis</a></li>
+                    <li><a href="/demo/insights" {% if page == "insights" %}class="active" aria-current="page"{% endif %}>Improvement Insights</a></li>
                 </ul>
             </nav>
         </div>
