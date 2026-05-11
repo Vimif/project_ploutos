@@ -7,7 +7,7 @@ import os
 import time
 import uuid
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 import requests
 from dotenv import load_dotenv
@@ -51,7 +51,7 @@ def log_trade_to_json(
 
         filename = f"{TRADES_LOG_DIR}/trades_{datetime.now().strftime('%Y-%m-%d')}.json"
         if os.path.exists(filename):
-            with open(filename, "r", encoding="utf-8") as handle:
+            with open(filename, encoding="utf-8") as handle:
                 trades = json.load(handle)
         else:
             trades = []
@@ -75,15 +75,9 @@ class EToroClient(BrokerInterface):
         self.info_scope = f"/trading/info/{self.account_scope}"
 
         self.public_api_key = (
-            os.getenv("ETORO_PUBLIC_API_KEY")
-            or os.getenv("ETORO_SUBSCRIPTION_KEY")
-            or ""
+            os.getenv("ETORO_PUBLIC_API_KEY") or os.getenv("ETORO_SUBSCRIPTION_KEY") or ""
         ).strip()
-        self.user_key = (
-            os.getenv("ETORO_USER_KEY")
-            or os.getenv("ETORO_API_KEY")
-            or ""
-        ).strip()
+        self.user_key = (os.getenv("ETORO_USER_KEY") or os.getenv("ETORO_API_KEY") or "").strip()
 
         self.username = (os.getenv("ETORO_USERNAME") or "").strip()
         self.password = (os.getenv("ETORO_PASSWORD") or "").strip()
@@ -165,7 +159,7 @@ class EToroClient(BrokerInterface):
         params=None,
         auth_required: bool = True,
         retries: int = 3,
-    ) -> Optional[requests.Response]:
+    ) -> requests.Response | None:
         if auth_required:
             self._ensure_auth()
 
@@ -212,7 +206,7 @@ class EToroClient(BrokerInterface):
         except Exception:
             return {}
 
-    def _extract_error_message(self, response: Optional[requests.Response]) -> str:
+    def _extract_error_message(self, response: requests.Response | None) -> str:
         if response is None:
             return "no response"
 
@@ -283,7 +277,7 @@ class EToroClient(BrokerInterface):
                 return value.strip().upper()
         return ""
 
-    def _normalize_instrument_id(self, instrument: dict[str, Any]) -> Optional[int]:
+    def _normalize_instrument_id(self, instrument: dict[str, Any]) -> int | None:
         for key in ("instrumentId", "InstrumentId", "instrumentID", "InstrumentID"):
             value = instrument.get(key)
             if value is None:
@@ -294,7 +288,7 @@ class EToroClient(BrokerInterface):
                 continue
         return None
 
-    def _get_instrument_id(self, symbol: str) -> Optional[int]:
+    def _get_instrument_id(self, symbol: str) -> int | None:
         normalized_symbol = symbol.upper()
         if normalized_symbol in self._instrument_cache:
             return self._instrument_cache[normalized_symbol]
@@ -344,24 +338,16 @@ class EToroClient(BrokerInterface):
             weighted_entry_price = 0.0
 
             for entry in entries:
-                units = float(
-                    entry.get("units")
-                    or entry.get("initialUnits")
-                    or 0.0
-                )
+                units = float(entry.get("units") or entry.get("initialUnits") or 0.0)
                 if units <= 0:
                     open_rate = float(entry.get("openRate") or 0.0)
                     amount = float(
-                        entry.get("initialAmountInDollars")
-                        or entry.get("amount")
-                        or 0.0
+                        entry.get("initialAmountInDollars") or entry.get("amount") or 0.0
                     )
                     units = amount / open_rate if open_rate > 0 else 0.0
 
                 cost_basis = float(
-                    entry.get("initialAmountInDollars")
-                    or entry.get("amount")
-                    or 0.0
+                    entry.get("initialAmountInDollars") or entry.get("amount") or 0.0
                 )
                 pnl = float(entry.get("pnL") or entry.get("pnl") or 0.0)
                 close_rate = float(entry.get("closeRate") or 0.0)
@@ -454,7 +440,7 @@ class EToroClient(BrokerInterface):
             )
         return orders
 
-    def get_account(self) -> Optional[dict]:
+    def get_account(self) -> dict | None:
         try:
             snapshot = self._get_portfolio_snapshot()
             positions = self._normalize_positions(snapshot.get("positions") or [])
@@ -482,14 +468,14 @@ class EToroClient(BrokerInterface):
             logger.error("Erreur recuperation positions: %s", exc)
             return []
 
-    def get_position(self, symbol: str) -> Optional[dict]:
+    def get_position(self, symbol: str) -> dict | None:
         normalized_symbol = symbol.upper()
         for position in self.get_positions():
             if position["symbol"].upper() == normalized_symbol:
                 return position
         return None
 
-    def get_current_price(self, symbol: str) -> Optional[float]:
+    def get_current_price(self, symbol: str) -> float | None:
         instrument_id = self._get_instrument_id(symbol)
         if instrument_id is None:
             return None
@@ -522,18 +508,22 @@ class EToroClient(BrokerInterface):
         qty: int,
         side: str = "buy",
         reason: str = "",
-    ) -> Optional[dict]:
+    ) -> dict | None:
         normalized_side = side.lower()
         if normalized_side == "sell":
             success = self.close_position(symbol, reason=reason)
-            return {
-                "id": "",
-                "symbol": symbol.upper(),
-                "qty": float(qty),
-                "side": "sell",
-                "status": "filled" if success else "rejected",
-                "filled_avg_price": float(self.get_current_price(symbol) or 0.0),
-            } if success else None
+            return (
+                {
+                    "id": "",
+                    "symbol": symbol.upper(),
+                    "qty": float(qty),
+                    "side": "sell",
+                    "status": "filled" if success else "rejected",
+                    "filled_avg_price": float(self.get_current_price(symbol) or 0.0),
+                }
+                if success
+                else None
+            )
 
         instrument_id = self._get_instrument_id(symbol)
         current_price = self.get_current_price(symbol)
@@ -598,7 +588,7 @@ class EToroClient(BrokerInterface):
         qty: int,
         limit_price: float,
         side: str = "buy",
-    ) -> Optional[dict]:
+    ) -> dict | None:
         instrument_id = self._get_instrument_id(symbol)
         if instrument_id is None:
             return None
@@ -712,15 +702,20 @@ class EToroClient(BrokerInterface):
             logger.error("Erreur recuperation ordres: %s", exc)
             return []
 
+    # Bolt Optimization: Helper to avoid N+1 network calls
+    # Allows cancelling an already-fetched order dictionary without refetching the entire portfolio
+    def _cancel_order_dict(self, order: dict) -> bool:
+        cancel_path = order.get("_cancel_path")
+        if not cancel_path:
+            return False
+        response = self._request("DELETE", cancel_path)
+        return response is not None and response.status_code in {200, 202, 204}
+
     def cancel_order(self, order_id: str) -> bool:
         for order in self.get_orders(status="all"):
             if order.get("id") != str(order_id):
                 continue
-            cancel_path = order.get("_cancel_path")
-            if not cancel_path:
-                break
-            response = self._request("DELETE", cancel_path)
-            return response is not None and response.status_code in {200, 202, 204}
+            return self._cancel_order_dict(order)
         return False
 
     def cancel_orders_for_symbol(self, symbol: str) -> int:
@@ -729,7 +724,9 @@ class EToroClient(BrokerInterface):
         for order in self.get_orders(status="open"):
             if order.get("symbol", "").upper() != normalized_symbol:
                 continue
-            if self.cancel_order(order.get("id", "")):
+            # Bolt Optimization: Replaced self.cancel_order(order_id) with self._cancel_order_dict(order)
+            # This reduces time complexity from O(N^2) to O(N) by eliminating redundant get_orders calls inside the loop
+            if self._cancel_order_dict(order):
                 cancelled += 1
         return cancelled
 
@@ -793,7 +790,7 @@ class EToroClient(BrokerInterface):
         )
         return response is not None and response.status_code in {200, 202, 204}
 
-    def get_fees(self) -> Optional[dict]:
+    def get_fees(self) -> dict | None:
         response = self._request("GET", "/market-data/fees")
         if response is None or response.status_code != 200:
             return None
