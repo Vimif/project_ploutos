@@ -712,15 +712,19 @@ class EToroClient(BrokerInterface):
             logger.error("Erreur recuperation ordres: %s", exc)
             return []
 
+    def _cancel_order_dict(self, order: dict) -> bool:
+        # Bolt optimization: reuse fetched order to avoid N+1 network calls
+        cancel_path = order.get("_cancel_path")
+        if not cancel_path:
+            return False
+        response = self._request("DELETE", cancel_path)
+        return response is not None and response.status_code in {200, 202, 204}
+
     def cancel_order(self, order_id: str) -> bool:
         for order in self.get_orders(status="all"):
             if order.get("id") != str(order_id):
                 continue
-            cancel_path = order.get("_cancel_path")
-            if not cancel_path:
-                break
-            response = self._request("DELETE", cancel_path)
-            return response is not None and response.status_code in {200, 202, 204}
+            return self._cancel_order_dict(order)
         return False
 
     def cancel_orders_for_symbol(self, symbol: str) -> int:
@@ -729,7 +733,7 @@ class EToroClient(BrokerInterface):
         for order in self.get_orders(status="open"):
             if order.get("symbol", "").upper() != normalized_symbol:
                 continue
-            if self.cancel_order(order.get("id", "")):
+            if self._cancel_order_dict(order):
                 cancelled += 1
         return cancelled
 
